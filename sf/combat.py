@@ -307,7 +307,8 @@ def hit_enemy(game, e, dmg, crit=False, dmg_type='physical'):
         # Update #127: Klassen-Crit-Voice (z.B. „YES!", „Spalte!")
         # Lore-Voice aus voice_registry/cls_<klasse>/crit.
         try:
-            snd.play_class_voice(game.player.cls, 'crit', volume=0.7)
+            # Update #148: Voice 0.7 → 0.35 (User-Report „zu laut")
+            snd.play_class_voice(game.player.cls, 'crit', volume=0.35)
         except Exception:
             pass
         # Update #32: Crit-Counter
@@ -323,6 +324,12 @@ def hit_enemy(game, e, dmg, crit=False, dmg_type='physical'):
         if hasattr(game, 'slow_mo_left'):
             game.slow_mo_left = max(game.slow_mo_left, 0.18)
         game.shake = max(game.shake, 14)
+        # Update #140 (X-04): Crit-Zoom-Pull bei großen Crits oder
+        # Boss-Crits.  Camera wird kurz Richtung Target gepullt
+        # (synchron mit Hitstop-slow_mo).
+        if dmg >= 30 or getattr(e, 'is_boss', False):
+            if hasattr(game, 'trigger_crit_zoom'):
+                game.trigger_crit_zoom(e.pos.x, e.pos.y)
         # Update #32: Klassen-spezifisches Crit-Impact-Sample (leise).
         cls = game.player.cls
         if cls in ('warrior', 'druid', 'huntress'):
@@ -731,12 +738,38 @@ def kill_enemy(game, e):
             name = getattr(e, 'display_name', None) or key
             game.toast(f'Erste Begegnung: {name}', (200, 180, 140))
     # Blut-Pfütze am Todesort
+    # Update #136 (V-05): Lore-spezifische Pool-Farbe + Kind aus Bestiarium-
+    # Realismus.  Salzgeist hinterlässt Salzkristalle, Glaslord Glas-Splitter,
+    # Aschenbrut Asche-Pool, Wurzelhüter Pflanzen-Saft.
     from .weather import BloodPool
     if hasattr(game, 'blood_pools'):
-        game.blood_pools.append(BloodPool(
-            e.pos.x + random.uniform(-6, 6),
-            e.pos.y + random.uniform(-6, 6),
-            e.radius * 0.9 + random.uniform(-3, 5)))
+        _BLOOD_LORE = {
+            'salzgeist':    ((200, 220, 240), 'salt_crystal'),
+            'glaslord':     ((180, 210, 240), 'salt_crystal'),  # Glas-Splitter wie Salz
+            'aschenbrut':   ((50, 30, 26),    'ash'),
+            'wurzelhueter': ((80, 130, 60),   'sap'),
+        }
+        spec = _BLOOD_LORE.get(getattr(e, 'type_key', ''))
+        # Pool-Size skaliert mit Mob-Radius — größere Mobs = größere Pfützen
+        pool_size = e.radius * 0.9 + random.uniform(-3, 5)
+        # Boss-Pools sind ~1.5× größer und leben länger
+        is_boss = getattr(e, 'is_boss', False) or getattr(
+            e, 'is_mini_boss', False)
+        if is_boss:
+            pool_size *= 1.5
+            pool_life = 25.0
+        else:
+            pool_life = 15.0   # PLAN V-05: ~15s, „trocknet aus"
+        if spec is not None:
+            game.blood_pools.append(BloodPool(
+                e.pos.x + random.uniform(-6, 6),
+                e.pos.y + random.uniform(-6, 6),
+                pool_size, color=spec[0], life=pool_life, kind=spec[1]))
+        else:
+            game.blood_pools.append(BloodPool(
+                e.pos.x + random.uniform(-6, 6),
+                e.pos.y + random.uniform(-6, 6),
+                pool_size, life=pool_life))
     # PLAN J-10: Boss/Mini-Boss-Drops einen Uncut Memory-Shard.
     # Lore: gefundene Tropfen aus dem Glasgoldenen Zeitalter.
     if e.is_boss or getattr(e, 'is_mini_boss', False):
@@ -806,6 +839,10 @@ def kill_enemy(game, e):
         game.slow_mo_left = 1.5
         game.boss_flash = 1.0
         game.shake = max(game.shake, 16)
+        # Update #140 (X-05): Cinematic-Camera-Pan zum sterbenden Boss
+        # für 1.8 s.  Slow-Mo + Camera-Follow-Override.
+        if hasattr(game, 'trigger_boss_death_pan'):
+            game.trigger_boss_death_pan(e)
         # Update #33: Boss-Death-Banner-Notification (visible progression)
         try:
             game.push_event_notification(
@@ -816,13 +853,42 @@ def kill_enemy(game, e):
         except Exception:
             pass
         # Klassen-Voice-Line (Lore-Anker zu VELGRAD_VOICE_LINES_POOL.md)
-        try:
-            from . import quotes as _q
-            vl = _q.class_voice_line(game.player.cls, 'boss_kill')
-            if vl:
-                game.toast(vl, (255, 220, 100))
-        except Exception:
-            pass
+        # Update #146 + #148 (User-Report „Schöner Tod kommt immer noch
+        # richtig oft"):
+        #   1. Cooldown 8 s → **90 s** (Boss-Kill ist seltenes Event)
+        #   2. Nur echte Story-Bosse triggern — Roaming-Boss + Mini-Boss
+        #      bekommen KEINE boss_kill-Voice (sonst Spam in Dungeons
+        #      mit 5+ Mini-Bossen).
+        #   3. „Last-quote"-Memo verhindert dass dieselbe Quote-Line
+        #      zweimal in Folge erscheint.
+        is_real_story_boss = (e.is_boss
+                               and not getattr(e, 'is_mini_boss', False)
+                               and not getattr(e, '_roaming', False)
+                               and not getattr(e, '_invasion', False))
+        if is_real_story_boss:
+            import time as _t
+            now = _t.time()
+            last = getattr(game, '_class_voice_last_t', 0.0)
+            if now - last > 90.0:
+                game._class_voice_last_t = now
+                try:
+                    from . import quotes as _q
+                    last_quote = getattr(game,
+                                          '_class_voice_last_quote', None)
+                    # Bis zu 3 Versuche eine NEUE Quote zu picken
+                    vl = None
+                    for _ in range(3):
+                        cand = _q.class_voice_line(
+                            game.player.cls, 'boss_kill')
+                        if cand and cand != last_quote:
+                            vl = cand
+                            break
+                        vl = cand
+                    if vl:
+                        game._class_voice_last_quote = vl
+                        game.toast(vl, (255, 220, 100))
+                except Exception:
+                    pass
         # Massive Partikel-Explosion
         game.spawn_particles(e.pos.x, e.pos.y, 120,
                              e.glow, life_max=1.5, size_max=10, gravity=40)
@@ -1083,22 +1149,40 @@ def kill_enemy(game, e):
                                      'STUFENAUFSTIEG!', (255, 215, 90)))
         game.spawn_particles(game.player.pos.x, game.player.pos.y, 80,
                              (255, 215, 90), life_max=1.6, size_max=8)
-        # Update #81: Klassen-Voice-Line bei Level-Up (Lore-Anker zu
-        # VELGRAD_VOICE_LINES_POOL.md).
-        try:
-            from . import quotes as _q
-            vl = _q.class_voice_line(game.player.cls, 'levelup')
-            if vl:
-                game.toast(vl, (255, 220, 130))
-        except Exception:
-            pass
-        # Update #127: AI-Klassen-Level-Up-Voice (z.B. „Stärker!" / Bell-
-        # ring / Pakt-Glow). Spielt die generierte MP3 aus voice_registry.
-        try:
-            snd.play_class_voice(game.player.cls, 'level_up',
-                                  volume=0.9)
-        except Exception:
-            pass
+        # Update #81 + #148: Klassen-Voice-Line bei Level-Up (Lore-Anker
+        # zu VELGRAD_VOICE_LINES_POOL.md).  Cooldown 30 s damit nicht
+        # bei XP-Flood (4-5 Level-Ups in Folge) gespammt wird.
+        # Anti-Repeat-Memo wie bei boss_kill.
+        import time as _t
+        now = _t.time()
+        last_lvl = getattr(game, '_class_voice_levelup_t', 0.0)
+        if now - last_lvl > 30.0:
+            game._class_voice_levelup_t = now
+            try:
+                from . import quotes as _q
+                last_q = getattr(game,
+                                  '_class_voice_levelup_last_quote', None)
+                vl = None
+                for _ in range(3):
+                    cand = _q.class_voice_line(
+                        game.player.cls, 'levelup')
+                    if cand and cand != last_q:
+                        vl = cand
+                        break
+                    vl = cand
+                if vl:
+                    game._class_voice_levelup_last_quote = vl
+                    game.toast(vl, (255, 220, 130))
+            except Exception:
+                pass
+            # Update #127: AI-Klassen-Level-Up-Voice (MP3-Audio).
+            # Update #148: Volume 0.9 → 0.45 (User-Report „Voice viel
+            # zu laut").  Lautstärke war doppelt so hoch wie SFX-Cap.
+            try:
+                snd.play_class_voice(game.player.cls, 'level_up',
+                                      volume=0.45)
+            except Exception:
+                pass
         for k in range(24):
             ang = (k / 24) * math.tau
             game.particles_push(
@@ -1252,6 +1336,7 @@ def damage_player(game, dmg, dmg_type='physical', source=None):
             # Update #127: Klassen-Death-Voice (z.B. „Nicht so..." /
             # Klangschalen-Stille). Lore-Voice aus voice_registry.
             try:
-                snd.play_class_voice(p.cls, 'death', volume=0.9)
+                # Update #148: Voice 0.9 → 0.5 (User-Report „zu laut")
+                snd.play_class_voice(p.cls, 'death', volume=0.5)
             except Exception:
                 pass

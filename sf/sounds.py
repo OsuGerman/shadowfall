@@ -74,17 +74,24 @@ _COMBAT_VOICE_CATS = {
 # Per-Sound Volume-Cap (1.0 = kein Cap). Wird VOR effective_volume
 # multipliziert.  Anhand der bekannten lauten procedural-Sounds gewählt.
 _VOLUME_CAP = {
-    'roar':         0.75,   # Boss-Roar ist inherent laut
-    'aoe_impact':   0.70,   # AoE-Explosion stackt schnell
-    'hit_heavy':    0.80,   # Schwerer Hit
-    'boss_bong':    0.85,   # Tubular-Bell ist sehr resonant
-    'cast_lightning': 0.85,  # Lightning-Crack
-    'cast_fire':    0.85,   # Fire-Whoosh
-    'cast_frost':   0.85,   # Frost-Crystal
-    'cast_dark':    0.80,
-    'death':        0.80,
-    'monster_bite': 0.75,
-    'slime_attack': 0.70,
+    # Update #146 (User-Report „Boden-Attacke Sound ballert Ohren raus"):
+    # aoe_impact hart runter von 0.70 → 0.35.  Boss-Spezial-Bodenkreise
+    # spawnen ständig den Sound — er ist der lauteste/aggressivste im
+    # Mix.  Im Verbund mit dem Decal-Telegraph (siehe effects.py) reicht
+    # weniger Lautstärke um die Bedrohung zu kommunizieren.
+    # Update #148 (User-Report „Boss-Grollen viel zu laut"): roar +
+    # boss_bong nochmal aggressiver runter.
+    'roar':         0.35,   # ↓↓ war 0.55 — Boss-Grollen still zu dominant
+    'aoe_impact':   0.30,   # ↓ war 0.35 — leiser Boden-Telegraph
+    'hit_heavy':    0.55,   # ↓ war 0.65
+    'boss_bong':    0.50,   # ↓ war 0.70 — Phase-Bell zu resonant
+    'cast_lightning': 0.60,  # ↓ war 0.70
+    'cast_fire':    0.60,    # ↓ war 0.70
+    'cast_frost':   0.60,    # ↓ war 0.70
+    'cast_dark':    0.55,    # ↓ war 0.65
+    'death':        0.55,    # ↓ war 0.65
+    'monster_bite': 0.50,    # ↓ war 0.60
+    'slime_attack': 0.45,    # ↓ war 0.55
     # Update #128 (User-Report „GoT-Sound zu laut"): Quest-Sounds hart
     # gecappt für den Fall dass eine alte Save / ein externer Hook den
     # alten Stock-Sound direkt anspricht.  Mit den PHASE2-Hints landet
@@ -1960,7 +1967,7 @@ def play_file(abs_path, volume=1.0, bus='voice', voice_channel=None):
     return False
 
 
-def play_voice(npc_key, category, volume=0.85):
+def play_voice(npc_key, category, volume=0.50):
     """Update #127 / #129: Spielt eine zufällige Voice-Line.
 
     `npc_key` ∈ {korven, helst, vossharil, tameris, otreth, mara, vehren,
@@ -2020,7 +2027,7 @@ _CLASS_VOICE_KEY = {
 }
 
 
-def play_class_voice(class_key, category, volume=0.85):
+def play_class_voice(class_key, category, volume=0.45):
     """Update #127: Convenience-Wrapper für Klassen-Voices.
 
     `class_key` = sf.constants Player-cls-key (z.B. 'warrior', 'sorceress').

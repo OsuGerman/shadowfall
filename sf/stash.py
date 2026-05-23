@@ -38,8 +38,14 @@ class StashUI:
         return pygame.Rect(x, y, self.SLOT_SIZE, self.SLOT_SIZE)
 
     def modal_rect(self):
-        w, h = 880, 580
-        return pygame.Rect(SCREEN_W // 2 - w // 2, SCREEN_H // 2 - h // 2, w, h)
+        # Update #146 (User-Report „Stash unbenutzbar"): Modal-Höhe von
+        # 580 → 720 erhöht damit Stash (6 Reihen × 50 = 300) und
+        # Inventar (4 × 50 = 200) NICHT mehr überlappen. Layout-Math:
+        # 92 Header + 6*50 Stash + 60 Gap + 20 Inv-Label + 4*50 Inv
+        # + 50 Footer = ~720
+        w, h = 880, 720
+        return pygame.Rect(SCREEN_W // 2 - w // 2,
+                            SCREEN_H // 2 - h // 2, w, h)
 
     def _stash_rect(self, idx, modal):
         col = idx % self.STASH_COLS
@@ -53,8 +59,10 @@ class StashUI:
         col = idx % self.INV_COLS
         row = idx // self.INV_COLS
         x = modal.x + 24 + col * (self.SLOT_SIZE + 4)
-        # Unter dem INVENTAR-Sub-Label (modal.y + 394) starten die Slots
-        y = modal.y + 414 + row * (self.SLOT_SIZE + 4)
+        # Update #146: Inv-Section nach UNTEN verschoben — Stash endet
+        # bei modal.y + 154 + 6*50 = modal.y + 454.  Inv-Sub-Label bei
+        # 480, Slots ab 504 → kein Overlap mehr mit Stash.
+        y = modal.y + 504 + row * (self.SLOT_SIZE + 4)
         return pygame.Rect(x, y, self.SLOT_SIZE, self.SLOT_SIZE)
 
     def handle_click(self, game, mx, my):
@@ -73,27 +81,54 @@ class StashUI:
             # Edelsteine sind read-only Anzeige
             return True
 
+        # Update #146 (User-Report „Stash unbenutzbar"): Empty-Slots
+        # konsumieren den Click NICHT mehr — sonst werden überlappende
+        # Klicks falsch geroutet (Klick auf leeren Stash-Slot blockte
+        # vorher den Inv-Click auf den OVERLAP).
         # Stash → Inventar
         for i in range(len(p.stash)):
             if self._stash_rect(i, modal).collidepoint(mx, my):
                 it = p.stash[i]
-                if it is not None:
-                    for k, s in enumerate(p.inventory):
-                        if s is None:
-                            p.inventory[k] = it
-                            p.stash[i] = None
-                            return True
+                if it is None:
+                    continue   # Click durchreichen
+                # Versuche Transfer
+                for k, s in enumerate(p.inventory):
+                    if s is None:
+                        p.inventory[k] = it
+                        p.stash[i] = None
+                        try:
+                            import sf.sounds as _snd
+                            _snd.play('ui_click', volume=0.4)
+                        except Exception:
+                            pass
+                        return True
+                # Inventar voll — Feedback
+                try:
+                    game.toast('Inventar voll.', (220, 130, 80))
+                except Exception:
+                    pass
                 return True
         # Inventar → Stash
         for i in range(len(p.inventory)):
             if self._inv_rect(i, modal).collidepoint(mx, my):
                 it = p.inventory[i]
-                if it is not None:
-                    for k, s in enumerate(p.stash):
-                        if s is None:
-                            p.stash[k] = it
-                            p.inventory[i] = None
-                            return True
+                if it is None:
+                    continue   # Click durchreichen
+                # Versuche Transfer
+                for k, s in enumerate(p.stash):
+                    if s is None:
+                        p.stash[k] = it
+                        p.inventory[i] = None
+                        try:
+                            import sf.sounds as _snd
+                            _snd.play('ui_click', volume=0.4)
+                        except Exception:
+                            pass
+                        return True
+                try:
+                    game.toast('Truhe voll.', (220, 130, 80))
+                except Exception:
+                    pass
                 return True
         return True
 
@@ -176,8 +211,14 @@ class StashUI:
                 r = self._stash_rect(i, modal)
                 self._draw_slot(screen, r, it)
 
+            # Update #146: INVENTAR-Label bei modal.y+484 (über _inv_rect-Start
+            # bei +504).  Trennlinie zwischen Stash + Inv.
+            divider_y = modal.y + 470
+            pygame.draw.line(screen, (90, 65, 40),
+                              (modal.x + 24, divider_y),
+                              (modal.x + modal.w - 24, divider_y), 1)
             il = self.font_small.render('INVENTAR', True, TEXT_DIM)
-            screen.blit(il, (modal.x + 24, modal.y + 394))
+            screen.blit(il, (modal.x + 24, modal.y + 484))
             for i, it in enumerate(p.inventory):
                 r = self._inv_rect(i, modal)
                 self._draw_slot(screen, r, it)

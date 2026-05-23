@@ -8,11 +8,27 @@ Update #133 (Z-01/Z-02): Multi-Save-Slot-System.
   benutzt wird; via `set_active_slot(n)` setzbar.
 - Hardcore-Flag pro Slot persistiert; bei Tod im Hardcore-Mode wird der
   Slot komplett gelöscht (Permadeath).
+
+Update #137 (Z-03/Z-04/Z-06):
+- **SAVE_VERSION = 4** + `migrate_save(data)` Chain ersetzt ad-hoc-Migration
+  bei jedem `.get(..., default)`-Aufruf.  Pro Version eine Migrator-Fn die
+  schreibt was die nächste Version braucht.
+- **SHA256-Integrity-Hash**: pro Save wird ein `_integrity_sha256`-Feld
+  über den canonical-JSON-String der Daten ohne das Feld selbst berechnet.
+  Bei Load wird verifiziert + bei Mismatch ein Warning-Toast gezeigt
+  (Save lädt trotzdem, aber Spieler weiß dass evtl. korrupt).
+- **Auto-Save**: separates `~/.shadowfall_autosave.json` wird alle 60 s
+  geschrieben.  Beim Start prüft `check_autosave_recovery()` ob ein Auto-
+  Save existiert das *neuer* als der aktive Slot-Save ist — dann
+  Recovery-Dialog anbieten.
 """
 
+import hashlib
 import json
 import os
+import sys
 import time
+import traceback
 from pathlib import Path
 
 from .items import Item
@@ -24,6 +40,20 @@ SAVE_PATH = LEGACY_SAVE_PATH  # Backward-Compat-Alias (alte Imports)
 
 MAX_SLOTS = 3
 _active_slot = 1
+
+# Update #137 (Z-03): aktuelle Save-Version. Wird in `save_game()`
+# als data['version'] geschrieben, in `load_game()` per
+# `migrate_save(data)` upgegradet falls niedriger.
+SAVE_VERSION = 4
+
+# Update #137 (Z-06): Auto-Save-Pfad (slot-unabhängig). Wird alle
+# `AUTOSAVE_INTERVAL_S` Sekunden vom Game-Loop geschrieben.
+AUTOSAVE_PATH = Path.home() / '.shadowfall_autosave.json'
+AUTOSAVE_INTERVAL_S = 60.0
+
+# Update #137 (Z-04): Field-Name für den Integrity-SHA256 im Save-Dict.
+# Wird beim Hash-Compute ausgeschlossen (sonst zirkulär).
+_INTEGRITY_FIELD = '_integrity_sha256'
 
 
 def slot_path(slot):
@@ -116,10 +146,99 @@ def _quest_log_from_dict(d):
     return log
 
 
+# ============================================================
+# Update #137 (Z-03): Save-Versioning + Migration-Chain
+# ============================================================
+# Pro Version eine Migrator-Funktion `_migrate_vN_to_vN1(data)` die
+# das gleiche dict in-place mutiert / Felder hinzufügt um auf v(N+1)
+# zu kommen.  `migrate_save(data)` ruft die Chain von der gespeicherten
+# Version bis SAVE_VERSION durch.  Migrator-Fns dürfen Schreibrechte
+# auf alle Schlüssel haben und SOLLEN explicit alle neu hinzukommenden
+# Felder mit lore-konformen Defaults befüllen.
+def _migrate_v1_to_v2(data):
+    """v1 → v2: Update #62 erweiterte Player-Felder (unlocked_skills,
+    skill_bindings, uncut_gems, etc.). Backward-compat-Defaults werden
+    von Load-Pfad bereits angewandt — Migration ist Noop-Stub.
+    """
+    return data
+
+
+def _migrate_v2_to_v3(data):
+    """v2 → v3: Update #133 Multi-Slot + Hardcore.
+    Schreibt `hardcore=False` falls fehlend (alte single-Slot-Saves
+    sind keine Hardcore-Chars).
+    """
+    if 'hardcore' not in data:
+        data['hardcore'] = False
+    return data
+
+
+def _migrate_v3_to_v4(data):
+    """v3 → v4: Update #137 Integrity-Hash + Auto-Save-Support.
+    Tutorial-Felder (top-level, nicht in player) bekommen Defaults
+    falls fehlend.  Integrity-Hash wird beim nächsten Save geschrieben,
+    nicht beim Migrate (sonst zirkulär).
+    """
+    data.setdefault('tutorial_step', 0)
+    data.setdefault('tutorial_done', False)
+    data.setdefault('seen_mech_hints', [])
+    return data
+
+
+_MIGRATIONS = {
+    1: _migrate_v1_to_v2,
+    2: _migrate_v2_to_v3,
+    3: _migrate_v3_to_v4,
+}
+
+
+def migrate_save(data):
+    """Update #137 (Z-03): rufe alle Migratoren von data['version']
+    bis SAVE_VERSION durch.  Returnt das migrierte Dict (in-place
+    mutiert).  Setzt am Ende `version = SAVE_VERSION`.
+    """
+    v = int(data.get('version', 1))
+    while v < SAVE_VERSION:
+        mig = _MIGRATIONS.get(v)
+        if mig is None:
+            break
+        data = mig(data) or data
+        v += 1
+    data['version'] = SAVE_VERSION
+    return data
+
+
+# ============================================================
+# Update #137 (Z-04): SHA256-Integrity-Verify
+# ============================================================
+def _compute_integrity_hash(data):
+    """SHA256 über den canonical-JSON-String der Save-Daten OHNE das
+    Integrity-Feld selbst.  Ergibt einen 64-Char-Hex-String.
+
+    Canonical heißt: `sort_keys=True` + Standard-Separators → stabil
+    über Python-Versionen + identisch auf jedem System.
+    """
+    payload = {k: v for k, v in data.items() if k != _INTEGRITY_FIELD}
+    canon = json.dumps(payload, sort_keys=True, separators=(',', ':'),
+                        ensure_ascii=False)
+    return hashlib.sha256(canon.encode('utf-8')).hexdigest()
+
+
+def verify_save_integrity(data):
+    """Returnt True wenn der eingebettete Hash zum berechneten passt.
+    Saves OHNE Hash (alte Versionen) returnen True (keine Korruption-
+    Detection möglich, aber nicht hart-failen).
+    """
+    saved_hash = data.get(_INTEGRITY_FIELD)
+    if not saved_hash:
+        return True
+    return _compute_integrity_hash(data) == saved_hash
+
+
 def save_game(game, slot=None):
     p = game.player
     data = {
-        'version': 3,  # Update #133: Multi-Slot + Hardcore-Flag
+        'version': SAVE_VERSION,
         'time': time.time(),
         # Update #133 (Z-02): Hardcore-Flag persistiert pro Slot.
         'hardcore': bool(getattr(game, 'hardcore', False)),
@@ -217,14 +336,120 @@ def save_game(game, slot=None):
         'tutorial_done': bool(getattr(p, 'tutorial_done', False)),
         'seen_mech_hints': sorted(getattr(p, 'seen_mech_hints', set())),
     }
-    target = _effective_path(slot) if (slot is None or slot != 1
-                                         or not LEGACY_SAVE_PATH.exists()
-                                         or slot_path(slot).exists()) \
-                                       else slot_path(slot)
     # Writes IMMER in den canonical Slot-Pfad (nie in Legacy)
     target = slot_path(int(slot) if slot is not None else _active_slot)
+    # Update #137 (Z-04): SHA256-Integrity-Hash über canonical-JSON
+    # berechnen + ins Dict einbetten.  `verify_save_integrity()` checkt
+    # beim Load.
+    data[_INTEGRITY_FIELD] = _compute_integrity_hash(data)
     try:
         target.write_text(json.dumps(data, indent=2))
+        return True
+    except OSError:
+        return False
+
+
+def write_autosave(game):
+    """Update #137 (Z-06): Schreibt einen Auto-Save in den
+    `AUTOSAVE_PATH` — separat von den 3 Slots.  Wird vom Game-Loop alle
+    `AUTOSAVE_INTERVAL_S` Sekunden aufgerufen.  Behält den `slot`-
+    Reference im Save (damit Recovery den Original-Slot kennt).
+
+    Failt silently (Auto-Save darf das Spiel nie crashen).
+    """
+    try:
+        from .items import Item as _Item  # late import; nicht zirkulär
+    except Exception:
+        return False
+    p = game.player
+    try:
+        # Schnell-Snapshot via save_game-Logik, aber Pfad ist AUTOSAVE
+        # statt slot_path.  Trick: rufe save_game auf, swap Datei.
+        # Cleaner: explizite Auto-Save-Path-Funktion.
+        slot = get_active_slot()
+        # Re-use save_game payload generation via temporary path swap
+        # ist zu invasiv — wir bauen das Dict hier direkt-ish.
+        # Einfacher: save_game(game, slot=N) schreibt in slot_path(N);
+        # für AutoSave wollen wir AUTOSAVE_PATH.  Wir machen einen
+        # quick-copy via reading the slot save.
+        if not save_game(game, slot=slot):
+            return False
+        src = slot_path(slot)
+        if not src.exists():
+            return False
+        # Embed slot-info in das auto-save-Dict
+        data = json.loads(src.read_text())
+        data['_autosave_source_slot'] = slot
+        data['_autosave_time'] = time.time()
+        # Hash über neue Felder neu berechnen
+        if _INTEGRITY_FIELD in data:
+            del data[_INTEGRITY_FIELD]
+        data[_INTEGRITY_FIELD] = _compute_integrity_hash(data)
+        AUTOSAVE_PATH.write_text(json.dumps(data, indent=2))
+        return True
+    except Exception:
+        return False
+
+
+def check_autosave_recovery():
+    """Update #137 (Z-06): Prüft beim Start ob der Auto-Save existiert
+    UND neuer ist als der zugehörige Slot-Save.  Returnt entweder
+    `None` (kein Recovery nötig) oder ein dict mit
+    `{slot, autosave_time, slot_time, age_minutes}`.
+    """
+    if not AUTOSAVE_PATH.exists():
+        return None
+    try:
+        data = json.loads(AUTOSAVE_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    slot = data.get('_autosave_source_slot', 1)
+    autosave_time = float(data.get('_autosave_time', 0.0))
+    sp = slot_path(slot)
+    slot_time = sp.stat().st_mtime if sp.exists() else 0.0
+    # Recovery nur anbieten wenn AutoSave WIRKLICH neuer ist
+    if autosave_time <= slot_time:
+        return None
+    age_s = max(0.0, time.time() - autosave_time)
+    return {
+        'slot':          int(slot),
+        'autosave_time': autosave_time,
+        'slot_time':     slot_time,
+        'age_minutes':   age_s / 60.0,
+    }
+
+
+def apply_autosave_recovery(game):
+    """Update #137 (Z-06): Lädt den Auto-Save in `game` (überschreibt
+    den aktuellen Slot-Save).  Returnt True bei Erfolg.
+    """
+    if not AUTOSAVE_PATH.exists():
+        return False
+    try:
+        # Hole Slot-Number aus AutoSave-Header
+        data = json.loads(AUTOSAVE_PATH.read_text())
+        slot = int(data.get('_autosave_source_slot', 1))
+        # Schreibe in den canonical Slot-Pfad
+        # (überschreibt evtl. älteren Slot-Save)
+        slot_path(slot).write_text(json.dumps(data, indent=2))
+        # Lade in das game-Objekt
+        ok = load_game(game, slot=slot)
+        if ok:
+            # AutoSave nach erfolgreicher Recovery löschen
+            try:
+                AUTOSAVE_PATH.unlink()
+            except OSError:
+                pass
+        return ok
+    except Exception:
+        return False
+
+
+def discard_autosave():
+    """Update #137 (Z-06): Auto-Save löschen ohne Recovery."""
+    try:
+        if AUTOSAVE_PATH.exists():
+            AUTOSAVE_PATH.unlink()
         return True
     except OSError:
         return False
@@ -244,6 +469,20 @@ def load_game(game, slot=None):
         data = json.loads(path.read_text())
     except (json.JSONDecodeError, OSError):
         return False
+    # Update #137 (Z-04): Integrity-Hash verifizieren.  Bei Mismatch
+    # zeigen wir einen Toast (Save wird trotzdem geladen — graceful
+    # degradation statt hart-fail).
+    if not verify_save_integrity(data):
+        try:
+            if hasattr(game, 'toast'):
+                game.toast(
+                    '⚠ Save evtl. korrupt (Hash-Mismatch). '
+                    'Inhalt wird trotzdem geladen.',
+                    (220, 150, 100))
+        except Exception:
+            pass
+    # Update #137 (Z-03): Migration-Chain auf SAVE_VERSION ziehen.
+    data = migrate_save(data)
     pd = data.get('player', {})
     from .entities import Player
     new_player = Player(pd.get('cls', 'warrior'))

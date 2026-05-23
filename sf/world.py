@@ -1907,10 +1907,11 @@ def draw_minimap(screen, game, font_small):
         pygame.draw.circle(surf, WHITE, (cx, cy), 4, 1)
 
     # Quest-Marker für NPCs auf der Minimap
+    # Update #145: player-aware → locked Quests zeigen kein „!"
     log = getattr(game, 'quest_log', None)
     if log is not None:
         for npc in getattr(game, 'npcs', ()):
-            mark = log.npc_marker(npc.name)
+            mark = log.npc_marker(npc.name, player=p)
             if not mark:
                 continue
             rx = (npc.pos.x - p.pos.x) * mm_scale + cx

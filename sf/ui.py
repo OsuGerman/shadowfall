@@ -956,6 +956,82 @@ def _draw_stat_icon(screen, cx, cy, kind, color, t=0.0):
         pygame.draw.circle(screen, (180, 140, 80), (cx + 5, cy - 5), 1)
 
 
+# ============================================================
+# Update #144: Akt-Progression-HUD
+# ============================================================
+# Maps Akt-Nummer → (Region-Name, nächster-Outpost-Key, kurzer-Hint)
+# Spieler-driven via len(completed_dungeons) = akt_progress.
+# Diese Map ist die Single-Source-of-Truth für die Akt-Reihenfolge
+# (synchron zu sf/outposts.py + sf/regions.py).
+_AKT_PROGRESSION = [
+    # (akt_idx, region_name, next_outpost_key, next_hint)
+    (0, 'Akt 1 — Brassweir', 'crypt_lost',
+     'Krypta der Vergessenen abschließen'),
+    (1, 'Akt 2 — Glasgoldene Ruinen', 'echo_markt',
+     'Echo-Markt-Outpost · Frost-Palast clearen'),
+    (2, 'Akt 3 — Aschenfelder', 'saeulen_von_helst',
+     'Säulen-von-Helst · Lava-Pit clearen'),
+    (3, 'Akt 4 — Wurzelgrab', 'knoten_markt',
+     'Knoten-Markt · Wurzel-Ruinen clearen'),
+    (4, 'Akt 5 — Spiegelstadt Velharn', 'spiegelhof',
+     'Spiegelhof · Astral-Reich clearen'),
+    (5, 'Akt 6 — Die Drei Wunden', 'drei_wunden_lager',
+     'Drei-Wunden-Lager · Tier-3-Krypta'),
+    (6, 'Akt 7 — Hohlwort', 'hohlwort',
+     'Hohlwort-Camp · Finale'),
+    (7, 'Akt 7 — Abgeschlossen',
+     None, 'Atlas-Maps & Endgame'),
+]
+
+
+def _draw_akt_progression_hud(screen, game, font_small):
+    """Update #144: persistenter Akt-Indikator unter der Cartouche.
+
+    Zeigt: „Akt N — Region" (gold, bold) + „Nächstes Ziel: …" (creme).
+    Größe minimal, sodass es keine andere UI verdeckt.  Pos relativ
+    zur Cartouche (px=30, py=28, psize=82) → start bei y ≈ 170.
+    """
+    p = game.player
+    akt = len(getattr(p, 'completed_dungeons', ()))
+    # Clamp auf Max-Index
+    idx = max(0, min(len(_AKT_PROGRESSION) - 1, akt))
+    _, region_name, _, next_hint = _AKT_PROGRESSION[idx]
+    # Position: unter ERINNERUNG-Bar (die endet bei ~y=126) + Pillen
+    # (y=150).  Wir setzen den Akt-Block bei y=192.
+    base_x = 30
+    base_y = 192
+    # Background-Strip (sehr dezent — kein dicker Block)
+    region_surf = font_small.render(region_name, True, (243, 213, 114))
+    hint_surf = font_small.render(
+        f'→ {next_hint}', True, (200, 180, 140))
+    box_w = max(region_surf.get_width(), hint_surf.get_width()) + 18
+    box_h = region_surf.get_height() + hint_surf.get_height() + 12
+    bg = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+    bg.fill((16, 12, 8, 200))
+    screen.blit(bg, (base_x, base_y))
+    # Bronze-Border + Akzent-Line links (Akt-Farbe)
+    bronze = (154, 118, 66)
+    pygame.draw.rect(screen, bronze, (base_x, base_y, box_w, box_h), 1)
+    # Linke Akzent-Linie in Akt-Color
+    AKT_COLORS = [
+        (180, 200, 220),  # Akt 1 — Salz-Blau (crypt)
+        (220, 200, 100),  # Akt 2 — Glas-Gold (frost)
+        (255, 140, 60),   # Akt 3 — Asche-Rot (lava)
+        (120, 200, 120),  # Akt 4 — Wurzel-Grün (swamp)
+        (200, 170, 255),  # Akt 5 — Spiegel-Lila (astral)
+        (240, 200, 100),  # Akt 6 — Drei-Wunden-Gold
+        (180, 180, 200),  # Akt 7 — Hohlwort-Stille
+        (220, 220, 180),  # Endgame
+    ]
+    acc_col = AKT_COLORS[min(len(AKT_COLORS) - 1, idx)]
+    pygame.draw.rect(screen, acc_col, (base_x, base_y, 3, box_h))
+    # Region-Name + Hint
+    screen.blit(region_surf, (base_x + 10, base_y + 4))
+    screen.blit(hint_surf,
+                 (base_x + 10,
+                  base_y + 4 + region_surf.get_height() + 2))
+
+
 def _draw_character_cartouche(screen, game, font_small, font_med):
     """Character-Portrait-Cartouche oben-links (Velgrad-Design-Adoption).
 
@@ -1221,6 +1297,12 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
     # Portrait-Hexagon + Aspekt-Glyph + Klassen-Stufe + Mini-XP-Rail.
     _draw_character_cartouche(screen, game, font_small, font_med)
 
+    # Update #144: Akt-Progression-Indikator unter der Cartouche.
+    # Zeigt persistent „Akt N — Region · Nächstes Ziel" damit der
+    # Spieler immer weiß wo er ist und was als nächstes ansteht.
+    # User-Frage „wo sind die Aschfelder" → diese Info war versteckt.
+    _draw_akt_progression_hud(screen, game, font_small)
+
     # ============================================================
     # OBERER STATUS-BAR (Update #26 ornamentiert)
     # ============================================================
@@ -1318,6 +1400,39 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
                 ls = font_small.render(line, True, (220, 200, 170))
                 screen.blit(ls, (box_x + 12, y))
                 y += line_h
+            # Update #145: Lock-Hint wenn die Quest aktuell unerreichbar
+            # ist (Akt-Gate noch nicht erfüllt).  User-Report „komme
+            # nicht weiter" — Quest zeigte „Reise zu Aschenfeldern"
+            # ohne Hint dass Akt 2 vorher dran ist.
+            import re as _re
+            qregion = main.quest.get('region', '')
+            m = _re.search(r'Akt (\d+)', qregion)
+            if m is not None:
+                req_akt = int(m.group(1))
+                akt_progress = len(getattr(
+                    game.player, 'completed_dungeons', ()))
+                if akt_progress < (req_akt - 1):
+                    needed = (req_akt - 1) - akt_progress
+                    lock_text = (f'🔒 Erst Akt {req_akt - 1} abschließen'
+                                  if needed == 1 else
+                                  f'🔒 Erst {needed} Akte abschließen')
+                    # Render Box + Border in Warn-Orange
+                    lock_surf = font_small.render(
+                        lock_text, True, (255, 150, 80))
+                    # Dünne Hint-Box am Boden der Quest
+                    lock_y = y + 2
+                    lock_h = lock_surf.get_height() + 6
+                    lock_bg = pygame.Surface(
+                        (box_w - 24, lock_h), pygame.SRCALPHA)
+                    lock_bg.fill((60, 30, 14, 200))
+                    screen.blit(lock_bg, (box_x + 12, lock_y))
+                    pygame.draw.rect(screen, (220, 130, 60),
+                                      (box_x + 12, lock_y,
+                                       box_w - 24, lock_h), 1)
+                    screen.blit(lock_surf,
+                                 (box_x + 18, lock_y + 3))
+                    y += lock_h + 4
+                    box_h += lock_h + 4   # Box vergrößern
             # Update #54: Cache Quest-Tracker-Bottom für Marken-Position
             game._quest_tracker_bottom_y = box_y + box_h
         else:

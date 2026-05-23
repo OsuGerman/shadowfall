@@ -202,41 +202,49 @@ def draw_player_at(screen, p, sx, sy, walk_phase):
         _draw_player_dying(screen, p, sx, sy)
         return
 
-    # Atem im Idle, Hop-Bob beim Laufen
+    # Update #142 (User-Report „Boden so weit unter mir"):
+    # Shadow MUSS am echten Boden bleiben (foot-pos `sy`), nur der
+    # Körper darf bobben.  Vorher wurde `sy` modifiziert BEVOR der
+    # Shadow gemalt wurde → Shadow schwebte mit dem Spieler hoch.
+    # Resultat: Spieler+Shadow lifteten 3 px über die Floor-Tiles
+    # → optischer Eindruck dass der Boden weiter weg ist.
+    foot_sy = sy
+    _ground_shadow(screen, sx, foot_sy, p.radius * 2 + 4)
+    # Bob/Breath nur auf den Körper anwenden (nicht auf den Shadow)
     import math as _m
     if p.moving:
-        # Beim Laufen: Körper hebt sich kurz mit jedem Schritt
         walk_bob = abs(_m.sin(walk_phase * 2)) * 3
-        sy = int(sy - walk_bob)
+        body_sy = int(foot_sy - walk_bob)
     else:
-        breath = _m.sin(pygame.time.get_ticks() * 0.003) * 1.5
-        sy = int(sy + breath)
+        # Idle-Breath: minimaler Auf-Ab-Wiggle um den Foot herum
+        # (vorher nur +Y → Body sinkt unter den Foot, was komisch
+        # aussah).  Jetzt symmetrisch ±0.75 px.
+        breath = _m.sin(pygame.time.get_ticks() * 0.003) * 0.75
+        body_sy = int(foot_sy - breath)
 
-    _ground_shadow(screen, sx, sy, p.radius * 2 + 4)
-
-    # Schutz-Glow
+    # Schutz-Glow am Body (nicht am Foot)
     if p.dodge > 0 or p.invuln > 0:
         glow = pygame.Surface((h * 2, h * 2), pygame.SRCALPHA)
         pygame.draw.circle(glow, (160, 200, 255, 90),
                            (h, h), p.radius + 10)
-        screen.blit(glow, (sx - h, sy - h - p.radius))
+        screen.blit(glow, (sx - h, body_sy - h - p.radius))
 
     if p.shield > 0:
         glow = pygame.Surface((h * 2, h * 2), pygame.SRCALPHA)
         pygame.draw.circle(glow, (140, 180, 255, 80),
                            (h, h), p.radius + 14, 3)
-        screen.blit(glow, (sx - h, sy - h - p.radius))
+        screen.blit(glow, (sx - h, body_sy - h - p.radius))
 
     # Sprite-Proxy: neue Lore-Klassen teilen Sprites mit den 3 Base-Klassen
     proxy = CLASSES.get(cls, {}).get('sprite_proxy', cls)
     if proxy == 'warrior':
-        _draw_warrior_iso(screen, p, sx, sy, walk_phase, base_color)
+        _draw_warrior_iso(screen, p, sx, body_sy, walk_phase, base_color)
     elif proxy == 'mage':
-        _draw_mage_iso(screen, p, sx, sy, walk_phase, base_color)
+        _draw_mage_iso(screen, p, sx, body_sy, walk_phase, base_color)
     else:
-        _draw_rogue_iso(screen, p, sx, sy, walk_phase, base_color)
+        _draw_rogue_iso(screen, p, sx, body_sy, walk_phase, base_color)
 
-    _status_overlay(screen, sx, sy, h, p.status)
+    _status_overlay(screen, sx, body_sy, h, p.status)
 
 
 def _draw_player_dying(screen, p, sx, sy):

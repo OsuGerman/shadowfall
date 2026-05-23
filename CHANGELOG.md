@@ -4,6 +4,797 @@
 
 ---
 
+## [2026-05-23] — Update #148 — „Schöner Tod" wirklich gefixt (User-Report Follow-Up)
+
+**User:** „mit schöner tod ist noch immer richtig oft"
+
+Mein #146-Fix war zu schwach: 8 s Cooldown reicht nicht wenn der Spieler in einem Dungeon mit Roaming-Bossen + Mini-Bossen kämpft (alle is_boss=True → alle triggern Voice). Plus die Quote-Pools haben pro Klasse nur 2 Lines → schnell hört man dieselbe Quote wieder.
+
+### Drei-fach-Fix
+
+**1. Cooldown 8 s → 90 s** — Boss-Kill ist seltenes Story-Event, nicht Combat-Filler.
+
+**2. Nur ECHTE Story-Bosse** ([sf/combat.py](sf/combat.py) `kill_enemy`):
+```python
+is_real_story_boss = (e.is_boss
+    and not getattr(e, 'is_mini_boss', False)
+    and not getattr(e, '_roaming', False)
+    and not getattr(e, '_invasion', False))
+if is_real_story_boss: ...
+```
+Mini-Bosse + Roaming-Bosse + Shadow-Invasion-Bosse bekommen keine boss_kill-Voice mehr.
+
+**3. Roaming-Boss-Flag** ([sf/game.py](sf/game.py) `enter_dungeon`): `roaming._roaming = True` damit der `kill_enemy`-Check ihn erkennt.
+
+**4. Anti-Repeat-Memo** — `game._class_voice_last_quote` speichert die letzte gespielte Quote. Beim nächsten Trigger werden bis zu 3 Versuche gemacht eine ANDERE Quote zu picken. „Schöner Tod" gefolgt von „Schöner Tod" passiert nicht mehr (sondern wechselt zu „Valsa hat zugesehen").
+
+### Effective Behavior
+
+Vorher: bei einem Akt-1b-Run mit 5 Mini-Bossen + 1 Roaming + 1 Story-Boss → **7 boss_kill-Toasts in 2 Minuten**.
+
+Jetzt: gleicher Run → **1 boss_kill-Toast** (nur der Story-Boss am Ende). Cooldown 90 s schützt + selbst der nächste Story-Boss-Run innerhalb 90 s wird unterdrückt.
+
+### Tests
+
+- `test_voice_line_cooldown` komplett überarbeitet:
+  - Real Story-Boss-Kill → Toast
+  - Sofort danach 2. Story-Boss → kein Toast (Cooldown)
+  - Roaming-Boss (mit `_roaming=True`) → kein Toast
+- **146/146 PASS**
+
+### Files
+
+- [sf/combat.py](sf/combat.py) — `is_real_story_boss`-Check + 90s-Cooldown + Anti-Repeat
+- [sf/game.py](sf/game.py) — `roaming._roaming = True` Flag bei Roaming-Boss-Spawn
+- [tests/smoke.py](tests/smoke.py) — Test überarbeitet auf neue Logik
+
+---
+
+## [2026-05-23] — Update #147 — Collision + Shop-UI + Portal-Wall + Mob-Stuck (User-Bug-Liste Teil 2)
+
+Vier weitere kritische Bugs aus der User-Liste vom #146-Vorlauf:
+
+### 1. Durch Wände laufen ([sf/dungeon_gen.py](sf/dungeon_gen.py), [sf/game.py](sf/game.py))
+
+**Diagnose:** Zwei Bugs in der Collision-Pipeline:
+1. **`collide_circle`** sampelt nur 8 Punkte am Kreis-Perimeter. Wenn der Player exakt IN einer Wand-Cell zentriert war (z.B. durch Auto-Unstuck-Fail), wurden alle 8 Punkte in NACHBAR-Cells gesampled — Wand wurde nicht erkannt.
+2. **`slide_move`** hatte kein Sub-Stepping. Bei Dodge (560 px/s × 0.05 dt = 28 px) könnte ein Move durch eine 32-px-Wand tunneln wenn die Pre-/Post-Position beide walkable sind.
+
+**Fix:**
+- `collide_circle`: Center-Sample ZUERST + 16 Perimeter-Samples (statt 8) + 8 Inner-Ring-Samples bei r/2 (catched dünne 1-Cell-Walls)
+- `slide_move`: Sub-Stepping bei moves > cell/3 (10 px). Splittet in N kleine Steps mit jeweils `_slide_step`.
+- Analog in [sf/game.py](sf/game.py) `_slide_against_decor`: Sub-Stepping bei moves > 10 px (Town-Decor-Walls haben collide_radius=10).
+
+### 2. Shop-UI / Verkauf-Tab nicht ganz sichtbar ([sf/shop.py](sf/shop.py))
+
+**Diagnose:** Modal-Höhe 540 px reichte nicht für 6×4 Stock + 6×4 Inv + Buyback-Row:
+- Stock endete bei y=314
+- Inv-Grid endete bei y=544 (4 px **über** Modal-Höhe 540)
+- Buyback-Row bei y=460 **überlappte** Inv-Reihe 3 (y=432-482)
+
+**Fix:**
+- Modal-Höhe 540 → **720 px**
+- Klare Sektionen: Stock (y=100-324), Inv (y=360-584), Buyback (y=630-680)
+- Trennlinien zwischen Sektionen (Bronze-Färbung)
+- Sub-Labels „INVENTAR" + „ZURÜCKKAUFEN" mit Padding
+
+### 3. Town-Portal spawned in Wand ([sf/game.py](sf/game.py) `_open_town_portal`)
+
+**Diagnose:** Der Wall-Check vor dem Portal-Spawn benutzte radius=12 (Portal-Größe ~18) + nur Grid-Check, nicht Decor. Bei Player nahe einer Wand mit facing Richtung Wand spawned das Portal IN die Wand → konnte nicht betreten werden.
+
+**Fix:** Robuster Spawn mit **Multi-Distance-Fallback**:
+- Versuche `try_dist` ∈ (60, 45, 30, 15) px in Facing-Richtung
+- Beide checks: Grid-Wall + Decor-Collision mit Portal-Radius 18
+- Erste erfolgreiche Distance wird benutzt; Fallback ist Player-Pos selbst
+
+### 4. Monster stecken an Objekten fest ([sf/game.py](sf/game.py) `_update_enemies`)
+
+**Diagnose:** AI-Mobs benutzten direkte Path-to-Player. Wenn ein Decor zwischen Mob und Player war, slidete der Mob entlang der Decor-Wand — und blieb an Ecken hängen bis zur Ewigkeit (kein A*-Fallback für normalen Combat).
+
+**Fix:** **Stuck-Detection** im `_update_enemies`-Loop:
+- Tracke `e._stuck_t` (Sekunden ohne Bewegung)
+- Reset bei Bewegung / Wind-Up-Phase / Stun
+- Bei `_stuck_t > 1.5 s` UND `ai_state == 'aggro'`:
+  - `_unstuck_entity(e)` pusht aus blockierendem Decor
+  - Random Side-Step (12 px) um wieder Bewegung anzukurbeln
+  - Reset Timer
+
+### Tests
+
+- **4 neue Tests**: `wall_collision_no_tunnel`, `shop_layout_no_overlap`, `portal_spawn_not_in_wall`, `enemy_stuck_unstuck`
+- **146/146 PASS** (vorher 142/142)
+
+### Files
+
+- [sf/dungeon_gen.py](sf/dungeon_gen.py) — `collide_circle` Center+Inner-Ring-Samples, `slide_move` Sub-Stepping
+- [sf/shop.py](sf/shop.py) — Modal 720 px + Section-Layout
+- [sf/game.py](sf/game.py) — Town-Portal Multi-Distance + Stuck-Detection + Decor-Slide Sub-Stepping
+- [tests/smoke.py](tests/smoke.py) — 4 Tests
+
+### Noch offen aus User-Liste
+
+- ❌ Verschwindende Ausrüstung (vermutlich Save/Load — separat untersuchen)
+- ❌ Monster-Attack-Variety (zu eintönig — Combat-Design-Pass)
+- ❌ Schriften aus Boxen (Render-Width-Fix nötig)
+- ❌ NPCs in Objekten stecken (Town-Layout-Pass)
+- ❌ Stadt-Design lore-konform (WELT_AUFBAU.md Vergleich)
+- ❌ Zu viele Quests gleichzeitig (Quest-Prio-Filter)
+
+---
+
+## [2026-05-23] — Update #146 — Critical-Bug-Sweep nach User-Feedback
+
+**User-Liste**: Stash unbenutzbar, Voice-Spam „Schöner Tod", F-Taste triggert mehrere Menüs, Boss-Boden-Attack-Sound „ballert die Ohren raus", Truhen/Altäre nicht erkennbar. Fünf game-breaking-Bugs in einem Update gefixt.
+
+### 1. Stash unbenutzbar ([sf/stash.py](sf/stash.py))
+
+**Diagnose:** Zwei Bugs gleichzeitig:
+1. Modal-Höhe (580 px) reichte nicht für 6 Stash-Reihen + 4 Inv-Reihen → letzte 2 Stash-Reihen überlappten räumlich die erste Inv-Reihe
+2. `handle_click` returnte `True` (= Click konsumiert) auch wenn der Stash-Slot LEER war → Klicks auf Inv-Slots im Overlap-Bereich wurden vom leeren Stash-Slot verschluckt
+
+**Fix:**
+- Modal-Höhe 580 → **720 px** (Stash + Inv haben jetzt 50 px Gap dazwischen)
+- `_inv_rect` Y-Offset 414 → **504** (klare Trennung)
+- Trennlinie + "INVENTAR"-Label bei y=470/484
+- `handle_click` benutzt jetzt `continue` statt `return True` bei leeren Slots → Click reicht durch
+- Empty-Inventory-/Stash-Toast bei Voll-State („Inventar voll." / „Truhe voll.")
+- UI-Click-Sound bei erfolgreichem Transfer
+
+### 2. Voice-Line-Spam „Schöner Tod" ([sf/combat.py](sf/combat.py))
+
+**Diagnose:** Bei Roaming-Bossen + schnellen Kill-Wellen triggerte `class_voice_line(cls, 'boss_kill')` bei JEDEM Boss-Kill → Toast-Spam.
+
+**Fix:** 8-Sekunden-Cooldown via `game._class_voice_last_t`. Nach jedem Class-Voice-Toast wird das Timestamp gespeichert; weitere Trigger innerhalb 8 s werden geskippt.
+
+### 3. F-Taste triggert mehrere Menüs gleichzeitig ([sf/game.py](sf/game.py) `_interact`)
+
+**Diagnose:** Die alte Logik checkte Interactables sequentiell (Stele → NPC → Portal → Outpost-Portal). Wenn der Player nahe an einer Stele UND einem NPC stand, gewann die Stele (weil als erstes geprüft). Beim weiteren F-Drücken kam dann das NPC-Modal — wirkte wie „zwei Menüs auf einmal".
+
+**Fix:** **Distance-Sort mit Priority-Tiebreaker**. Alle Interactables in Reichweite werden in `candidates`-Liste gesammelt, dann sortiert nach `(priority_class, distance²)`:
+- Priority 0: NPC (höchste)
+- Priority 1: Portal (Dungeon / Outpost / Return)
+- Priority 2: Stele (niedrigste)
+
+NPC gewinnt jetzt IMMER gegen Stele, auch wenn die Stele räumlich näher ist. Dead-Code-Pfade aus altem Sequential-Check entfernt.
+
+### 4. Boss-Sound zu laut ([sf/sounds.py](sf/sounds.py) `_VOLUME_CAP`)
+
+**Diagnose:** Der `aoe_impact`-Sound (Boss-Boden-Attack-Kreis) hatte Cap 0.70 — kombiniert mit positional `play_at` und mehrfachem Re-Trigger pro Frame zu LAUT. Auch `roar`/`death`/`hit_heavy` waren grenzwertig.
+
+**Fix:** Aggressive Cap-Reduktion:
+
+| Sound | Vor | Nach |
+|---|---|---|
+| `aoe_impact` | 0.70 | **0.35** |
+| `roar` | 0.75 | 0.55 |
+| `boss_bong` | 0.85 | 0.70 |
+| `hit_heavy` | 0.80 | 0.65 |
+| `cast_*` | 0.85 | 0.70 |
+| `death` | 0.80 | 0.65 |
+| `monster_bite` | 0.75 | 0.60 |
+| `slime_attack` | 0.70 | 0.55 |
+
+### 5. Truhen/Altäre/Notizen nicht erkennbar ([sf/game.py](sf/game.py) `_draw_interact_prompts`)
+
+**Diagnose:** Mahnmal-Stelen und Lore-Tafeln triggerten zwar bei F, aber der Spieler bekam keinen FEEDBACK-PROMPT „du kannst hier interagieren". Daher Spieler hat sie übersehen.
+
+**Fix:** `_draw_interact_prompts` erweitert um Stele + Lore-Tafel-Hints:
+- Mahnmal-Stele in 70 px Radius → „F: Aspekt-Schrein öffnen" (Brassweir) oder „F: Reisen (Mahnmal-Stele)" (Outpost)
+- Lore-Tafel in 60 px Radius → „F: Lore-Tafel lesen (+1 Fragment)" wenn ungelesen, sonst „F: Lore-Tafel (gelesen)"
+
+### Tests
+
+- **4 neue Tests**: `stash_drag_drop_overlap_fix`, `voice_line_cooldown`, `f_key_distance_priority`, `aoe_impact_volume_cap`
+- **142/142 PASS** (vorher 138/138)
+
+### Files
+
+- [sf/stash.py](sf/stash.py) — Modal-Höhe + Slot-Positionen + Click-Konsumption-Fix
+- [sf/combat.py](sf/combat.py) — Voice-Line-Cooldown
+- [sf/game.py](sf/game.py) — F-Taste-Distance-Priority + Interact-Prompts für Stele/Tafel
+- [sf/sounds.py](sf/sounds.py) — Volume-Caps reduziert
+- [tests/smoke.py](tests/smoke.py) — 4 Tests
+
+### Noch offen aus User-Liste (für #147 und folgend)
+
+- ❌ Durch Wände laufen (Collision-Bug)
+- ❌ Shop/Verkauf-UI Layout (Rückkauf-Tab nicht sichtbar)
+- ❌ Verschwindende Ausrüstung
+- ❌ Portale ineinander/in der Wand beim Dungeon-Spawn
+- ❌ Monster stecken an Objekten fest
+- ❌ Monster-Attack-Variety (zu eintönig)
+- ❌ Schriften überlappen / aus Boxen
+- ❌ NPCs in Objekten stecken
+- ❌ Stadt nicht lore-konform (WELT_AUFBAU)
+
+---
+
+## [2026-05-23] — Update #145 — Quest-Akt-Gate (User-Report „Akt 1b 10× gemacht komme nicht weiter")
+
+**User-Screenshot:** Player hat Quest „Der Asch-Pakt" (Akt 3) als Main-Quest aktiv, ist aber noch in Akt 1 → Quest sagt „Reise zu den Aschenfeldern" aber dort kommt er nicht hin (Akt 2 nicht abgeschlossen). Game-Flow ist gebrochen.
+
+### Root Cause
+
+Drei zusammenwirkende Probleme:
+1. **`quests_offered_by_npc`** filtert nicht nach Akt-Progress → Stadtsprecher Eldon bietet die Akt-3-Quest sofort an (wenn Akt-1-Quest noch nicht in der Active-Liste ist)
+2. **`main_quest_state`** picked die ERSTE `is_main`-Quest via dict-Iteration → bei Python-3.7+-Insertion-Order kann das die Akt-3-Quest sein
+3. **Quest-Tracker** zeigt keine Warnung wenn die aktive Quest aktuell unerreichbar ist
+
+### Fixes
+
+**1. Quest-Akt-Gate** ([sf/quests.py](sf/quests.py)):
+- Neue Static-Method `QuestLog._quest_prerequisite_met(quest, player)` parsed das `region`-Feld via Regex (`Akt (\d+)`) und checkt ob `len(player.completed_dungeons) >= (akt - 1)`.
+- `npc_has_offer(npc_name, player=None)` und `npc_marker(npc_name, player=None)` nehmen jetzt einen optionalen `player`-Parameter und skippen Quests die das Akt-Gate nicht passieren.
+- `on_talk` ([sf/quests.py](sf/quests.py)) reicht `game.player` durch → Eldon bietet Asch-Pakt erst nach Akt 2 an.
+- Caller-Updates in [sf/game.py](sf/game.py) (NPC-Marker-Render) und [sf/world.py](sf/world.py) (Minimap-NPC-Marker) → beide übergeben jetzt `player=...`.
+
+**2. Smart Main-Quest-Selection** ([sf/quests.py](sf/quests.py) `main_quest_state`):
+- Sortiert aktive `is_main`-Quests nach Akt-Nummer (parsed aus `region`).
+- Picked die NIEDRIGSTE Akt → Akt-1-Salzwunde gewinnt gegen vor-akzeptierte Akt-3-Asch-Pakt.
+- Fallback-Branch (non-main) ebenfalls sortiert.
+
+**3. Quest-Tracker Lock-Hint** ([sf/ui.py](sf/ui.py)):
+- Nach dem Stage-Text rendert die Quest-Box jetzt eine Warn-Orange-Hint-Zeile wenn die Quest-Region nicht erreichbar ist:
+  - „🔒 Erst Akt N abschließen" wenn 1 Akt fehlt
+  - „🔒 Erst N Akte abschließen" wenn mehr fehlen
+- Box-Höhe wird dynamisch erweitert, Bronze-Hint-Border statt Standard-Pergament.
+- Spieler sieht sofort: „diese Quest kann ich noch nicht erfüllen — erst Akt N".
+
+### Was du als User jetzt erlebst
+
+**Mit Asch-Pakt schon akzeptiert** (Legacy-Save):
+- Quest-Tracker zeigt jetzt unten orange: „🔒 Erst Akt 2 abschließen"
+- Akt-HUD-Indikator (links) zeigt unverändert „Akt 1 — Brassweir / Krypta der Vergessenen abschließen"
+- Wenn auch Salzwunde aktiv: Quest-Tracker switcht automatisch zu Salzwunde (lowest-akt wins)
+
+**Neue Game-Sessions**:
+- Eldon bietet Asch-Pakt NICHT an bevor Akt 2 (frost_palace) clear ist
+- NPC-„!"-Marker erscheint nicht über Eldons Kopf für gelockte Quests
+- Spieler bekommt klare Akt-für-Akt-Progression (Salzwunde → Echo-Markt-Quest → Asch-Pakt → ...)
+
+### Tests
+
+- **3 neue Tests** (`quest_akt_gate`, `main_quest_lowest_akt`, `quest_tracker_lock_hint`):
+  - Asch-Pakt-Offer wird gefiltert wenn `completed_dungeons` zu klein
+  - main_quest_state sortiert nach Akt
+  - Quest-Tracker rendert Lock-Hint ohne Crash
+- **138/138 PASS** (vorher 135/135)
+
+### Files
+
+- [sf/quests.py](sf/quests.py) — `_quest_prerequisite_met`, `npc_has_offer(player=)`, `npc_marker(player=)`, `main_quest_state` lowest-akt-sort
+- [sf/ui.py](sf/ui.py) — Lock-Hint-Render im Quest-Tracker
+- [sf/game.py](sf/game.py) — NPC-Marker-Render mit player
+- [sf/world.py](sf/world.py) — Minimap-NPC-Marker mit player
+- [tests/smoke.py](tests/smoke.py) — 3 neue Tests
+
+---
+
+## [2026-05-23] — Update #144 — Akt-Progression-Klarheit + Bug-Sweep (User-Frage „wo sind die Aschfelder")
+
+User-Frage „wo sind die Aschfelder? komme nach Akt 1 nicht weiter" + erneuter `affix_tier`-Crash zeigten zwei Klassen-Probleme:
+1. Akt-Progression ist zwar mechanisch korrekt (#143 visualisiert locked Outposts), aber dem Spieler fehlt PERSISTENTES Feedback wo er ist und was als nächstes ansteht.
+2. Mein vorheriger `affix_tier`-Fix (#142) war semantisch falsch — `affix_tier` ist ein **String** (`'magic'/'rare'/'unique'`), kein int. `(getattr(e, 'affix_tier', 0) or 0) >= 2` wirft bei String-Wert immer noch TypeError.
+
+### Bugfix: affix_tier ist String, nicht int ([sf/game.py](sf/game.py))
+
+Echter Fix in `_draw_hover_outlines`:
+```python
+# Falsch (#142): (getattr(e, 'affix_tier', 0) or 0) >= 2
+# Richtig (#144): getattr(e, 'affix_tier', None) in ('rare', 'unique')
+```
+
+Mein `or 0`-Workaround griff nur für None — wenn `affix_tier='rare'` (String), kam immer noch `'rare' >= 2` → TypeError.
+
+**Bug-Sweep durchgeführt** — grep über alle `getattr(x, 'attr', 0) >op<= int` und `getattr(x, 'attr', None) op` Patterns. Kein weiterer affix_tier-ähnlicher Bug gefunden; alle anderen Patterns nutzen numerische Attribute (Cooldowns, Timer, Counter).
+
+### Akt-Progression-HUD ([sf/ui.py](sf/ui.py))
+
+Neue persistente HUD-Anzeige unter der Cartouche (y=192) zeigt:
+- **Akt-Region-Name** in Gold (z.B. „Akt 1 — Brassweir")
+- **Nächstes Ziel** in Creme (z.B. „→ Krypta der Vergessenen abschließen")
+- Linke Akzent-Linie in Akt-Color (Salz-Blau / Glas-Gold / Asche-Rot / Wurzel-Grün / Spiegel-Lila / Drei-Wunden-Gold / Hohlwort-Stille)
+
+**`_AKT_PROGRESSION`-Map** in [sf/ui.py](sf/ui.py) als Single-Source-of-Truth für die Akt-Reihenfolge (synchron zu outposts.py + regions.py):
+| Akt | Region | Nächstes Ziel |
+|---|---|---|
+| 1 | Brassweir | Krypta der Vergessenen abschließen |
+| 2 | Glasgoldene Ruinen | Echo-Markt-Outpost · Frost-Palast clearen |
+| 3 | **Aschenfelder** | Säulen-von-Helst · Lava-Pit clearen |
+| 4 | Wurzelgrab | Knoten-Markt · Wurzel-Ruinen clearen |
+| 5 | Spiegelstadt Velharn | Spiegelhof · Astral-Reich clearen |
+| 6 | Die Drei Wunden | Drei-Wunden-Lager · Tier-3-Krypta |
+| 7 | Hohlwort | Hohlwort-Camp · Finale |
+
+### Akt-Progression-Hint nach Boss-Kill ([sf/game.py](sf/game.py) `complete_dungeon`)
+
+`_push_akt_progression_hint(akt_count)` pushed eine **6-s event_notification** + Toast + Event-Log nach jedem Boss-Kill der einen neuen Akt freischaltet:
+
+- Akt 1 → 2: „Akt 2 freigeschaltet — Echo-Markt (Glasgoldene Ruinen) wartet, sprich mit Bruder Helst."
+- Akt 2 → 3: „Akt 3 freigeschaltet — Säulen-von-Helst (Aschenfelder) wartet, Tribunal der Asche jagt dort."
+- Akt 3 → 4: „Akt 4 freigeschaltet — Knoten-Markt (Wurzelgrab) wartet…"
+- … bis Akt 7
+
+Trigger via `prev_akt_count` vs `new_akt_count` in `complete_dungeon` — robust gegen Re-Triggern beim Tier-2/3-Clear desselben Dungeons.
+
+### Tests
+
+- **3 neue Tests**: `akt_progression_clarity`, `all_acts_unlockable`, `no_affix_tier_crash`
+- **135/135 PASS** (vorher 132/132)
+- `no_affix_tier_crash` ist explizit der Regression-Test für #142/#143 — spawnt Mobs mit `affix_tier=None/'magic'/'rare'/'unique'` und verifiziert dass `_draw_hover_outlines` durchläuft
+
+### Files
+
+- [sf/game.py](sf/game.py) — `_push_akt_progression_hint` + Hook in `complete_dungeon` + affix_tier-Fix
+- [sf/ui.py](sf/ui.py) — `_AKT_PROGRESSION`-Map + `_draw_akt_progression_hud` + Hook in `draw_hud`
+- [tests/smoke.py](tests/smoke.py) — 3 neue Tests inkl. Regression-Test
+
+---
+
+## [2026-05-23] — Update #141 — Motion-Sickness-Fix (Cursor-Lean default OFF, Lookahead reduziert)
+
+**User-Report:** „warum movet die kamera mit der maus werde see krank"
+
+Der in #140 hinzugefügte X-02 Cursor-Lean ist ein bekannter Motion-Sickness-Trigger — die Camera bewegt sich unabhängig vom Player-Input, was bei empfindlichen Spielern Übelkeit auslösen kann. Hotfix: Default OFF + Setting-Toggle + Lookahead-Intensität leicht reduziert.
+
+### Fixes
+
+**Cursor-Lean default OFF** ([sf/game.py](sf/game.py)):
+- `settings['camera_cursor_lean']` Default = **False** (vorher hartcoded an)
+- `_update_camera` checkt das Setting bevor Lean berechnet wird
+- Bleibt opt-in für Spieler die das mögen (z.B. Twin-Stick-Shooter-Gewohnheit)
+
+**Lookahead leicht reduziert** ([sf/game.py](sf/game.py) `_update_camera`):
+- `vel * 0.3` → `vel * 0.2` (30 % → 20 % der Velocity)
+- Cap ±60 px → **±45 px**
+- Player-driven, deutlich subtiler — sollte selbst bei empfindlichen Spielern unproblematisch sein
+- Auch toggelbar via `settings['camera_lookahead']` (Default True)
+
+**Settings-Modal-Toggles** ([sf/game.py](sf/game.py) `_SETTING_KEYS`, items, `_handle_settings_click`):
+- Zwei neue Zeilen: „Camera: Lookahead" + „Camera: Cursor-Lean (kann Übelkeit)"
+- Warntext direkt im Label damit der User weiß was er aktiviert
+- Beide Toggles funktionieren generisch wie die anderen Accessibility-Settings (photosensitive, colorblind_ailments, etc.)
+
+### Tests
+
+- **`test_cursor_lean`** angepasst auf das neue Opt-In-Verhalten
+- **`test_motion_sickness_defaults`** (neu): verifiziert
+  - `camera_cursor_lean = False` Default
+  - `camera_lookahead = True` Default
+  - Beide Keys in `_SETTING_KEYS` (Modal-sichtbar)
+  - Mit beiden OFF läuft `_update_camera` ohne Offset-Drift (Stillstand-Test)
+- **`test_camera_lookahead`** Cap-Assertion auf 90 px (Lookahead 45 + Lean 40) angepasst
+- **132/132 PASS** (vorher 131/131)
+
+### Lessons learned
+
+Motion-Sickness-Triggers in Camera-Effekten sollten **immer opt-in** sein, nicht opt-out. PLAN-Regel-Erweiterung: Bei neuen Camera-/View-Effekten Default OFF setzen wenn sie nicht direkt player-driven sind.
+
+### Files
+
+- [sf/game.py](sf/game.py) — `settings`-Defaults, `_update_camera` setting-respect, `_SETTING_KEYS`, Settings-Modal-Items + Click-Handler
+- [tests/smoke.py](tests/smoke.py) — `test_cursor_lean` angepasst, `test_motion_sickness_defaults` neu
+
+---
+
+## [2026-05-23] — Update #140 — Camera-Polish-Cluster (X-01 + X-02 + X-04 + X-05)
+
+Vier PLAN-Tasks aus Sektion X (Camera/Cinematics). Macht die statische Player-Follow-Camera zu einem dynamischen System mit Lookahead, Cursor-Lean, Crit-Pull und Boss-Death-Pan. Game-Feel ist jetzt deutlich „ARPG-Standard"-näher.
+
+### X-01 — Camera-Lookahead ([sf/game.py](sf/game.py))
+
+Camera verschiebt sich 30 % der Player-Velocity in Bewegungsrichtung (max ±60 px):
+- Pro Frame berechnet `_update_camera` `(player.pos - prev_pos) / dt = velocity`
+- `look_x = clamp(vel_x * 0.3, ±60)`, analog für Y
+- Smooth-Lerp 0.5 (= `dt * 8.0`) zur Target-Position → keine abrupten Snaps
+- Player wandert visuell aus der Mitte heraus wenn er läuft → mehr Sichtbereich nach vorne
+
+### X-02 — Cursor-Lean ([sf/game.py](sf/game.py))
+
+Camera zieht 15 % Richtung Mauszeiger (max ±40 px):
+- `dx = mouse_x - SCREEN_CENTER_X`, `lean_x = clamp(dx * 0.15, ±40)`, analog Y
+- Casts und Ziele am Bildschirmrand sind besser sichtbar
+- Cursor-Lean ist additiv zum Lookahead (Cap der Summe via Render-Side)
+
+### X-04 — Camera-Zoom-In on Crit ([sf/game.py](sf/game.py), [sf/combat.py](sf/combat.py))
+
+Bei Crit-Hits ≥ 30 dmg ODER Boss-Crits wird die Camera kurz zum Target gepullt:
+- **`Game.trigger_crit_zoom(target_x, target_y)`** setzt `_cam_crit_pull = (x, y)`
+- In `_update_camera`: solange `slow_mo_left > 0` wird Offset Richtung Target gepullt (`pull_factor = (slow_mo_left / 0.18) * 35 px`)
+- Pull-Vector wird vom Player aus normalisiert + skaliert → gibt das „heran-zoomen"-Feeling ohne echte Zoom-Logik
+- Combat-Side ([sf/combat.py:325](sf/combat.py#L325)) ruft `trigger_crit_zoom` auf wenn `crit and dmg >= 30 or is_boss`
+- Auto-Decay wenn `slow_mo_left <= 0` → `_cam_crit_pull = None`
+
+### X-05 — Boss-Death-Slow-Pan ([sf/game.py](sf/game.py), [sf/combat.py](sf/combat.py))
+
+Beim Boss-Tod wird die Camera 1.8 s lang zum sterbenden Boss gepannt (statt Player-Follow):
+- **`Game.trigger_boss_death_pan(boss)`** setzt `_cam_boss_pan = {boss_pos, boss_ref, t, total}`
+- Während der Pan-Phase überschreibt `_update_camera` den Player-Follow → Camera lerped via `dt * 4.0` zur `boss_pos`
+- `slow_mo_left` wird auf min 0.3 erzwungen → ständige Slow-Mo während Pan
+- Combat-Side ([sf/combat.py:838](sf/combat.py#L838)) ruft den Pan zusätzlich zum existierenden `slow_mo=1.5 + boss_flash=1.0 + shake=16`
+- Nach Ablauf der 1.8 s `_cam_boss_pan = None`, Camera kehrt zum Player zurück
+
+### Camera-System-Refactor
+
+Die `w2s`/`w2s_xy`/`s2w`-Funktionen wurden um die neuen Offsets erweitert:
+- Neue Felder: `_cam_offset_x` / `_cam_offset_y` (kombinierter Lookahead+Lean+Pull)
+- `_cam_prev_player_pos` für Velocity-Berechnung
+- `_cam_crit_pull` Vector2 oder None
+- `_cam_boss_pan` Dict oder None
+- **Inverse-Konsistenz**: `s2w(w2s(p)) ≈ p` auch mit aktiven Offsets — Mouse-Click trifft weiterhin die richtige Welt-Position (verifiziert via `test_camera_inverse_consistency`)
+
+### Tests
+
+- 5 neue Tests: `camera_lookahead`, `cursor_lean`, `crit_zoom_trigger`, `boss_death_pan`, `camera_inverse_consistency`.
+- **131/131 PASS** (vorher 126/126).
+
+### Files
+
+- [sf/game.py](sf/game.py) — `_update_camera` + `trigger_crit_zoom` + `trigger_boss_death_pan` + Camera-Offset-State + w2s/s2w-Erweiterung
+- [sf/combat.py](sf/combat.py) — Crit-Zoom-Trigger in `hit_enemy`, Boss-Death-Pan-Trigger in `kill_enemy`
+- [tests/smoke.py](tests/smoke.py) +5 Tests
+
+---
+
+## [2026-05-23] — Update #139 — Loading + Diagnostics-Cluster (Y-04 + X-11 + AA-01 + AA-09)
+
+Vier PLAN-Tasks aus Sektionen Y (Onboarding), X (Cinematics) + AA (Debug-Tools). Komplettiert das UX-Polish-Layer (Tipps + Lore-Loading) und liefert Beta-Testing-Werkzeuge (Debug-Overlay + Bug-Report).
+
+### Y-04 — Tipps-Pool ([sf/tips.py](sf/tips.py) — neu)
+
+Neues Modul mit **45 lore-konformen Tipps** in 6 Kategorien (`combat`, `gear`, `world`, `skill`, `audio`, `survival`). Speist sich aus VELGRAD_LORE_BIBEL + VELGRAD_VOICE_LINES_POOL + POE2_SKILLS_BRIEFING.
+
+Pro Tip: `text` + `category` + optionale `class_filter` (set) und/oder `biome_filter` (set).
+
+**API**:
+- `pick_tip()` — zufällig aus dem ganzen Pool
+- `pick_tip_for_biome(biome)` — biome-spezifisch, sonst random
+- `pick_tip_for_class(cls)` — klassen-spezifisch, sonst random
+- `pick_tip_for_context(biome, cls)` — Fallback-Chain biome+class > class > biome > random
+
+Beispiele:
+- *„Cold-Crits applizieren Brittle — Brittle-Stacks stacken die nächste Crit-Chance um +5 %."* (combat)
+- *„Mahnmal-Marken I-VII sind Aspekt-Currencies. Bringe sie zu einer Mahnmal-Stele für Pakt-Boni: Kharn=+Dmg, Nheyra=+HP, ..."* (world)
+- *„Atemzug-Phiole (F1) heilt HP UND Mana gleichzeitig. Boss-Kills laden 5 Charges auf, Mini-Boss 3, Mob 0.5."* (survival)
+- Klassen-spezifische Tipps für Warrior/Sorceress/Witch/Ranger/Monk
+- Biome-spezifische Tipps für crypt/frost/lava/swamp/astral
+
+### X-11 — Lore-Loading-Card ([sf/game.py](sf/game.py))
+
+Beim Dungeon-Entry rendert jetzt zusätzlich zum Bottom-Banner (B-18) eine **Lore-Loading-Card** oben am Bildschirm:
+
+**Layout** (580×170 px Pergament-Card, y=130, fade-synchron zur Region-Transition):
+- **Aspekt-Sigil-Hexagon** links (sig_cx=x+50): Klassen-Aspekt-Glyph in Aspekt-Farbe (Kharn/Nheyra/Ousen/Valsa/Im-Nesh/Shulavh-Sigils via `aspects.draw_glyph`)
+- **Klassen-Origin-Quote** rechts vom Sigil: aus `quotes.class_origin_quote(cls)` (max 3 Zeilen wrap, 60 Zeichen/Zeile)
+- **„TIP: ..."-Zeile** am unteren Card-Rand mit kontextbezogenem Tipp aus `tips.pick_tip_for_context(biome, cls)`
+
+**Trigger**: `trigger_region_transition(biome, show_loading_card=True)` populiert das `loading_card`-Sub-Dict via `_populate_loading_card`. `enter_dungeon` setzt das Flag automatisch; `enter_town`/`enter_outpost` lassen es weg (nur Lower-Third-Banner).
+
+Fade-Alpha synchron zur Region-Transition (0.3 s in / 1.0 s hold / 0.3 s out).
+
+### AA-01 — Debug-Overlay (F3-Toggle) ([sf/game.py](sf/game.py))
+
+**`Game._debug_overlay`** als Boolean-Toggle (Default False). **F3** in `_handle_keydown` toggelt.
+
+**`_draw_debug_overlay`** rendert unten-rechts (280×~280 px monospace-Box mit grünem Rahmen):
+- FPS via `clock.get_fps()`
+- Particles / Mobs (+ AI-active count) / Projectiles / Loot / Floaters
+- Blood-Pools / Footprints
+- Player: cls L<level> HP=<hp> pos=(x, y)
+- Area / Biome / Modal / State
+- Render-Scale + Hardcore-Flag
+- Hint-Zeile: `F3=Toggle  F12=BugReport`
+
+Render als allerletzter Pass in `draw()` (über allem inkl. Modals).
+
+### AA-09 — F12 Bug-Report ([sf/game.py](sf/game.py))
+
+**F12** triggert `_write_bug_report` der ein komplettes Snapshot-Paket nach `bugreports/report_<timestamp>/` schreibt:
+
+1. **`screenshot.png`** — PNG des aktuellen Frames via `pygame.image.save(self.screen, ...)`
+2. **`state.txt`** — Header (Timestamp, SAVE_VERSION) + Game-State-Snapshot (re-uses `crash_logger._game_snapshot()`) + Recent-Events-Buffer (`crash_logger._recent_events`)
+3. **`save_snapshot.json`** — Kopie des aktuellen Slot-Saves (via `shutil.copy`)
+
+Failt silently bei OS-Fehlern (Bug-Report darf nie crashen). User-Feedback via Toast + Event-Log.
+
+Zusammen mit dem Crash-Logger (#137) hat das Team jetzt zwei klare Diagnostik-Wege: passive Crashes → `crashes/`, aktive Reports → `bugreports/`.
+
+### Tests
+
+- 4 neue Tests: `tips_pool`, `lore_loading_card`, `debug_overlay`, `bug_report_f12`.
+- **126/126 PASS** (vorher 122/122).
+
+### Files
+
+- [sf/tips.py](sf/tips.py) — neu (~220 Zeilen)
+- [sf/game.py](sf/game.py) — Loading-Card-Render + Debug-Overlay + Bug-Report + F3/F12-Bindings
+- [tests/smoke.py](tests/smoke.py) +4 Tests
+
+---
+
+## [2026-05-23] — Update #138 — Visual-Polish-Cluster (M-19 + M-21 + M-18 + V-06)
+
+Vier PLAN-Tasks aus Sektionen M (Render) + V (Surface-Effekte). Macht das visuelle Feedback einen Tier sauberer — Hover-Targeting, Tageszeit-Atmosphäre, dramatischere Lightning + Spurensystem in 3 Biomen.
+
+### M-19 — Hover-Outline für Items / Mobs / Interactables ([sf/game.py](sf/game.py))
+
+POE2-Style pulsing Outline auf Loot / Enemies / interactable-Decor unter dem Mauszeiger — gibt Targeting-Feedback BEVOR der Spieler klickt.
+
+**Neue Methode `_draw_hover_outlines`** vor `_draw_loot_hover_tooltip`:
+- **Loot**: 14-18 px Pulse-Ring in Rarity-Color (common/magic/rare/unique/skill_gem/vital_orb/gem/gold). 3-Layer-Ring mit Alpha-Falloff
+- **Enemies**: Outline in Threat-Color (Boss=rot, Elite/Affix=orange, Mini-Boss=hellrot, normal=dim-rot). Radius = `e.radius + 4 + puls·3`
+- **Decor-Interactables** (`lore_tablet/mahnmal_stele/altar/rune/rune_circle`): Cyan-Outline `(90, 220, 255)`
+
+Pulse-Faktor: `0.6 + 0.4 × |sin(t · 3.0)|`. Break-After-First-Match → max 1 Outline pro Kategorie pro Frame.
+
+### M-21 — Dynamic Day/Night Color-Grading ([sf/weather.py](sf/weather.py), [sf/game.py](sf/game.py))
+
+Subtle Tageszeit-Tint auf den globalen Render-Pass in Town:
+
+**Neue Funktion** `weather.town_color_grading(time_s)` returnt ein RGB-Multiplier-Tupel (0-255 per Channel):
+- **Morgenrot** (t < 0.15): leichter Warm-Cast, B leicht gedämpft (225-245)
+- **Tag** (0.15-0.40): neutral (255, 255, 255) — kein Effekt
+- **Sonnenuntergang** (0.40-0.55): R neutral, G abnehmend (245→220), B stark abnehmend (225→175) → rosé/orange
+- **Nacht** (0.55-0.80): (200, 215, 255) → kalt-blau
+- **Dämmerung** (0.80-1.00): graduell zurück zu neutral
+
+**Render-Application**: `pygame.Surface.fill(tint, special_flags=BLEND_RGB_MULT)` in `_draw_world` zwischen Lighting-Pass und Fog-Pass. Nur in `area == 'town'`. Multiplikatives Blending → 255-Werte sind Identity (kein Effekt), Werte < 255 darken einzelne Channels für Color-Cast.
+
+### M-18 — Procedural Lightning-Bolts mit Branches ([sf/entities.py](sf/entities.py), [sf/game.py](sf/game.py))
+
+`LightningBolt` von 8 fixed Segments → **5-7 zufällige Segmente** + **2 Branches**:
+
+**`LightningBolt.__init__`** ([sf/entities.py](sf/entities.py)):
+- Main-Path: 5-7 Segmente, ±15 px Random-Offset (statt ±12)
+- 2 Branches die von zufälligen Main-Points abzweigen mit ±1.0 rad Winkel-Offset; Branch-Länge 35-55% der Main-Länge; 2-3 Sub-Segmente
+- `self.branches` Liste mit point-Listen
+- Lifetime 0.20 → 0.22 s (minimal länger für die Branch-Sichtbarkeit)
+
+**`_draw_bolt`** ([sf/game.py](sf/game.py)):
+- 3-Layer-Glow auf einer Bounding-Box-Surface (statt direkt auf Screen):
+  - Outer: cyan-blau (140, 180, 255, 80·a), Linienbreite 8·a
+  - Mid: hell-cyan (180, 210, 255, 180·a), Linienbreite 4·a
+  - Inner: weiß (255, 255, 255, 255·a), Linienbreite 2·a
+- Branches mit Decay-Alpha (50/110/180 statt 80/180/255) und schmaleren Linien
+- Fallback auf simple polyline bei Surface-Allocation-Error
+
+Genutzt von `cast_lightning`, Stormcaller-Affix, Tempest-Bell, Galvanic-Shot — alle bestehenden Calls bleiben kompatibel (API unverändert).
+
+### V-06 — Footprints im Schnee/Sand/Asche ([sf/game.py](sf/game.py))
+
+Lore-Bibel-Feature: in 3 Biomen hinterlässt der Spieler sichtbare Spuren.
+
+**State** `self.footprints` (Liste von dicts `{x, y, biome, age, life, angle}`) + `self._footprint_side` (alterniert L/R).
+
+**Spawn** (`_spawn_footprint`): wird im Step-Tick aufgerufen wenn `biome in ('frost', 'desert', 'lava')`. Side-Offset ±5 px senkrecht zur Facing-Direction (links/rechts alterniert). Life 1.5 s. Cap auf 80 Footprints (älteste werden ohne Buffer-Overflow überschrieben).
+
+**Render** (`_draw_footprints`): zwischen Blood-Pools und Decor → liegen flach auf dem Boden. Pro Biome eigene Color:
+- **frost**: (200, 220, 240) — weiß-bläulich im Eis/Glas
+- **desert**: (220, 200, 150) — sand-beige
+- **lava**: (50, 40, 36) — asche-grau
+
+Footstep wird als 10×6-Ellipse gemalt + rotiert um `-degrees(angle)`. Fade-Out beginnt bei 50% Lifetime.
+
+Clear bei jedem Map-Wechsel (enter_town/enter_dungeon/enter_outpost).
+
+### Tests
+
+- 4 neue Tests: `hover_outline_render`, `town_color_grading`, `lightning_bolt_branches`, `footprints_biome`.
+- **122/122 PASS** (vorher 118/118).
+
+### Files
+
+- [sf/game.py](sf/game.py) — Hover-Outline + Footprint-System + Bolt-Render + Town-Grading-Pass
+- [sf/weather.py](sf/weather.py) — `town_color_grading(time_s)` Funktion
+- [sf/entities.py](sf/entities.py) — `LightningBolt` mit Branches
+- [tests/smoke.py](tests/smoke.py) +4 Tests
+
+---
+
+## [2026-05-23] — Update #137 — Stability-Cluster (Z-03 + Z-04 + Z-06 + AA-03)
+
+Vier Infrastruktur-Tasks aus PLAN-Sektionen Z (Save) + AA (Tools). Macht das Save-System produktionsreif und liefert Crash-Diagnostik für Bug-Reports.
+
+### Z-03 — Save-Versioning + Migration-Chain ([sf/save.py](sf/save.py))
+
+Bisher hatte das Save-System ad-hoc-Migration via `dict.get(..., default)`-Calls verstreut über die Load-Logik. Jetzt sauber strukturiert:
+
+- **`SAVE_VERSION = 4`** als Modul-Konstante (vorher hartcoded `version=3` im Save-Schreib-Code).
+- **`_MIGRATIONS`-Dict** mappt `version_from` → migrator-fn. Aktuell 3 Migratoren:
+  - `_migrate_v1_to_v2`: Noop (Update #62 Felder kommen via Backward-Compat Load-Defaults rein)
+  - `_migrate_v2_to_v3`: setzt `hardcore=False` für alte Single-Slot-Saves (Update #133)
+  - `_migrate_v3_to_v4`: setzt tutorial-Defaults (`tutorial_step=0`, `tutorial_done=False`, `seen_mech_hints=[]`) — Update #131-Felder bekommen Top-Level-Defaults
+- **`migrate_save(data)`** ruft die Migrator-Chain vom gespeicherten `data['version']` bis `SAVE_VERSION` durch + setzt am Ende `version = SAVE_VERSION`. Idempotent.
+- **`load_game`** ruft `migrate_save(data)` direkt nach dem JSON-Parse.
+
+### Z-04 — Save-Integrity via SHA256 ([sf/save.py](sf/save.py))
+
+Korruption-Detection via embedded Hash:
+
+- **`_compute_integrity_hash(data)`** berechnet SHA256 über den canonical-JSON-String (`sort_keys=True`, fixed-separators) — stabil über Python-Versionen, identisch auf jedem System.
+- **`save_game`** embedded den Hash als `data['_integrity_sha256']` direkt vor dem `write_text`. Der Hash schließt das eigene Feld aus (sonst zirkulär).
+- **`verify_save_integrity(data)`** vergleicht eingebetteten + neu-berechneten Hash. Returnt True bei Match, False bei Mismatch, True wenn KEIN Hash da ist (Backward-Compat für alte Saves).
+- **`load_game`** verifiziert sofort nach JSON-Parse. Bei Mismatch wird ein Warning-Toast gezeigt (`⚠ Save evtl. korrupt`) — Save lädt aber trotzdem (graceful degradation statt hart-fail, damit kleinere Format-Drifts den User nicht aussperren).
+
+### Z-06 — Auto-Save-Crash-Recovery ([sf/save.py](sf/save.py), [sf/game.py](sf/game.py))
+
+Separates Auto-Save-File `~/.shadowfall_autosave.json` wird unabhängig von den 3 Slots geschrieben:
+
+- **`write_autosave(game)`**: schreibt einen Snapshot mit Metadaten `_autosave_source_slot` + `_autosave_time`. Failt silently (Auto-Save darf das Spiel nie crashen).
+- **`AUTOSAVE_INTERVAL_S = 60.0`** — Tick im `Game.update` ruft `write_autosave` alle 60 s wenn `state == 'playing' and not player.dying and modal is None`. Verhindert Auto-Save während Pause-Menüs / Death-Cinematic.
+- **`check_autosave_recovery()`**: prüft beim Start ob Auto-Save existiert UND neuer ist als der zugehörige Slot-Save. Returnt entweder `None` oder Dict mit `{slot, autosave_time, slot_time, age_minutes}`.
+- **`apply_autosave_recovery(game)`** lädt den Auto-Save in den Slot + löscht das Auto-Save-File nach erfolgreicher Recovery.
+- **`discard_autosave()`** löscht ohne zu laden (User-Wahl).
+
+### AA-03 — Crash-Logger via sys.excepthook ([sf/crash_logger.py](sf/crash_logger.py) — neu)
+
+Neues Modul ([sf/crash_logger.py](sf/crash_logger.py), ~150 Zeilen):
+
+- **`install(game)`** ersetzt `sys.excepthook` durch `_crash_hook` der bei jedem unhandled Exception eine Log-Datei in `crashes/crash_YYYYMMDD_HHMMSS.log` schreibt.
+- **Log-Inhalt**: Timestamp + Python-Version + Plattform + SAVE_VERSION + **Game-State-Snapshot** (state/area/modal/biome/hardcore/player.cls/level/hp/pos + Counts für enemies/projectiles/particles) + **Recent-Events-Ringbuffer** (letzte 50 Events) + Standard-Traceback.
+- **`append_event(text)`** für Game-Code um Repro-relevante Events zu loggen. Aktuell gehookt: `enter_dungeon dungeon_id tier=N`.
+- **`uninstall()`** restored den Original-Excepthook (für Tests).
+- **`main()` in [sf/game.py](sf/game.py)** ruft `crash_logger.install()` VOR `Game.__init__` (Init-Crashes geloggt), dann `install(game)` nach Constructor (für State-Snapshot).
+
+Bug-Reports werden damit deutlich präziser: User schickt die crash.log statt nur „es ist abgestürzt".
+
+### Tests
+
+- 4 neue Tests: `save_migration_chain`, `save_integrity_sha256`, `autosave_recovery`, `crash_logger`.
+- **118/118 PASS** (vorher 114/114).
+
+### Files
+
+- [sf/save.py](sf/save.py) — Migration-Chain + SHA256-Verify + Auto-Save-API (+150 Zeilen)
+- [sf/crash_logger.py](sf/crash_logger.py) — neu (~150 Zeilen)
+- [sf/game.py](sf/game.py) — Auto-Save-Timer + Crash-Logger-Install in main() + Event-Hook in `enter_dungeon`
+- [tests/smoke.py](tests/smoke.py) +4 Tests
+
+---
+
+## [2026-05-23] — Update #136 — Combat-Juice-Cluster (O-23 + V-05 + M-11 + O-19)
+
+Vier kleine ARPG-Polish-Tasks die das moment-to-moment-Combat-Feel direkt verbessern. Alle aus PLAN.md (Sektionen O / V / M).
+
+### O-23 — Item-Pickup-Spline-Animation ([sf/game.py](sf/game.py))
+
+Items „fliegen" jetzt in einem Bezier-Bogen vom Drop-Punkt zum Spieler statt einfach zu verschwinden. Neuer Game-State `_loot_animations` mit dict-Einträgen `{start_x, start_y, color, kind, t, total=0.35, arc_x, arc_y}`. Spawn-Helper `_spawn_loot_pickup_anim(x, y, color, kind)` wird in jeder Pickup-Branch von `_try_loot` aufgerufen (item / skill_gem / vital_orb / gem / gold).
+
+**Render** (`_draw_loot_animations`): Quad-Bezier-Interpolation `P(t) = (1-t)²·P0 + 2(1-t)t·P1 + t²·P2` mit `P0=Drop-Pos`, `P2=Player.pos`, `P1=Mittelpunkt + arc-offset`. Squash-Effekt am Ende (Scale 1.0 → 0.6). Trail-Glow + Diamond-Icon (Items/Gems) oder Kreis (Gold/Orb).
+
+Tick + Render hookt in `_update` und `_draw_world` (nach Loot, vor Entities).
+
+### V-05 — Blood-Pool-Persistence mit Lore-Farben ([sf/weather.py](sf/weather.py), [sf/combat.py](sf/combat.py))
+
+**`BloodPool` erweitert** ([sf/weather.py](sf/weather.py)):
+- Optionaler `color` Parameter (None = random rot wie bisher).
+- `life` Parameter (Default 15.0 s statt hartcoded 25.0).
+- `kind` Parameter (`'blood' | 'salt_crystal' | 'ash' | 'sap'`) — Spezial-Decals statt Standard-Pool.
+- `alpha()` Funktion: Fade-Out beginnt jetzt bei 67 % der Lifetime („trocknet"-Look statt fixe letzte-5-s-Pegel).
+
+**Lore-Decal-Map** in [sf/combat.py](sf/combat.py) `kill_enemy`:
+
+| Mob | Color | Kind |
+|---|---|---|
+| salzgeist | (200, 220, 240) silbrig | `salt_crystal` |
+| glaslord  | (180, 210, 240) glas | `salt_crystal` |
+| aschenbrut | (50, 30, 26) asche | `ash` |
+| wurzelhueter | (80, 130, 60) pflanzlich | `sap` |
+| Default | random rot | `blood` |
+
+**Salt-Crystal-Render** ([sf/weather.py](sf/weather.py) `draw_blood_pool`): 5 weiße Diamond-Splitter statt Ellipse-Pool. Bestiarium-Realismus.
+
+**Pool-Skalierung**: Bosse/Mini-Bosse spawnen Pools mit `size × 1.5` + `life=25.0 s` (gegenüber 15 s für normale Mobs).
+
+### M-11 — Low-HP Chromatic-Aberration + Vignette ([sf/game.py](sf/game.py))
+
+Bei HP < 25 % rendert ein neuer Post-Render-Pass:
+- **Rote Radial-Vignette** mit Herzschlag-Pulse (zwei Sinus-Frequenzen lub-dub: `sin(t) + sin(t·1.3)·0.4`). Intensity wächst linear mit (1 - hp_pct/0.25) → voller Effekt bei 0 % HP.
+- **4-Layer-Soft-Falloff**: 4 konzentrische Rote-Rect-Border-Rings (3-9 px breit) mit abfallender Alpha.
+- **Chromatic-Aberration-Approximation**: 4-px Cyan-Säume oben + Magenta-Säume unten am Bildrand (Pygame hat kein echtes RGB-Channel-Shift, das ist die kostengünstige Approximation). Off-set ±2 px für den „leicht verzerrten"-Eindruck.
+
+Photosensitive-Mode dimmt alle Alpha-Werte um 70 % (`flash_mult=0.3`).
+
+### O-19 — Enemy-Aggro-Tell-Animation ([sf/ai.py](sf/ai.py), [sf/game.py](sf/game.py))
+
+**Trigger** ([sf/ai.py](sf/ai.py) `_enter_state`): Wenn ein Mob NEU in den `AIState.AGGRO` wechselt (prev_state != AGGRO), wird `e._aggro_tell_t = 0.35` gesetzt.
+
+**Render** ([sf/game.py](sf/game.py) `_draw_enemy_at`): 0.35 s Anim mit drei Layern:
+1. **Roter Outline-Aura-Ring** um den Mob (expandiert von radius+6 → radius+14, Alpha 220→0).
+2. **Eye-Glow**: zwei rote Kreise (radius 4) mit weißem Kern am Mob-Kopf — „der hat mich gesehen".
+3. **„!"-Floater** über dem Kopf (big=True, 0.5 s Lifetime, einmalig am Anim-Start via `_aggro_tell_pushed` Flag).
+
+Spieler kann Aggro-Wechsel jetzt zu 100 % visuell antizipieren — kein „der Mob ist plötzlich auf mich"-Gefühl mehr.
+
+### Tests
+
+- 4 neue Tests: `loot_pickup_spline`, `blood_pool_lore_colors`, `low_hp_chromatic_render`, `aggro_tell_animation`.
+- **114/114 PASS** (vorher 110/110).
+
+### Files
+
+- [sf/game.py](sf/game.py) — Pickup-Spline-System + Low-HP-Vignette + Aggro-Tell-Render
+- [sf/weather.py](sf/weather.py) `BloodPool` + `draw_blood_pool` — color/life/kind-Support
+- [sf/combat.py](sf/combat.py) `kill_enemy` — Lore-Decal-Map + Boss-Pool-Scaling
+- [sf/ai.py](sf/ai.py) `_enter_state` — `_aggro_tell_t` Trigger
+- [tests/smoke.py](tests/smoke.py) +4 Tests
+
+---
+
+## [2026-05-23] — Update #135 — Brassweir-Lebendigkeit + Quest-Polish (O-22 + Quest-Turn-In + Quest-Complete-VFX + Stadt-Ambient)
+
+User-Wunsch: „Vorallem Stadt design und Quest funktionalität." Vier zusammenhängende Verbesserungen die Brassweir vom Statuen-Park zur lebendigen Hub-Stadt machen und den Quest-Loop signifikant aufwerten.
+
+### O-22 — NPC-Idle-Fidget-Animationen ([sf/sprites.py](sf/sprites.py))
+
+Jeder NPC bekommt eine Lore-konforme Mikro-Animation die alle 4-8 s spielt:
+
+| NPC-Kind | Fidget-Anim | Lore-Anker |
+|---|---|---|
+| `smith` (Otreth) | **Hammer-Schwung** + Funken-Spawn am Anvil | Edelstein-Schleifer-Werkstatt |
+| `vendor` (Korven) | **Münze hochhalten + drehen** (gold-Glitzer) | Mahnmal-Halle-Handel |
+| `mystic` (Mara) | **Buch aufgeschlagen** + Page-Flip-Anim | Bibliothek der Erinnerungen |
+| `innkeeper` (Tameris) | **Putztuch-Sweep** links-rechts | Wirtshaus-Tresen |
+| `quest` (Eldon) | **Geste zur Anschlagtafel** | Stadtsprecher-Rolle |
+| `stash` (Mahnmal-Verwahrer) | **Truhen-Inspektion** (head-tilt + kleine Truhen-Skizze) | Verwahrer-Pflichten |
+
+State: `npc._fidget_t` (Cooldown 4-8 s), `_fidget_left` (0.9 s Anim-Dauer), `_fidget_kind` (override-fähig). Brassweir wirkt jetzt wie eine bewohnte Stadt statt ein Statuen-Park.
+
+### Quest-Turn-In-Modal ([sf/game.py](sf/game.py))
+
+Beim Talk mit einem NPC der die *finale* RETURN-Stage einer Quest trägt, öffnet sich jetzt ein dediziertes Quest-Turn-In-Modal statt einer simplen Toast-Notification.
+
+**Layout** (`_draw_quest_turnin_modal`, 580×420 Pergament-Modal):
+- Header: „— QUEST · {NPC-Name} —"
+- Quest-Titel (Gold-Schrift)
+- ✓ „Erfolgreich abgeschlossen" (grün)
+- Ornament-Divider
+- Quest-Description (3-Zeilen-Wrap)
+- **„BELOHNUNG"-Block** mit Tabellen-Zeilen:
+  - Gold: `+N g` (gelb)
+  - Erfahrung: `+N XP` (cyan)
+  - Item: Name (lila)
+  - Faction-Rep: `Name: +N Rep` (Faction-Farbe)
+- Zwei Buttons: **[ENTER] Belohnung annehmen** (gold) / **[ESC] Später** (grau), Mouse-Click + Hotkeys
+
+**Trigger** (`_quest_ready_to_turn_in`): wird in der NPC-Interact-Pipeline gecheckt; Quest qualifiziert nur wenn aktueller Stage `RETURN` ist UND `stage_index == len(stages) - 1` (= wirklich finale Stage). Intermediate-TALK-Stages flowen weiter durch die alte auto-advance-Pipeline.
+
+**Confirm-Flow**: `_confirm_quest_turnin` spawnt 36-Particle-Gold-Burst um den Spieler + Camera-Shake-Pulse + ruft die normale `on_talk`-Pipeline (löst `_mark_complete` + alle Side-Effekte aus).
+
+### Quest-Completed-VFX-Banner ([sf/quests.py](sf/quests.py) `_mark_complete`)
+
+Das vorhandene Notification-System (G-12) wurde aufgewertet:
+- **Banner-Duration** 4.4 s → **6.0 s** (Spieler hat Zeit zu lesen)
+- **Banner-Color** blass-gelb → kräftig-gold `(255, 240, 130)`
+- **Banner-Text** mit ★-Sternen umrahmt: `★ QUEST ABGESCHLOSSEN ★ {Titel}`
+- **50 Gold-Particles** mit Gravity 80 regnen vom Player nach unten
+- **24 Pulse-Ring-Particles** explodieren vom Player nach außen
+- **Camera-Shake** 10 (spürbarer Pulse)
+- **Class-Voice-Line** via `play_class_voice(cls, 'level_up')` (Triumph-Sample aus Voice-Registry)
+- **Quest!-Floater** über dem Spieler-Kopf (big=True, 1.6 s Lifetime)
+
+### Stadt-Ambient — Möwen + NPC-Murmel ([sf/game.py](sf/game.py))
+
+Zwei periodische Mini-Events die Brassweir lebendig halten ohne Gameplay-Impact:
+
+**1. Möwen-Flyby** (`_spawn_gull_flyby`): Alle 30-50 s zieht ein 5-7-Möwen-Schwarm diagonal über die Stadt (Start off-screen → Ziel off-screen). Weiße Particles (240×240×230) mit unterschiedlichen Versatz-Positionen + leise `seagull_cry`-SFX positional via `play_at`. Lore-Anker: Brassweir-Hafenstadt am Salzmeer.
+
+**2. NPC-Murmel** (`_npc_murmur`): Wenn der Spieler länger als 1.5 s im 140-px-Radius eines NPCs steht (ohne F zu drücken), 25 % Chance auf eine leise `lore`-Voice-Line aus dem Voice-Registry — Korven murmelt Sätze über die verschwundenen Dörfer, Mara über Echos, Tameris über ihre Schwester. Cooldown 20-40 s pro NPC. Volume 0.55 (dezent).
+
+### Tests
+
+- 4 neue Tests: `npc_idle_fidget`, `quest_turn_in_modal`, `quest_completed_vfx`, `town_ambient_gulls`.
+- **110/110 PASS** (vorher 106/106).
+
+### Files
+
+- [sf/sprites.py](sf/sprites.py) `draw_npc_at` — Fidget-State + 6 Pose-Varianten
+- [sf/game.py](sf/game.py) — Turn-In-Modal-Render + Trigger-Logic + Confirm + Stadt-Ambient-Tick
+- [sf/quests.py](sf/quests.py) `_mark_complete` — Banner verstärkt + Gold-Burst + Class-Voice + Floater
+- [tests/smoke.py](tests/smoke.py) +4 Tests
+
+---
+
 ## [2026-05-23] — Update #134 — UI-Polish nach User-Screenshot (Laternen / Toasts / Chips / Notification-Position)
 
 User-Report: „Die UI schaut nur teilweise fertig aus" + Screenshot zeigte 4 konkrete Probleme.

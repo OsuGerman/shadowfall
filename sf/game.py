@@ -124,6 +124,24 @@ class Game:
         # `region_transition` ist None oder dict mit `name`, `sub`,
         # `color`, `t`, `total`.  Lebt 1.6 s mit Fade-In/Out.
         self.region_transition = None
+        # Update #137 (Z-06): Auto-Save-Timer.  Wird alle
+        # AUTOSAVE_INTERVAL_S Sekunden in update() ge'fired.
+        self._autosave_timer = 0.0
+        # Update #139 (AA-01): Debug-Overlay-Toggle (F3).  Default off.
+        self._debug_overlay = False
+        # Update #140 (X-01..X-05): Camera-Offset-System.
+        # _cam_offset_x/y wird per Frame aus Lookahead + Cursor-Lean +
+        # Crit-Zoom + Boss-Pan kombiniert + smooth-lerped.
+        self._cam_offset_x = 0.0
+        self._cam_offset_y = 0.0
+        # Player-Velocity-Track für Lookahead (Diff zwischen prev-Pos)
+        self._cam_prev_player_pos = (0.0, 0.0)
+        # Crit-Zoom-Pull: Vector2 oder None.  Wird beim Crit gesetzt,
+        # decays mit slow_mo_left zurück.
+        self._cam_crit_pull = None
+        # Boss-Death-Pan: dict mit `boss_pos`, `t`, `total`, `boss_ref`
+        # oder None.  Wenn aktiv, folgt Camera dem Boss statt Player.
+        self._cam_boss_pan = None
         # Boss-Death-Cinematic: Slow-Mo Timer + Big Flash
         self.slow_mo_left = 0.0
         self.boss_flash = 0.0
@@ -167,6 +185,11 @@ class Game:
         # letzten N Spieler-Positionen mit Timestamps; Render fadet sie.
         self.breadcrumbs = []          # list of (world_x, world_y, age_s)
         self._breadcrumb_drop_t = 0.0  # Timer bis zum nächsten Drop
+        # Update #138 (V-06): Footprints im Schnee/Sand/Asche.
+        # Liste von dicts {x, y, biome, age, side, angle}.  Wird
+        # alle 0.32 s beim Step-Tick befüllt (nur biome-relevant).
+        self.footprints = []
+        self._footprint_side = 0   # 0=L, 1=R, alterniert pro Step
         # E-05 (Update #60): Arena-Features-Catalog initialisieren.
         self.arena_features = []  # list of dicts mit kind/pos/timers/state
         # J-13 (Update #64): Particle-Object-Pool zur Allocation-Vermeidung.
@@ -259,6 +282,14 @@ class Game:
             # Async-Asset-Loading (J-14). True = ThreadPoolExecutor,
             # False = synchroner Single-Thread-Fallback.
             'multi_threading': True,
+            # Update #141 (User-Report „werde see krank"): Camera-Cursor-
+            # Lean (X-02) ist Motion-Sickness-Trigger.  Default OFF,
+            # Spieler kann es opt-in im Settings-Modal aktivieren.
+            'camera_cursor_lean': False,
+            # Update #141: Camera-Lookahead (X-01) bleibt default ON
+            # weil player-driven (geringes Motion-Sickness-Risiko), aber
+            # toggelbar für sehr empfindliche Spieler.
+            'camera_lookahead': True,
         }
         # Update #99: Slider-Werte beim Init sofort an Sounds-Modul pushen,
         # damit der Slider-Stand exakt dem laufenden Sound-State entspricht.
@@ -285,6 +316,11 @@ class Game:
         self.loot = []
         self.particles = []
         self.floaters = []
+        # Update #136 (O-23): Item-Pickup-Spline-Animationen.
+        # Pro Anim: dict mit start_x, start_y, color, kind, t, total,
+        # vertex_offset (für Bezier-Bogen-Höhe).  Werden in
+        # _update + _draw_world ge-tickt/-rendered.
+        self._loot_animations = []
         self.bolts = []
         self.portals = []
         self.npcs = []
@@ -405,6 +441,8 @@ class Game:
         # B-07: Trail beim Map-Wechsel löschen
         self.breadcrumbs.clear()
         self._breadcrumb_drop_t = 0.0
+        # Update #138 (V-06): Footprints beim Map-Wechsel löschen
+        self.footprints.clear()
         # Update #56-Bugfix: stale `boss_encounter` clearen.
         self.boss_encounter = None
         self.boss_intro = None
@@ -442,40 +480,60 @@ class Game:
         from .entities import OutpostPortal as _OPortal
         from .entities import Decor as _DecorCls
         self.outpost_portals = []
-        unlocked = _op.unlocked_outposts(self.player)
-        if unlocked:
-            n = len(unlocked)
-            # Update #124: Spacing 110→130 für visuelle Trennung + Akt-
-            # Nummer im Portal-Label damit Spieler sofort sieht, wohin
-            # ein Portal führt („Akt 2 — Echo-Markt" statt nur „Echo-Markt").
-            # Bei 7 Outposts: 6*130 = 780 px breit — passt in Brassweirs
-            # ~900 px Innenraum.
+        unlocked = set(_op.unlocked_outposts(self.player))
+        # Update #143 (User-Frage „wo sind die Aschfelder?"): ALLE
+        # Outposts werden gerendert (auch noch nicht freigeschaltete) —
+        # locked-Portale bekommen einen `_locked`-Flag + Hint-Label
+        # „🔒 Akt N abschließen".  Damit weiß der Spieler welche Akte
+        # ihm noch offen stehen + was er als nächstes braucht.
+        # Brassweir (Hub) wird nicht als Portal gerendert.
+        all_outpost_keys = [k for k in _op.OUTPOSTS.keys() if k != 'brassweir']
+        # Sort nach Akt-Nummer für konsistente Reihenfolge
+        all_outpost_keys.sort(
+            key=lambda k: (_op.OUTPOSTS[k].get('akt', 99),
+                            _op.OUTPOSTS[k].get('tier_gate', 99)))
+        if all_outpost_keys:
+            n = len(all_outpost_keys)
+            # Spacing 130 px pro Portal, in einer Reihe
             spacing = 130
             base_y = 400
             start_x = -((n - 1) * spacing) / 2.0
-            # Update #125: Outpost-Portal-Label zeigt jetzt Level-Req falls
-            # nicht erfüllt — Player sieht direkt „Stufe 4+ benötigt"
-            # statt erst beim Versuch-zu-betreten den Fehler zu kriegen.
             from .constants import DUNGEONS as _DUNGEONS
-            for i, ok in enumerate(unlocked):
+            akt_progress = len(getattr(self.player,
+                                         'completed_dungeons', ()))
+            for i, ok in enumerate(all_outpost_keys):
                 px = start_x + i * spacing
                 py = base_y
                 op_cfg = _op.OUTPOSTS[ok]
                 akt = op_cfg.get('akt', 1)
-                # Akt-Prefix: Zhar-Eth ist Akt 1b (optional), Rest Akt N
+                is_unlocked = ok in unlocked
+                # Akt-Prefix
                 if ok == 'zhar_eth_karawane':
                     akt_lbl = 'Akt 1b (Optional)'
                 else:
                     akt_lbl = f'Akt {akt}'
                 full_lbl = f'{akt_lbl} — {op_cfg["region_name"]}'
-                # Level-Req-Hint im Label falls Player noch zu schwach
-                dungeon_id = op_cfg.get('dungeon_id')
-                if dungeon_id and dungeon_id in _DUNGEONS:
-                    req = _DUNGEONS[dungeon_id].get('level_req', 1)
-                    if self.player.level < req:
-                        full_lbl += f' (Stufe {req}+)'
-                self.outpost_portals.append(_OPortal(
-                    px, py, ok, label=full_lbl))
+                # Locked-Hint: wieviele Akte fehlen?
+                if not is_unlocked:
+                    gate = op_cfg.get('tier_gate', 99)
+                    # Spieler braucht (gate - 1) abgeschlossene Dungeons
+                    needed = gate - 1 - akt_progress
+                    if needed == 1:
+                        full_lbl = f'🔒 {full_lbl} — Akt {akt - 1} zuerst'
+                    elif needed > 1:
+                        full_lbl = f'🔒 {full_lbl} — {needed} Akte zuerst'
+                    else:
+                        full_lbl = f'🔒 {full_lbl}'
+                else:
+                    # Level-Req-Hint nur für UNLOCKED + zu-schwache
+                    dungeon_id = op_cfg.get('dungeon_id')
+                    if dungeon_id and dungeon_id in _DUNGEONS:
+                        req = _DUNGEONS[dungeon_id].get('level_req', 1)
+                        if self.player.level < req:
+                            full_lbl += f' (Stufe {req}+)'
+                portal = _OPortal(px, py, ok, label=full_lbl)
+                portal._locked = not is_unlocked
+                self.outpost_portals.append(portal)
             # Wegmal-Schild als Decor (Lore-Tafel) — Update #124: nach y=280
             # nach oben verschoben (weg von Mahnmal-Stele bei y=305).
             sign = _DecorCls(0, 280, 'lore_tablet', 0, 50, 0.2,
@@ -594,6 +652,8 @@ class Game:
         self.decals.clear()
         self.breadcrumbs.clear()
         self._breadcrumb_drop_t = 0.0
+        # Update #138 (V-06): Footprints beim Map-Wechsel löschen
+        self.footprints.clear()
         self.boss_encounter = None
         self.boss_intro = None
         self.arena_features = []
@@ -629,6 +689,13 @@ class Game:
         return True
 
     def enter_dungeon(self, dungeon_id, tier=None):
+        # Update #137 (AA-03): Event-Log für Crash-Repro
+        try:
+            from . import crash_logger as _crash
+            _crash.append_event(
+                f'enter_dungeon {dungeon_id} tier={tier}')
+        except Exception:
+            pass
         self.area = 'dungeon'
         self.active_dungeon_id = dungeon_id
         # Update #37: alte Stadt-Toasts beim Dungeon-Entry clearen
@@ -674,6 +741,8 @@ class Game:
         # B-07: Trail beim Map-Wechsel löschen
         self.breadcrumbs.clear()
         self._breadcrumb_drop_t = 0.0
+        # Update #138 (V-06): Footprints beim Map-Wechsel löschen
+        self.footprints.clear()
         # Update #56-Bugfix: stale `boss_encounter` clearen.
         self.boss_encounter = None
         self.boss_intro = None
@@ -699,8 +768,11 @@ class Game:
         self.active_quest = quests_mod.Quest(dungeon_id)
         self.floaters.append(Floater(
             0, -60, f'{spec["name"]}', GOLD_BRIGHT))
-        # Update #132 (B-18): Region-Übergangs-Animation
-        self.trigger_region_transition(biome=self.biome)
+        # Update #132 (B-18) + #139 (X-11): Region-Animation + Lore-
+        # Loading-Card mit Klassen-Portrait + Quote + Tip beim Dungeon-
+        # Entry (nicht bei Town/Outpost — dort reicht das Lower-Third).
+        self.trigger_region_transition(biome=self.biome,
+                                         show_loading_card=True)
         # Update #81: Combat-Start-Voice-Line beim Dungeon-Entry.
         try:
             from . import quotes as _q
@@ -739,6 +811,9 @@ class Game:
             roaming.hp = roaming.hp_max
             roaming.shield = roaming.shield_max * 0.5
             roaming.shield_max *= 0.5
+            # Update #148: Mark als Roaming damit boss_kill-Voice
+            # ihn NICHT triggert (sonst Spam).
+            roaming._roaming = True
             self.enemies.append(roaming)
             self.toast('Wandernder Boss in Dungeon!', (255, 200, 60))
 
@@ -746,6 +821,49 @@ class Game:
     # Welle-für-Welle-Spawner ohne Lore-Anchor, redundant zum
     # Tier-3-Dungeon-System. Stattdessen sind alle Akte über Brassweir-
     # Outpost-Portale und Dungeon-Portale erreichbar.
+
+    def _push_akt_progression_hint(self, akt_count):
+        """Update #144: Nach Boss-Kill einen klaren Hint geben wohin
+        als nächstes — verhindert „wo sind die Aschenfelder?"-Konfusion.
+
+        Pusht eine event_notification mit der freigeschalteten Region
+        + Outpost-Hint.  Inhalt aus Mapping unten (synchron zu
+        outposts.OUTPOSTS).
+        """
+        # akt_count = 1 → gerade Akt 1 abgeschlossen → Akt 2 verfügbar
+        # akt_count = 2 → Akt 2 abgeschlossen → Akt 3 verfügbar  etc.
+        NEXT_AKT_HINTS = {
+            1: ('Akt 2 freigeschaltet',
+                'Echo-Markt (Glasgoldene Ruinen) wartet — '
+                'sprich mit Bruder Helst.'),
+            2: ('Akt 3 freigeschaltet',
+                'Säulen-von-Helst (Aschenfelder) wartet — '
+                'Tribunal der Asche jagt dort.'),
+            3: ('Akt 4 freigeschaltet',
+                'Knoten-Markt (Wurzelgrab) wartet — '
+                'die Knochenwitwen verwesen langsam.'),
+            4: ('Akt 5 freigeschaltet',
+                'Spiegelhof (Velharn-Spiegelstadt) wartet — '
+                'Echo-Senatoren handeln dort.'),
+            5: ('Akt 6 freigeschaltet',
+                'Drei-Wunden-Lager wartet — die Endgame-Bosse '
+                'erwachen.'),
+            6: ('Akt 7 freigeschaltet',
+                'Hohlwort-Camp wartet — das Finale beginnt.'),
+        }
+        hint = NEXT_AKT_HINTS.get(akt_count)
+        if hint is None:
+            return
+        title, sub = hint
+        try:
+            self.push_event_notification(
+                'story', f'★ {title}', sub=sub,
+                color=(243, 213, 114), duration=6.0)
+            self.toast(f'→ {sub}', (220, 200, 140))
+            self.push_event_log(f'Akt-Progress: {title}',
+                                  (243, 213, 114), duration=8.0)
+        except Exception:
+            pass
 
     def complete_dungeon(self):
         """Wird aufgerufen wenn der Boss tot ist."""
@@ -762,10 +880,19 @@ class Game:
             self.dungeon_tier[self.active_dungeon_id] = cur_tier + 1
             self.toast(f'Schwierigkeit freigeschaltet: Tier {cur_tier + 1}',
                        (255, 200, 80))
+        # Update #144: prev_count VOR add für Akt-Übergang-Detection
+        prev_akt_count = len(self.player.completed_dungeons)
         self.player.completed_dungeons.add(self.active_dungeon_id)
+        new_akt_count = len(self.player.completed_dungeons)
         # Update #32: Progression-Tracker
         if hasattr(self.player, 'prog_dungeons_cleared'):
             self.player.prog_dungeons_cleared.add(self.active_dungeon_id)
+        # Update #144: Akt-Progression-Hint nach Boss-Kill — sagt
+        # dem Spieler klar wohin als nächstes (User-Frage „wo sind
+        # die Aschenfelder?").  Wird als event_notification gepusht
+        # damit es sichtbar ist (nicht nur Toast).
+        if new_akt_count > prev_akt_count:
+            self._push_akt_progression_hint(new_akt_count)
         # Bonus-XP für komplettes Dungeon
         bonus_xp = 100 + self.player.level * 30
         self.player.xp += bonus_xp
@@ -783,18 +910,29 @@ class Game:
 
     # ---------- Koordinaten ----------
     def w2s(self, pos):
+        # Update #140 (X-01/X-02/X-04/X-05): Camera-Offsets — addiert
+        # zur Shake.  `_cam_offset_x/y` ist die Summe aus Lookahead,
+        # Cursor-Lean, Crit-Zoom-Pull und Boss-Death-Pan.
         sx, sy = self.camera_shake_offset
-        return (pos.x - self.camera.x + SCREEN_W / 2 + sx,
-                pos.y - self.camera.y + SCREEN_H / 2 + sy)
+        ox = getattr(self, '_cam_offset_x', 0.0)
+        oy = getattr(self, '_cam_offset_y', 0.0)
+        return (pos.x - self.camera.x + SCREEN_W / 2 + sx - ox,
+                pos.y - self.camera.y + SCREEN_H / 2 + sy - oy)
 
     def w2s_xy(self, x, y):
         sx, sy = self.camera_shake_offset
-        return (x - self.camera.x + SCREEN_W / 2 + sx,
-                y - self.camera.y + SCREEN_H / 2 + sy)
+        ox = getattr(self, '_cam_offset_x', 0.0)
+        oy = getattr(self, '_cam_offset_y', 0.0)
+        return (x - self.camera.x + SCREEN_W / 2 + sx - ox,
+                y - self.camera.y + SCREEN_H / 2 + sy - oy)
 
     def s2w(self, sx, sy):
-        return Vector2(sx - SCREEN_W / 2 + self.camera.x,
-                       sy - SCREEN_H / 2 + self.camera.y)
+        # Inverse muss die gleichen Offsets benutzen damit Mouse-Click
+        # auf Welt-Position konsistent ist.
+        ox = getattr(self, '_cam_offset_x', 0.0)
+        oy = getattr(self, '_cam_offset_y', 0.0)
+        return Vector2(sx - SCREEN_W / 2 + self.camera.x + ox,
+                       sy - SCREEN_H / 2 + self.camera.y + oy)
 
     # ---------- Input ----------
     def handle_events(self):
@@ -881,6 +1019,14 @@ class Game:
             return
         if ev.key == pygame.K_F11:
             self._toggle_fullscreen()
+            return
+        # Update #139 (AA-01): Debug-Overlay-Toggle (F3)
+        if ev.key == pygame.K_F3:
+            self._debug_overlay = not getattr(self, '_debug_overlay', False)
+            return
+        # Update #139 (AA-09): Bug-Report-Snapshot (F12)
+        if ev.key == pygame.K_F12:
+            self._write_bug_report()
             return
         if self.state == 'title':
             if ev.key in (pygame.K_RETURN, pygame.K_SPACE):
@@ -1872,29 +2018,119 @@ class Game:
             p.slow_factor = min(p.slow_factor, 0.7)
 
     def _interact(self):
-        """F-Taste: NPC, Dungeon-Portal, Outpost-Portal, Town-Portal."""
+        """F-Taste: NPC, Dungeon-Portal, Outpost-Portal, Town-Portal.
+
+        Update #146 (User-Report „mehrere Menüs gleichzeitig"):
+        Distance-based-Priority — alle Interactables in Reichweite werden
+        gesammelt und der NÄHESTE gewinnt. Vorher feuerte das erste
+        gefundene → Stele zwischen NPC und Spieler stahl Klick.
+        """
         if self.area == 'town' or self.area == 'outpost':
-            # W-12 (Update #80) + Update #114: Mahnmal-Stele in der Nähe.
-            # Brassweir-Stelen öffnen den Aspekt-Schrein (ShrineUI).
-            # Outpost-Stelen öffnen das Fast-Travel-Modal (TravelUI).
+            # Update #146: Alle Interactables sammeln + nach Distanz
+            # sortieren. Priority-Tiebreaker bei gleicher Distanz: NPC
+            # > Portal > Stele > Lore-Tafel (NPC bevorzugt weil Dialog
+            # interaktiver ist als Stein).
+            candidates = []
+            ppos = self.player.pos
+            # NPCs (Radius via town_mod.npc_in_range — ca. 60 px)
+            npc = town_mod.npc_in_range(self.player, self.npcs)
+            if npc is not None:
+                d2 = (npc.pos - ppos).length_squared()
+                candidates.append((d2, 0, 'npc', npc))
+            # Dungeon-Portale (Radius ~50)
+            dp = town_mod.dungeon_portal_in_range(
+                self.player, self.dungeon_portals)
+            if dp is not None:
+                d2 = (dp.pos - ppos).length_squared()
+                candidates.append((d2, 1, 'dportal', dp))
+            # Outpost-Portale (Radius 45)
+            for op_portal in self.outpost_portals:
+                if (op_portal.pos - ppos).length() < 45:
+                    d2 = (op_portal.pos - ppos).length_squared()
+                    candidates.append((d2, 1, 'oportal', op_portal))
+            # Outpost-Return-Portal
+            rp = self.outpost_return_portal
+            if rp and (rp.pos - ppos).length() < 45:
+                d2 = (rp.pos - ppos).length_squared()
+                candidates.append((d2, 1, 'return', rp))
+            # Mahnmal-Stele (Radius 70)
             for t in self.tiles:
                 if getattr(t, 'kind', None) != 'mahnmal_stele':
                     continue
-                dx = self.player.pos.x - t.x
-                dy = self.player.pos.y - t.y
-                if dx * dx + dy * dy < 70 * 70:
-                    # Update #X — Mahnmal-Stele-Aktivierung (Phase-2-AI-SFX)
-                    snd.play('ui_mahnmal_activate', volume=0.7)
-                    if self.area == 'outpost':
-                        self.modal = 'travel'
+                dx = ppos.x - t.x; dy = ppos.y - t.y
+                d2 = dx * dx + dy * dy
+                if d2 < 70 * 70:
+                    candidates.append((d2, 2, 'stele', t))
+            # Sortiere nach (priority_class, distance²) — NPC (0) gewinnt
+            # immer gegen Stele (2) selbst wenn Stele näher ist.
+            candidates.sort(key=lambda c: (c[1], c[0]))
+            if not candidates:
+                # Last-Dungeon-Statue als Fallback (keine Range-Sammlung)
+                if self.last_dungeon_pos is not None:
+                    if (abs(ppos.x - 0) < 50
+                            and abs(ppos.y - 200) < 50):
+                        did, pos = self.last_dungeon_pos
+                        self.enter_dungeon(did)
+                        if self.grid and self.grid.is_walkable_world(
+                                pos.x, pos.y):
+                            self.player.pos = Vector2(pos)
+                        self.toast('Zurück zum letzten Dungeon',
+                                    GOLD_BRIGHT)
+                return
+            _, _, kind, obj = candidates[0]
+            if kind == 'stele':
+                snd.play('ui_mahnmal_activate', volume=0.7)
+                if self.area == 'outpost':
+                    self.modal = 'travel'
+                else:
+                    self.modal = 'shrine'
+                    if hasattr(self.player, 'prog_altars_used'):
+                        self.player.prog_altars_used += 1
+                return
+            if kind == 'dportal':
+                from .constants import DUNGEONS
+                spec = DUNGEONS[obj.dungeon_id]
+                if self.player.level < spec['level_req']:
+                    self.floaters.append(Floater(
+                        ppos.x, ppos.y - 30,
+                        f'Benötigt Stufe {spec["level_req"]}',
+                        (200, 80, 80)))
+                else:
+                    self.enter_dungeon(obj.dungeon_id)
+                return
+            if kind == 'oportal':
+                if getattr(obj, '_locked', False):
+                    from . import outposts as _op
+                    cfg = _op.OUTPOSTS.get(obj.outpost_key, {})
+                    akt = cfg.get('akt', '?')
+                    gate = cfg.get('tier_gate', '?')
+                    akt_prog = len(getattr(self.player,
+                                            'completed_dungeons', ()))
+                    needed = max(0, (gate - 1) - akt_prog)
+                    if needed > 0:
+                        msg = (f'🔒 {cfg.get("region_name", "?")} '
+                                f'noch verschlossen — schließe Akt '
+                                f'{akt - 1 if needed == 1 else f"{akt - needed}-{akt - 1}"} '
+                                f'zuerst ab.')
                     else:
-                        self.modal = 'shrine'
-                        if hasattr(self.player, 'prog_altars_used'):
-                            self.player.prog_altars_used += 1
+                        msg = (f'🔒 {cfg.get("region_name", "?")} '
+                                f'noch verschlossen.')
+                    self.toast(msg, (220, 150, 100))
+                    try:
+                        snd.play('ui_click', volume=0.3)
+                    except Exception:
+                        pass
                     return
-            # NPC
-            npc = town_mod.npc_in_range(self.player, self.npcs)
-            if npc:
+                self.enter_outpost(obj.outpost_key)
+                return
+            if kind == 'return':
+                self.enter_town()
+                return
+            # kind == 'npc' — Fall-through zum NPC-Handler unten
+            if False:
+                pass   # placeholder, NPC-Handler kommt unten
+            # NPC-Handler:
+            if True:
                 # Update #135: Wenn dieser NPC eine final-RETURN-Stage
                 # hat (Quest fertig zum Abgeben) → Quest-Turn-In-Modal
                 # statt direktem on_talk-Auto-Advance.  Spieler sieht
@@ -1931,29 +2167,9 @@ class Game:
                 elif npc.kind == 'innkeeper':
                     self._innkeeper_dialog()
                 return
-            # Dungeon-Portal
-            dp = town_mod.dungeon_portal_in_range(self.player, self.dungeon_portals)
-            if dp:
-                from .constants import DUNGEONS
-                spec = DUNGEONS[dp.dungeon_id]
-                if self.player.level < spec['level_req']:
-                    self.floaters.append(Floater(
-                        self.player.pos.x, self.player.pos.y - 30,
-                        f'Benötigt Stufe {spec["level_req"]}', (200, 80, 80)))
-                else:
-                    self.enter_dungeon(dp.dungeon_id)
-                return
-            # Update #113: Outpost-Portal (Brassweir → Akt-Vorposten)
-            for op_portal in self.outpost_portals:
-                if (op_portal.pos - self.player.pos).length() < 45:
-                    self.enter_outpost(op_portal.outpost_key)
-                    return
-            # Outpost-Return-Portal (Vorposten → Brassweir)
-            rp = self.outpost_return_portal
-            if rp and (rp.pos - self.player.pos).length() < 45:
-                self.enter_town()
-                return
-            # Teleport-zurück zum letzten Dungeon (wenn nahe Statue)
+            # Update #146: Old code path entfernt — alle Town/Outpost-
+            # Interactables werden jetzt über die Distance-Sort-Logik
+            # oben aufgelöst.  Last-Dungeon-Statue-Fallback bleibt:
             if self.last_dungeon_pos is not None:
                 # Statue ist bei (0, 200)
                 if abs(self.player.pos.x - 0) < 50 and abs(self.player.pos.y - 200) < 50:
@@ -2043,13 +2259,24 @@ class Game:
         self.portals = [pt for pt in self.portals
                         if getattr(pt, 'biome', None) != 'town']
         # Position 60 px vor dem Spieler in Blick-Richtung
+        # Update #147 (User-Report „Portale in der Wand"): robuster
+        # Wall-Check mit Player-Radius (statt 12) + Decor-Check + Fallback
+        # auf MEHRERE Distance-Versuche (60, 45, 30, 15 px).
         import math as _m
-        dx = _m.cos(self.player.facing) * 60
-        dy = _m.sin(self.player.facing) * 60
-        px, py = self.player.pos.x + dx, self.player.pos.y + dy
-        # Falls Portal-Pos in Wand → näher am Spieler bleiben
-        if self.grid is not None and self.grid.collide_circle(px, py, 12):
-            px, py = self.player.pos.x, self.player.pos.y
+        portal_r = 18   # Portal-Größe für Collision
+        px, py = self.player.pos.x, self.player.pos.y   # Default: Player-Pos
+        for try_dist in (60, 45, 30, 15):
+            tx = self.player.pos.x + _m.cos(self.player.facing) * try_dist
+            ty = self.player.pos.y + _m.sin(self.player.facing) * try_dist
+            blocked = False
+            if self.grid is not None and self.grid.collide_circle(
+                    tx, ty, portal_r):
+                blocked = True
+            if not blocked and self._decor_collides(tx, ty, portal_r):
+                blocked = True
+            if not blocked:
+                px, py = tx, ty
+                break
         portal = Portal(px, py, 'town')
         self.portals.append(portal)
         # Spawn-Particles + Sound
@@ -2319,10 +2546,257 @@ class Game:
             'total':      float(duration),
         })
 
-    def trigger_region_transition(self, biome=None, area_override=None):
+    def _spawn_footprint(self, p, dt):
+        """Update #138 (V-06): Spawnt einen biome-spezifischen Footprint.
+
+        Footprints alternieren links/rechts vom Player-Center via
+        `_footprint_side`-Flag.  Pro Biome eigene Farbe + Decor-Stil:
+
+          - frost:  weiß-bläulich (im Schnee/Glas-Boden)
+          - desert: helles Sand-Beige (im Sand)
+          - lava:   schwarz-grau (Asche-Abdrücke)
+
+        Lifetime 1.5 s mit Fade-Out.  Maximal 80 aktive Footprints
+        (älteste werden überschrieben — kein unbounded growth).
+        """
+        # Side-Offset senkrecht zur Bewegungsrichtung
+        facing = getattr(p, 'facing', 0.0)
+        # Normal zur Bewegung: facing ± π/2
+        side_sign = 1 if self._footprint_side == 0 else -1
+        self._footprint_side = (self._footprint_side + 1) % 2
+        nx = math.cos(facing + math.pi / 2) * side_sign * 5
+        ny = math.sin(facing + math.pi / 2) * side_sign * 5
+        self.footprints.append({
+            'x':      p.pos.x + nx,
+            'y':      p.pos.y + ny,
+            'biome':  self.biome,
+            'age':    0.0,
+            'life':   1.5,
+            'angle':  facing,
+        })
+        # Cap
+        if len(self.footprints) > 80:
+            del self.footprints[:len(self.footprints) - 80]
+
+    def _spawn_loot_pickup_anim(self, start_x, start_y, color, kind='item'):
+        """Update #136 (O-23): Spawnt eine Pickup-Spline-Animation.
+
+        Item fliegt in einem Bezier-Bogen (mit vertex_offset für Höhe)
+        von der Loot-Position zum Spieler.  Visuell-only — der eigentliche
+        Pickup-Effekt (Gold/Item/Skill) wird sofort angewendet.
+        """
+        import random as _r
+        # Bogen-Höhe variiert leicht — sieht organisch aus
+        offset = _r.uniform(-30, -50)
+        # Side-sway zufällig links/rechts (für Bezier-Tangente)
+        offset_x = _r.uniform(-20, 20)
+        self._loot_animations.append({
+            'start_x':     float(start_x),
+            'start_y':     float(start_y),
+            'color':       color,
+            'kind':        kind,
+            't':           0.0,
+            'total':       0.35,
+            'arc_y':       offset,
+            'arc_x':       offset_x,
+        })
+
+    def _tick_loot_animations(self, dt):
+        """Update #136 (O-23): Tickt + filtert die Pickup-Spline-Anims."""
+        for anim in self._loot_animations[:]:
+            anim['t'] += dt
+            if anim['t'] >= anim['total']:
+                self._loot_animations.remove(anim)
+
+    def _tick_footprints(self, dt):
+        """Update #138 (V-06): Tickt + filtert Footprints."""
+        for fp in self.footprints[:]:
+            fp['age'] += dt
+            if fp['age'] >= fp['life']:
+                self.footprints.remove(fp)
+
+    def _draw_footprints(self):
+        """Update #138 (V-06): Rendert Footprints unter Player/Entities.
+
+        Pro Biome eigene Farbe + Decor-Form (Sand=Halbmond, Frost=
+        weißer Punkt, Lava=Asche-Strich).
+        """
+        if not self.footprints:
+            return
+        # Biome-Color-Map
+        FOOT_COLORS = {
+            'frost':  (200, 220, 240),   # weiß-bläulich
+            'desert': (220, 200, 150),   # sand-beige
+            'lava':   (50, 40, 36),      # asche-grau
+        }
+        for fp in self.footprints:
+            col = FOOT_COLORS.get(fp['biome'], (180, 180, 180))
+            sx, sy = self.w2s_xy(fp['x'], fp['y'])
+            # Alpha-Fade letzte 50 % der Lifetime
+            t = fp['age'] / fp['life']
+            if t < 0.5:
+                alpha = 180
+            else:
+                alpha = int(180 * (1.0 - (t - 0.5) / 0.5))
+            if alpha <= 0:
+                continue
+            # Footprint-Surface: rotated ellipse für „Schuh"-Look
+            ang = fp['angle']
+            footstep = pygame.Surface((10, 6), pygame.SRCALPHA)
+            pygame.draw.ellipse(footstep, (*col, alpha),
+                                 (0, 0, 10, 6))
+            rotated = pygame.transform.rotate(
+                footstep, -math.degrees(ang))
+            self.screen.blit(rotated,
+                              (int(sx) - rotated.get_width() // 2,
+                               int(sy) - rotated.get_height() // 2))
+
+    def _draw_loot_animations(self):
+        """Update #136 (O-23): Rendert flying loot-icons in Spline-Bogen
+        von start-pos zur live-Player-Position.  Quad-Bezier mit
+        Mittelpunkt = (start+target)/2 + arc-offset.
+        """
+        p_pos = self.player.pos
+        for anim in self._loot_animations:
+            t = anim['t'] / anim['total']
+            t = max(0.0, min(1.0, t))
+            # Quad-Bezier P(t) = (1-t)²·P0 + 2(1-t)t·P1 + t²·P2
+            sx0, sy0 = anim['start_x'], anim['start_y']
+            ex, ey = p_pos.x, p_pos.y - 30   # leicht über Player-Kopf
+            mx_w = (sx0 + ex) * 0.5 + anim['arc_x']
+            my_w = (sy0 + ey) * 0.5 + anim['arc_y']
+            inv_t = 1.0 - t
+            wx = inv_t * inv_t * sx0 + 2 * inv_t * t * mx_w + t * t * ex
+            wy = inv_t * inv_t * sy0 + 2 * inv_t * t * my_w + t * t * ey
+            sx, sy = self.w2s_xy(wx, wy)
+            sx, sy = int(sx), int(sy)
+            # Größe ramps down kurz vor Pickup (Squish-Effekt)
+            scale = 1.0 - t * 0.4
+            r = max(2, int(5 * scale))
+            color = anim['color']
+            # Trail-Glow
+            glow = pygame.Surface((r * 4, r * 4), pygame.SRCALPHA)
+            for k in range(3, 0, -1):
+                a = int(140 / k * (1.0 - t * 0.5))
+                pygame.draw.circle(glow, (*color, a),
+                                    (r * 2, r * 2), r + k)
+            self.screen.blit(glow, (sx - r * 2, sy - r * 2))
+            # Center-Icon (Diamond für Item, Kreis für Gold/Orb)
+            kind = anim['kind']
+            if kind == 'item' or kind == 'skill_gem':
+                pts = [(sx, sy - r), (sx + r, sy),
+                       (sx, sy + r), (sx - r, sy)]
+                pygame.draw.polygon(self.screen, color, pts)
+                pygame.draw.polygon(self.screen, (255, 255, 255), pts, 1)
+            else:
+                pygame.draw.circle(self.screen, color, (sx, sy), r)
+                pygame.draw.circle(self.screen, (255, 255, 255),
+                                    (sx - 1, sy - 1), max(1, r // 3))
+
+    def _tick_town_ambient(self, dt):
+        """Update #135: Brassweir-Atmosphäre via periodische Mini-Events.
+
+        Zwei Mechaniken:
+          1. **Möwen-Flyby**: alle 30-50 s zieht ein 5-7-Möwen-Schwarm
+             diagonal über die Stadt + leise `seagull_cry`-SFX.  Reine
+             Atmosphäre, kein Gameplay.
+          2. **NPC-Murmel**: wenn der Spieler länger als 1.5 s im Radius
+             von 140 px um einen NPC steht (ohne F zu drücken),
+             chance 25 % auf eine leise Voice-Line aus dem `lore`-Pool.
+        """
+        import random as _r
+        # 1. Möwen-Flyby-Timer
+        if not hasattr(self, '_gull_event_t'):
+            self._gull_event_t = _r.uniform(20.0, 30.0)
+        self._gull_event_t -= dt
+        if self._gull_event_t <= 0:
+            self._gull_event_t = _r.uniform(30.0, 50.0)
+            self._spawn_gull_flyby()
+        # 2. NPC-Murmel — pro NPC einen Cooldown
+        for npc in getattr(self, 'npcs', ()):
+            if not hasattr(npc, '_murmur_cd'):
+                npc._murmur_cd = _r.uniform(8.0, 16.0)
+                npc._near_player_t = 0.0
+            dx = self.player.pos.x - npc.pos.x
+            dy = self.player.pos.y - npc.pos.y
+            d2 = dx * dx + dy * dy
+            if d2 < 140 * 140:
+                npc._near_player_t += dt
+            else:
+                npc._near_player_t = 0.0
+            npc._murmur_cd -= dt
+            if (npc._murmur_cd <= 0 and npc._near_player_t > 1.5
+                    and _r.random() < 0.25):
+                npc._murmur_cd = _r.uniform(20.0, 40.0)
+                npc._near_player_t = 0.0
+                self._npc_murmur(npc)
+
+    def _spawn_gull_flyby(self):
+        """Update #135: 5-7 weiße Möwen-Particles ziehen diagonal
+        über die Stadt (off-screen → off-screen).  Mit play_at-Cry
+        damit der Sound positional ist.
+        """
+        import random as _r
+        n_gulls = _r.randint(5, 7)
+        # Start oben-links/rechts, Ziel diagonal entgegengesetzt
+        start_side = _r.choice([-1, 1])
+        base_x = self.player.pos.x + start_side * 800
+        base_y = self.player.pos.y - 400
+        # 7 Möwen in Schwarm-Formation, leicht versetzt
+        for i in range(n_gulls):
+            offset_x = i * 60 * _r.uniform(0.5, 1.5)
+            offset_y = i * 20 * _r.uniform(-0.5, 1.0)
+            vx = -start_side * _r.uniform(80, 120)
+            vy = _r.uniform(20, 40)
+            self.particles.append(Particle(
+                base_x + offset_x, base_y + offset_y,
+                vx, vy,
+                (240, 240, 230),
+                _r.uniform(10.0, 14.0),
+                _r.uniform(3.0, 4.5),
+                gravity=0.0))
+        # SFX am Spawn-Punkt
+        try:
+            snd.play_at(self, 'seagull_cry',
+                         base_x, base_y, volume=0.4)
+        except Exception:
+            try:
+                snd.play('seagull_cry', volume=0.3)
+            except Exception:
+                pass
+
+    def _npc_murmur(self, npc):
+        """Update #135: NPC murmelt eine leise Voice-Line wenn der
+        Spieler im Radius steht.  Pool: `lore` (kurze Gedanken).
+        """
+        try:
+            from . import sounds as _snd
+            VOICE_KEY = {
+                'Korven Vor':                'korven',
+                'Bruder Helst':              'helst',
+                'Vossharil':                 'vossharil',
+                'Tameris':                   'tameris',
+                'Otreth Hohlauge':           'otreth',
+                'Mara die Mahnerin':         'mara',
+                'Inquisitor-General Vehren': 'vehren',
+            }
+            vk = VOICE_KEY.get(npc.name)
+            if vk:
+                _snd.play_voice(vk, 'lore', volume=0.55)
+        except Exception:
+            pass
+
+    def trigger_region_transition(self, biome=None, area_override=None,
+                                    show_loading_card=False):
         """Update #132 (B-18): Startet die 1.6 s Lower-Third-Animation
         beim Map-Wechsel.  Region-Daten kommen aus `regions.REGIONS`;
         Fallback wenn das Biome dort nicht registriert ist.
+
+        Update #139 (X-11): Wenn `show_loading_card=True` (typisch beim
+        Dungeon-Entry), wird zusätzlich ein Lore-Loading-Card-Overlay
+        gerendert (Klassen-Portrait + Region-Name + Aspekt-Sigil +
+        Lore-Quote + Tip).  Bei Town/Outpost-Entry bleibt es bei der
+        kleinen Lower-Third-Animation.
 
         `biome` override für outpost/dungeon; default `self.biome`.
         """
@@ -2338,6 +2812,8 @@ class Game:
                 't':     1.6,
                 'total': 1.6,
             }
+            if show_loading_card:
+                self._populate_loading_card(bk, rinfo)
             return
         # Akt-Marker als Sub-Line
         akt = rinfo.get('akt', 0)
@@ -2351,6 +2827,40 @@ class Game:
             'color': rinfo.get('accent_color', (220, 180, 110)),
             't':     1.6,
             'total': 1.6,
+        }
+        if show_loading_card:
+            self._populate_loading_card(bk, rinfo)
+
+    def _populate_loading_card(self, biome, rinfo):
+        """Update #139 (X-11): füllt die Loading-Card-Felder der aktuellen
+        region_transition mit Lore-Quote + Tip + Aspekt-Sigil.
+        """
+        if self.region_transition is None:
+            return
+        try:
+            from . import tips as _tips
+            from . import quotes as _q
+        except ImportError:
+            return
+        # Tip: bevorzugt biome+class-kontextuell
+        cls = getattr(self.player, 'cls', None)
+        tip = _tips.pick_tip_for_context(biome=biome, cls=cls)
+        # Lore-Quote: pick aus VELGRAD_VOICE_LINES_POOL über quotes.pick_death_quote
+        # ... nicht ideal, weil Death-Quotes spezifisch sind.  Wir
+        # benutzen einen Origin-/Lore-Quote aus dem class_voicelines-Pool
+        # statt dessen.  Fallback: rinfo.short_desc als Quote.
+        quote = None
+        try:
+            quote = _q.class_origin_quote(cls) if cls else None
+        except Exception:
+            pass
+        if not quote and rinfo is not None:
+            quote = rinfo.get('short_desc', '')
+        self.region_transition['loading_card'] = {
+            'biome':  biome,
+            'cls':    cls,
+            'tip':    tip['text'] if tip else None,
+            'quote':  (quote or '').strip()[:200],
         }
 
     def push_event_log(self, text, color=(220, 220, 220), duration=4.5):
@@ -2382,6 +2892,25 @@ class Game:
         return False
 
     def _slide_against_decor(self, x, y, dx, dy, r):
+        """Update #147 (User-Report „durch Wände laufen"): Sub-Stepping
+        bei großen Moves verhindert Tunneling durch Decor-Walls.
+        """
+        move_len = math.hypot(dx, dy)
+        # Decor-Walls haben typisch collide_radius=10 → max-step = 10 px
+        max_step = 10.0
+        if move_len > max_step:
+            n_steps = int(math.ceil(move_len / max_step))
+            step_dx = dx / n_steps
+            step_dy = dy / n_steps
+            cur_x, cur_y = x, y
+            for _ in range(n_steps):
+                cur_x, cur_y = self._decor_slide_step(
+                    cur_x, cur_y, step_dx, step_dy, r)
+            return cur_x, cur_y
+        return self._decor_slide_step(x, y, dx, dy, r)
+
+    def _decor_slide_step(self, x, y, dx, dy, r):
+        """Single-Step-Decor-Slide ohne Sub-Division."""
         nx, ny = x + dx, y + dy
         if not self._decor_collides(nx, ny, r):
             return nx, ny
@@ -2759,6 +3288,18 @@ class Game:
             _tut.tick(self)
             # Update #135: Stadt-Ambient — Möwen-Flyby + NPC-Murmel
             self._tick_town_ambient(dt)
+        # Update #137 (Z-06): Auto-Save-Tick — alle 60 s ein Snapshot
+        # in das separate `AUTOSAVE_PATH`.  Nur während aktivem Spiel
+        # (kein Modal, kein Dying, kein Title).
+        if (self.state == 'playing' and not self.player.dying
+                and self.modal is None):
+            self._autosave_timer += dt
+            if self._autosave_timer >= save_mod.AUTOSAVE_INTERVAL_S:
+                self._autosave_timer = 0.0
+                try:
+                    save_mod.write_autosave(self)
+                except Exception:
+                    pass
         # B-07 (Update #49): Breadcrumb-Drop alle 0.4 s + Aging.
         # Spuren leben 30 s, danach fadet komplett aus.  Im Town irrelevant.
         if self.area == 'dungeon':
@@ -2781,6 +3322,10 @@ class Game:
         self._update_projectiles(dt)
         self._update_loot(dt)
         self._update_particles(dt)
+        # Update #136 (O-23): Pickup-Spline-Anims ticken
+        self._tick_loot_animations(dt)
+        # Update #138 (V-06): Footprints ticken
+        self._tick_footprints(dt)
         # E-05 (Update #60): Arena-Features ticken (Lava-Streams, Crypt-Graves)
         if self.area == 'dungeon' and self.arena_features:
             self._tick_arena_features(dt)
@@ -2902,7 +3447,120 @@ class Game:
         if self.area == 'dungeon':
             self._update_dungeon(dt)
             self._update_events(dt)
+        # Update #140: Camera-Logik mit Lookahead/Cursor-Lean/Crit-Pull/
+        # Boss-Pan statt statischem Player-Follow.
+        self._update_camera(dt)
+
+    def _update_camera(self, dt):
+        """Update #140 (X-01/X-02/X-04/X-05): Camera-Update mit 4
+        Effekten:
+
+        - X-01 Lookahead: Camera schiebt sich 30 % der Player-Velocity
+          in Bewegungsrichtung vor (max ±60 px) → mehr Sichtbereich
+          nach vorne beim Laufen.
+        - X-02 Cursor-Lean: Camera zieht 15 % Richtung Mauszeiger
+          (max ±40 px) → Casts/Ziele im Blick.
+        - X-04 Crit-Zoom: Bei großen Crits wird die Camera kurz zum
+          Target gepullt (decay mit slow_mo_left).
+        - X-05 Boss-Death-Pan: Camera folgt dem sterbenden Boss
+          statt dem Player für 1.8 s, mit Slow-Mo.
+        """
+        # Boss-Death-Pan hat höchste Priorität — überschreibt alle
+        # anderen Camera-Effekte.
+        if self._cam_boss_pan is not None:
+            self._cam_boss_pan['t'] -= dt
+            if self._cam_boss_pan['t'] <= 0:
+                self._cam_boss_pan = None
+                self.slow_mo_left = 0.0
+            else:
+                # Camera auf Boss-Position halten, kein Player-Follow
+                bp = self._cam_boss_pan
+                target = bp['boss_pos']
+                # Smooth-Lerp Camera zur Boss-Position
+                lerp_t = min(1.0, dt * 4.0)
+                self.camera.x += (target.x - self.camera.x) * lerp_t
+                self.camera.y += (target.y - self.camera.y) * lerp_t
+                # Slow-Mo erzwungen während Pan
+                self.slow_mo_left = max(self.slow_mo_left, 0.3)
+                # Clear sonstige Offsets während Boss-Pan
+                self._cam_offset_x *= 0.85
+                self._cam_offset_y *= 0.85
+                # Player-Prev für Lookahead refresh nach Pan-Ende
+                self._cam_prev_player_pos = (self.player.pos.x,
+                                              self.player.pos.y)
+                return
+        # Player-Follow Default
         self.camera = Vector2(self.player.pos)
+        # X-01 Lookahead — basiert auf Player-Movement-Delta
+        # Update #141 (User-Report): Setting-respecting + leicht
+        # reduzierte Intensität (30% → 20%, Cap 60 → 45 px).
+        prev_x, prev_y = self._cam_prev_player_pos
+        vel_x = (self.player.pos.x - prev_x) / max(0.001, dt)
+        vel_y = (self.player.pos.y - prev_y) / max(0.001, dt)
+        self._cam_prev_player_pos = (self.player.pos.x,
+                                       self.player.pos.y)
+        if self.settings.get('camera_lookahead', True):
+            look_x = max(-45.0, min(45.0, vel_x * 0.2))
+            look_y = max(-45.0, min(45.0, vel_y * 0.2))
+        else:
+            look_x = look_y = 0.0
+        # X-02 Cursor-Lean — Default OFF (Motion-Sickness-Trigger).
+        # Update #141: Opt-In via Setting `camera_cursor_lean`.
+        if self.settings.get('camera_cursor_lean', False):
+            try:
+                mx, my = pygame.mouse.get_pos()
+                dx = mx - SCREEN_W * 0.5
+                dy = my - SCREEN_H * 0.5
+                lean_x = max(-40.0, min(40.0, dx * 0.15))
+                lean_y = max(-40.0, min(40.0, dy * 0.15))
+            except Exception:
+                lean_x = lean_y = 0.0
+        else:
+            lean_x = lean_y = 0.0
+        # X-04 Crit-Zoom-Pull — von Crit-Target weg-pullen (verstärkt
+        # das „Hineinzoom"-Feeling).  Decay via slow_mo_left.
+        crit_x = crit_y = 0.0
+        if self._cam_crit_pull is not None and self.slow_mo_left > 0:
+            tx, ty = self._cam_crit_pull
+            # Pull-Intensity skaliert mit verbleibender slow_mo
+            pull_factor = min(1.0, self.slow_mo_left / 0.18) * 35.0
+            cdiff_x = tx - self.player.pos.x
+            cdiff_y = ty - self.player.pos.y
+            cd = math.hypot(cdiff_x, cdiff_y)
+            if cd > 0.01:
+                crit_x = (cdiff_x / cd) * pull_factor
+                crit_y = (cdiff_y / cd) * pull_factor
+        elif self.slow_mo_left <= 0:
+            self._cam_crit_pull = None
+        # Summe der Offsets, smooth-lerp zur Target-Position für
+        # weiche Übergänge (kein abruptes Snap).
+        target_ox = look_x + lean_x + crit_x
+        target_oy = look_y + lean_y + crit_y
+        lerp_t = min(1.0, dt * 8.0)
+        self._cam_offset_x += (target_ox - self._cam_offset_x) * lerp_t
+        self._cam_offset_y += (target_oy - self._cam_offset_y) * lerp_t
+
+    def trigger_crit_zoom(self, target_x, target_y):
+        """Update #140 (X-04): Trigger Crit-Zoom-Pull zur target-Position.
+        Wird in combat.hit_enemy beim Crit + großem Damage aufgerufen.
+        Decay automatisch mit slow_mo_left.
+        """
+        self._cam_crit_pull = (float(target_x), float(target_y))
+
+    def trigger_boss_death_pan(self, boss):
+        """Update #140 (X-05): Startet die 1.8 s Cinematic-Pan zum
+        sterbenden Boss.  Camera fokussiert ihn, Slow-Mo erzwungen.
+        """
+        if boss is None or not hasattr(boss, 'pos'):
+            return
+        self._cam_boss_pan = {
+            'boss_pos':  Vector2(boss.pos),
+            'boss_ref':  boss,
+            't':         1.8,
+            'total':     1.8,
+        }
+        # Initial-Slow-Mo damit's gleich sichtbar ist
+        self.slow_mo_left = max(self.slow_mo_left, 0.4)
 
     def _update_player(self, dt):
         p = self.player
@@ -3131,6 +3789,11 @@ class Game:
                     # Metal/Mud-Override; fällt sonst auf Biome-Step.
                     step_sound = self._detect_step_material()
                     snd.play_step(step_sound, volume=0.25)
+                    # Update #138 (V-06): Footprints in geeigneten Biomes.
+                    # Akt 2 (Frost-Glas), Akt 1b (Desert-Sand),
+                    # Akt 3 (Lava-Asche) hinterlassen sichtbare Spuren.
+                    if self.biome in ('frost', 'desert', 'lava'):
+                        self._spawn_footprint(p, dt)
                 # Wenn Wand blockiert hat: stoppe
                 actual_diff = (p.target - p.pos).length()
                 if actual_diff >= d - 0.1:
@@ -3217,7 +3880,31 @@ class Game:
                 # Sparse-Tick: alle 5 Frames updaten
                 if (self._ai_frame_phase + id(e)) % 5 != 0:
                     continue
+            # Update #147 (User-Report „Monster stecken an Objekten fest"):
+            # Stuck-Detection — wenn ein Aggro-Mob für 1.5 s nicht mehr
+            # bewegt UND nicht in einem Wind-Up ist, unstuck-push.
+            prev_x = e.pos.x; prev_y = e.pos.y
             enemies.update_enemy_ai(self, e, dt)
+            moved = ((e.pos.x - prev_x) ** 2
+                     + (e.pos.y - prev_y) ** 2) > 0.05
+            if not hasattr(e, '_stuck_t'):
+                e._stuck_t = 0.0
+            atk_phase = getattr(e, 'atk_phase', 'idle')
+            in_action = atk_phase in ('windup', 'swing', 'recover')
+            if moved or in_action or getattr(e, 'heavy_stunned', False):
+                e._stuck_t = 0.0
+            elif getattr(e, 'ai_state', None) == 'aggro':
+                e._stuck_t += dt
+                if e._stuck_t > 1.5:
+                    # Push aus blockierendem Decor (falls da)
+                    self._unstuck_entity(e)
+                    # Random Side-Step damit nicht direkt wieder
+                    # blockiert
+                    ang = random.uniform(0, math.tau)
+                    push = 12.0
+                    self.move_entity(
+                        e, math.cos(ang) * push, math.sin(ang) * push)
+                    e._stuck_t = 0.0
         enemies.separation(self.enemies, game=self)
 
     def _update_projectiles(self, dt):
@@ -3493,6 +4180,9 @@ class Game:
                         'mythic': 'ui_item_pickup_mythic',
                     }.get(l.item.rarity, 'pickup_item')
                     snd.play(_pickup_sfx, volume=0.6)
+                    # Update #136 (O-23): Pickup-Spline-Anim spawnen
+                    self._spawn_loot_pickup_anim(
+                        l.pos.x, l.pos.y, l.color, 'item')
                     self.loot.remove(l)
             elif l.kind == 'skill_gem':
                 sid = getattr(l, 'skill_id', None)
@@ -3517,6 +4207,9 @@ class Game:
                                           (200, 150, 240),
                                           life_max=0.8, size_max=5)
                     snd.play('levelup', volume=0.7)
+                # Update #136 (O-23): Pickup-Spline-Anim
+                self._spawn_loot_pickup_anim(
+                    l.pos.x, l.pos.y, (200, 150, 240), 'skill_gem')
                 self.loot.remove(l)
             elif l.kind == 'vital_orb':
                 # Update #96: Vital-Orb auto-pickup → heilt HP+MP.
@@ -3532,6 +4225,9 @@ class Game:
                                       life_max=0.6, size_max=4,
                                       gravity=-40)
                 snd.play('pickup_gold', volume=0.6)
+                # Update #136 (O-23): Pickup-Spline-Anim für Vital-Orb
+                self._spawn_loot_pickup_anim(
+                    l.pos.x, l.pos.y, l.color, 'vital_orb')
                 self.loot.remove(l)
             elif l.kind == 'gem':
                 from .constants import GEM_TYPES
@@ -3552,6 +4248,9 @@ class Game:
                     snd.play('pickup_uncut_shard', volume=0.5)
                     from . import quests
                     quests.on_gem_pickup(self)
+                # Update #136 (O-23): Pickup-Spline-Anim für Gem
+                self._spawn_loot_pickup_anim(
+                    l.pos.x, l.pos.y, l.color, 'gem')
                 self.loot.remove(l)
             else:  # gold
                 p.gold += l.gold
@@ -3566,6 +4265,9 @@ class Game:
                 if l.gold >= 25:
                     self.push_event_log(f'+{l.gold} Gold',
                                          (255, 215, 90), duration=3.0)
+                # Update #136 (O-23): Pickup-Spline-Anim für Gold
+                self._spawn_loot_pickup_anim(
+                    l.pos.x, l.pos.y, l.color, 'gold')
                 self.loot.remove(l)
 
     def _update_particles(self, dt):
@@ -4046,6 +4748,9 @@ class Game:
         # Vor dem Cursor, damit Cursor on-top bleibt.
         if (self.state == 'playing' and self.modal is None
                 and self.area in ('dungeon', 'town', 'outpost')):
+            # Update #138 (M-19): Hover-Outline VOR Tooltips — gibt
+            # visuelles Targeting-Feedback bevor Maus geklickt wird.
+            self._draw_hover_outlines()
             self._draw_loot_hover_tooltip()
             # Update #89: Enemy-Hover-Tooltip — Name/Rarity/Affixes/Status
             self._draw_enemy_hover_tooltip()
@@ -4067,6 +4772,8 @@ class Game:
             pygame.draw.circle(ring, (255, 220, 140, 220),
                                 (r + 2, r + 2), 3)
             self.screen.blit(ring, (cx - r - 2, cy - r - 2))
+        # Update #139 (AA-01): Debug-Overlay als letzter Pass über allem
+        self._draw_debug_overlay()
         pygame.display.flip()
 
     # Kinds, die als "stehende" Objekte (Y-sortiert) gerendert werden.
@@ -4090,6 +4797,8 @@ class Game:
             sx, sy = self.w2s_xy(bp.x, bp.y)
             if -100 < sx < SCREEN_W + 100 and -100 < sy < SCREEN_H + 100:
                 weather_mod.draw_blood_pool(self.screen, bp, int(sx), int(sy))
+        # 1.7) Update #138 (V-06): Footprints unter Decor + Entities
+        self._draw_footprints()
 
         # 2) Boden-Decor (klein, liegt flach)
         for t in self.tiles:
@@ -4102,6 +4811,9 @@ class Game:
         # 3) Loot (am Boden)
         for l in self.loot:
             self._draw_loot(l)
+        # Update #136 (O-23): Flying-Pickup-Animationen (über Loot, vor Entities)
+        if self._loot_animations:
+            self._draw_loot_animations()
 
         # 3.5) E-05 (Update #60): Arena-Features rendern.
         if self.arena_features:
@@ -4150,9 +4862,10 @@ class Game:
             elif kind == 'npc':
                 sprites.draw_npc_at(self.screen, obj, sx, sy)
                 # Quest-Marker über NPC: '!' = neue Quest, '?' = Stage-Return.
+                # Update #145: player-aware → locked Quests zeigen kein „!"
                 log = getattr(self, 'quest_log', None)
                 if log is not None:
-                    mark = log.npc_marker(obj.name)
+                    mark = log.npc_marker(obj.name, player=self.player)
                     if mark:
                         self._draw_npc_quest_marker(sx, sy - 64, mark)
             elif kind == 'dportal':
@@ -4184,10 +4897,13 @@ class Game:
         self.lighting.begin_frame()
         self.lighting.gather_default(self)
         # Tag/Nacht in Stadt
+        _town_grading_tint = None
         if self.area == 'town':
             t = self.stats.get('time_played', 0.0) if self.stats else 0.0
             ambient = weather_mod.day_night_ambient(t)
             self.lighting.ambient_alpha = weather_mod.day_night_ambient_alpha(t)
+            # Update #138 (M-21): Color-Grading-Tint cachen für Post-Pass
+            _town_grading_tint = weather_mod.town_color_grading(t)
         else:
             ambient = {
                 'crypt': (8, 6, 12),
@@ -4200,6 +4916,18 @@ class Game:
             }.get(self.biome, (8, 6, 12))
             self.lighting.ambient_alpha = 130
         self.lighting.render(self.screen, ambient_color=ambient)
+
+        # Update #138 (M-21): Town-Color-Grading Post-Pass via BLEND_MULT.
+        # Morgens warm, mittags neutral, abends rosé, nachts kalt-blau.
+        # Subtil — Lore-Akzent über den Tag, nicht stark genug um die
+        # Stadt-Lesbarkeit zu beeinträchtigen.
+        if _town_grading_tint is not None:
+            tr, tg, tb = _town_grading_tint
+            if tr != 255 or tg != 255 or tb != 255:
+                tint = pygame.Surface((SCREEN_W, SCREEN_H))
+                tint.fill((tr, tg, tb))
+                self.screen.blit(tint, (0, 0),
+                                  special_flags=pygame.BLEND_RGB_MULT)
 
         # M-05 (Update #67): Volumetric-Fog pro Biome + Rain-Bonus.
         # Crypt = blaugrauer Nebel, Swamp = gelb-grüner Sumpf-Dunst, Frost =
@@ -4397,6 +5125,48 @@ class Game:
             flash = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
             flash.fill((255, 30, 30, int(80 * self._damage_flash * flash_mult)))
             self.screen.blit(flash, (0, 0))
+        # Update #136 (M-11): Low-HP-Vignette + Chromatic-Aberration-Approx.
+        # Bei HP < 25 % pulsiert ein roter Radial-Vignette-Rand im Herzschlag-
+        # Takt; Spieler spürt visuell den Druck.  Photosensitive-Mode dimmt
+        # die Intensität.  Pygame hat kein echtes RGB-Channel-Shift —
+        # statt dessen layern wir 2 dezente Cyan/Magenta-Ränder am
+        # äußeren Bildschirm-Rand für den Aberration-Eindruck.
+        try:
+            from . import progression as _prog
+            eff = _prog.effective(self.player)
+            hp_pct = self.player.hp / max(1, eff['hp_max'])
+        except Exception:
+            hp_pct = 1.0
+        if (hp_pct < 0.25 and self.state == 'playing'
+                and not self.player.dying):
+            t = pygame.time.get_ticks() * 0.006
+            # Herzschlag: 2 Pulse pro Zyklus (lub-dub)
+            beat = (math.sin(t) + math.sin(t * 1.3) * 0.4) * 0.5 + 0.5
+            intensity = (1.0 - hp_pct / 0.25)  # 0..1, voll bei 0% HP
+            base_a = int((50 + 80 * beat) * intensity * flash_mult)
+            # Vignette: weicher Rot-Radial-Fade von außen
+            vig = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            # 4 Layer für sanften Falloff
+            for k in range(4):
+                t_k = k / 3.0
+                pad_x = int(SCREEN_W * 0.05 * t_k)
+                pad_y = int(SCREEN_H * 0.05 * t_k)
+                a = int(base_a * (1.0 - t_k))
+                pygame.draw.rect(vig, (180, 30, 30, a),
+                                  (pad_x, pad_y,
+                                   SCREEN_W - pad_x * 2,
+                                   SCREEN_H - pad_y * 2),
+                                  3 + k * 2)
+            self.screen.blit(vig, (0, 0))
+            # Chromatic-Aberration-Approx: Cyan/Magenta-Säume am Bildrand
+            ca_a = int(60 * intensity * flash_mult)
+            if ca_a > 0:
+                ca_top = pygame.Surface((SCREEN_W, 4), pygame.SRCALPHA)
+                ca_top.fill((255, 80, 220, ca_a))
+                self.screen.blit(ca_top, (2, 0))
+                ca_bot = pygame.Surface((SCREEN_W, 4), pygame.SRCALPHA)
+                ca_bot.fill((80, 220, 255, ca_a))
+                self.screen.blit(ca_bot, (-2, SCREEN_H - 4))
         # Boss-Death-Cinematic-Flash
         if self.boss_flash > 0:
             flash = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
@@ -4481,6 +5251,30 @@ class Game:
                 self._show_prompt('F: Zurück nach Brassweir',
                                   (220, 200, 140))
                 return
+            # Update #146 (User-Report „Altäre/Notizen nicht erkennbar"):
+            # Prompt-Hint auch für Mahnmal-Stele + Lore-Tafel.
+            for t in self.tiles:
+                kind = getattr(t, 'kind', None)
+                if kind == 'mahnmal_stele':
+                    dx = p.pos.x - t.x; dy = p.pos.y - t.y
+                    if dx * dx + dy * dy < 70 * 70:
+                        if self.area == 'outpost':
+                            self._show_prompt('F: Reisen (Mahnmal-Stele)',
+                                                (220, 180, 110))
+                        else:
+                            self._show_prompt('F: Aspekt-Schrein öffnen',
+                                                (220, 180, 110))
+                        return
+                if kind == 'lore_tablet':
+                    dx = p.pos.x - t.x; dy = p.pos.y - t.y
+                    if dx * dx + dy * dy < 60 * 60:
+                        if not getattr(t, 'lore_read', False):
+                            self._show_prompt('F: Lore-Tafel lesen (+1 Fragment)',
+                                                (240, 200, 100))
+                        else:
+                            self._show_prompt('F: Lore-Tafel (gelesen)',
+                                                (160, 140, 100))
+                        return
         else:
             for portal in self.portals:
                 if (portal.pos - p.pos).length() < 40:
@@ -4996,6 +5790,9 @@ class Game:
         'music_vol', 'sfx_vol', 'screen_shake', 'particle_density',
         'photosensitive', 'rim_light', 'high_contrast_aoe',
         'tactical_reduce', 'minimap_rotate', 'colorblind_ailments',
+        # Update #141 (Motion-Sickness-Fix): Camera-Toggles als
+        # Accessibility-Options.  Cursor-Lean ist Default OFF.
+        'camera_lookahead', 'camera_cursor_lean',
         'frame_cap', 'fullscreen',
     ]
     _FRAME_CAP_OPTIONS = [30, 60, 120, 144, 0]  # 0 = unlimited
@@ -5085,6 +5882,15 @@ class Game:
                     self.settings['colorblind_ailments'] = not self.settings.get(
                         'colorblind_ailments', False)
                     return
+                # Update #141 (Motion-Sickness-Fix): Camera-Toggles
+                if key == 'camera_lookahead':
+                    self.settings['camera_lookahead'] = not self.settings.get(
+                        'camera_lookahead', True)
+                    return
+                if key == 'camera_cursor_lean':
+                    self.settings['camera_cursor_lean'] = not self.settings.get(
+                        'camera_cursor_lean', False)
+                    return
                 if key == 'particle_density':
                     # Cycle Niedrig → Mittel → Hoch → Ultra (siehe fx.DENSITY_PRESETS).
                     # Wirkt seit C-02 nur noch auf AMBIENT-Layer (Wetter,
@@ -5155,6 +5961,10 @@ class Game:
             ('tactical_reduce',  f'Eigene VFX gedämpft', 'toggle', self.settings.get('tactical_reduce', False)),
             ('minimap_rotate',   f'Minimap rotiert',    'toggle', self.settings.get('minimap_rotate', False)),
             ('colorblind_ailments', f'Colorblind: Ailments', 'toggle', self.settings.get('colorblind_ailments', False)),
+            # Update #141 (Motion-Sickness-Fix): Camera-Toggles als
+            # Accessibility-Options.
+            ('camera_lookahead', f'Camera: Lookahead',  'toggle', self.settings.get('camera_lookahead', True)),
+            ('camera_cursor_lean', f'Camera: Cursor-Lean (kann Übelkeit)', 'toggle', self.settings.get('camera_cursor_lean', False)),
             ('frame_cap',        f'Frame-Cap',          'cycle',  self._frame_cap_label()),
             ('fullscreen',       f'Vollbild',           'toggle', self.fullscreen),
         ]
@@ -7033,6 +7843,259 @@ class Game:
             self.screen.blit(sub_surf,
                               (SCREEN_W // 2 - sub_surf.get_width() // 2,
                                banner_y + 18 + title_surf.get_height() + 2))
+        # Update #139 (X-11): Lore-Loading-Card als zusätzliches Overlay
+        # OBEN am Bildschirm bei Dungeon-Entry (zusätzlich zum Bottom-
+        # Banner).  Zeigt Klassen-Sigil + Lore-Quote + Tip.
+        card = rt.get('loading_card')
+        if card is not None:
+            self._draw_lore_loading_card(card, alpha)
+
+    def _draw_debug_overlay(self):
+        """Update #139 (AA-01): Debug-Overlay (F3-Toggle).
+
+        Zeigt FPS, ms/frame, Particle-/Mob-/Projectile-Count, Player-Pos,
+        AI-LOD-Stats, current biome, music-snapshot, render-Mode.  Dezent
+        oben-rechts, monospace-Style.
+
+        Aktiv via `self._debug_overlay = True` (F3).  Render-Pass läuft
+        IMMER (auch in Title/Dead), damit der User die Stats sieht.
+        """
+        if not getattr(self, '_debug_overlay', False):
+            return
+        font = getattr(self, 'font_small', None)
+        if font is None:
+            return
+        # FPS via clock
+        try:
+            fps = int(self.clock.get_fps())
+        except Exception:
+            fps = 0
+        # Counts
+        n_part = len(getattr(self, 'particles', []))
+        n_mob = len(getattr(self, 'enemies', []))
+        n_proj = len(getattr(self, 'projectiles', []))
+        n_loot = len(getattr(self, 'loot', []))
+        n_floaters = len(getattr(self, 'floaters', []))
+        n_blood = len(getattr(self, 'blood_pools', []))
+        n_foot = len(getattr(self, 'footprints', []))
+        # Player + State
+        p = getattr(self, 'player', None)
+        if p is not None:
+            px = int(p.pos.x); py = int(p.pos.y)
+            pcls = getattr(p, 'cls', '?')
+            plvl = getattr(p, 'level', '?')
+            php = int(getattr(p, 'hp', 0))
+        else:
+            px = py = 0; pcls = '?'; plvl = '?'; php = 0
+        # AI-LOD
+        ai_active = sum(
+            1 for e in getattr(self, 'enemies', [])
+            if getattr(e, 'ai_state', None) is not None)
+        # Render-Mode + Music
+        rscale = self.settings.get('render_scale', 1.0)
+        # Lines
+        lines = [
+            f'FPS: {fps}',
+            f'Particles: {n_part}',
+            f'Mobs: {n_mob} (AI-active: {ai_active})',
+            f'Projectiles: {n_proj}',
+            f'Loot: {n_loot} | Floaters: {n_floaters}',
+            f'Blood/Footprints: {n_blood}/{n_foot}',
+            f'Player: {pcls} L{plvl} HP={php}',
+            f'  pos=({px}, {py})',
+            f'Area: {getattr(self, "area", "?")}',
+            f'Biome: {getattr(self, "biome", "?")}',
+            f'Modal: {getattr(self, "modal", "None") or "None"}',
+            f'State: {getattr(self, "state", "?")}',
+            f'Render-Scale: {rscale}',
+            f'Hardcore: {getattr(self, "hardcore", False)}',
+            f'F3=Toggle  F12=BugReport',
+        ]
+        line_h = font.get_height() + 1
+        box_w = 280
+        box_h = len(lines) * line_h + 12
+        x = SCREEN_W - box_w - 12
+        y = SCREEN_H - box_h - 12
+        bg = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+        bg.fill((6, 4, 2, 200))
+        self.screen.blit(bg, (x, y))
+        pygame.draw.rect(self.screen, (90, 220, 130), (x, y, box_w, box_h), 1)
+        # Header
+        cy = y + 6
+        for line in lines:
+            col = (130, 240, 170) if line.startswith('FPS') \
+                else (220, 220, 200)
+            ls = font.render(line, True, col)
+            self.screen.blit(ls, (x + 8, cy))
+            cy += line_h
+
+    def _write_bug_report(self):
+        """Update #139 (AA-09): F12 → Bug-Report-Snapshot.
+
+        Schreibt nach `bugreports/<timestamp>/`:
+          - screenshot.png      (PNG des aktuellen Frames)
+          - state.txt           (Game-Snapshot + last events)
+          - save_snapshot.json  (Kopie des aktuellen Slot-Saves)
+
+        Failt silently bei OS-Fehlern (Bug-Report darf nie crashen).
+        """
+        import time as _t
+        import shutil as _sh
+        import json as _json
+        from pathlib import Path
+        from . import crash_logger as _crash
+        from . import save as _save
+        ts = _t.strftime('%Y%m%d_%H%M%S')
+        try:
+            dir_ = Path('bugreports') / f'report_{ts}'
+            dir_.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            self.toast('Bug-Report fehlgeschlagen (kein Schreibrecht).',
+                       (220, 130, 80))
+            return
+        # 1. Screenshot via pygame.image.save
+        try:
+            pygame.image.save(self.screen, str(dir_ / 'screenshot.png'))
+        except Exception:
+            pass
+        # 2. State-Snapshot via crash_logger-Helper
+        try:
+            with (dir_ / 'state.txt').open('w', encoding='utf-8') as f:
+                f.write(f'Shadowfall — Bug-Report\n')
+                f.write(f'Timestamp: {_t.strftime("%Y-%m-%d %H:%M:%S")}\n')
+                f.write(f'SAVE_VERSION: {_save.SAVE_VERSION}\n\n')
+                f.write('Game-State:\n')
+                # Re-use crash_logger snapshot via direct call
+                _crash._game_ref = self
+                f.write(_crash._game_snapshot())
+                f.write('\n\nRecent events:\n')
+                for ev in _crash._recent_events:
+                    f.write('  ' + ev + '\n')
+        except Exception:
+            pass
+        # 3. Save-Snapshot (Copy aktueller Slot)
+        try:
+            slot = _save.get_active_slot()
+            sp = _save.slot_path(slot)
+            if sp.exists():
+                _sh.copy(sp, dir_ / 'save_snapshot.json')
+        except Exception:
+            pass
+        # User-Feedback
+        self.toast(f'Bug-Report → {dir_}',
+                    (140, 220, 140))
+        self.push_event_log(f'Bug-Report gespeichert: {dir_.name}',
+                              (140, 220, 140), duration=6.0)
+
+    def _draw_lore_loading_card(self, card, alpha):
+        """Update #139 (X-11): Rendert die Lore-Loading-Card oben am
+        Bildschirm während der Region-Transition.
+
+        Layout (zentriert, 560×180 px, y=130):
+          - Klassen-Aspekt-Sigil links (40×40 Hexagon mit Glyph)
+          - Quote (mittig, kursiv-Look via italic-color)
+          - „TIP: …"-Zeile unten (gold, font_small)
+        """
+        from . import aspects as _asp
+        cls = card.get('cls') or 'warrior'
+        tip = card.get('tip')
+        quote = card.get('quote')
+        # Modal-Rect
+        W, H = 580, 170
+        x = SCREEN_W // 2 - W // 2
+        y = 130
+        # Pergament-Background mit Alpha
+        bg = pygame.Surface((W, H), pygame.SRCALPHA)
+        for py in range(H):
+            t = py / max(1, H - 1)
+            rr = int(36 + (24 - 36) * t)
+            gg = int(28 + (20 - 28) * t)
+            bb = int(18 + (14 - 18) * t)
+            pygame.draw.line(bg, (rr, gg, bb, int(220 * alpha)),
+                              (0, py), (W, py))
+        self.screen.blit(bg, (x, y))
+        # Bronze-Border
+        bronze = (154, 118, 66)
+        bronze_alpha = (*bronze, int(255 * alpha))
+        border = pygame.Surface((W, H), pygame.SRCALPHA)
+        pygame.draw.rect(border, bronze_alpha,
+                          (0, 0, W, H), 2)
+        self.screen.blit(border, (x, y))
+        # Aspekt-Sigil + Klassen-Hexagon links
+        aspect_key = _asp.aspect_for_class(cls)
+        pal = _asp.aspect_palette(aspect_key)
+        sig_cx = x + 50
+        sig_cy = y + H // 2
+        # Hexagon-Rahmen
+        hex_pts = []
+        for k in range(6):
+            ang = -math.pi / 2 + k * (math.pi / 3)
+            hex_pts.append((sig_cx + math.cos(ang) * 28,
+                             sig_cy + math.sin(ang) * 28))
+        hex_surf = pygame.Surface((90, 90), pygame.SRCALPHA)
+        hex_pts_local = [(p[0] - sig_cx + 45, p[1] - sig_cy + 45)
+                          for p in hex_pts]
+        # Hex-Fill
+        a_int = int(255 * alpha)
+        pygame.draw.polygon(hex_surf, (16, 12, 8, a_int),
+                              hex_pts_local)
+        pygame.draw.polygon(hex_surf,
+                              (*pal['primary'], a_int),
+                              hex_pts_local, 2)
+        self.screen.blit(hex_surf, (sig_cx - 45, sig_cy - 45))
+        # Aspekt-Glyph in der Mitte
+        _asp.draw_glyph(self.screen, sig_cx, sig_cy, 32,
+                          aspect_key, color=pal['bright'])
+        # Quote (rechts vom Sigil)
+        quote_x = x + 110
+        quote_y = y + 18
+        font_small = self.font_small
+        if quote:
+            # Soft-wrap auf ~60 Zeichen pro Zeile
+            words = quote.split(' ')
+            lines = []
+            cur = ''
+            for w in words:
+                tent = (cur + ' ' + w).strip()
+                if len(tent) > 60 and cur:
+                    lines.append(cur)
+                    cur = w
+                else:
+                    cur = tent
+            if cur:
+                lines.append(cur)
+            for line in lines[:3]:
+                ls = font_small.render(f'„{line}"', True,
+                                         (220, 200, 170))
+                ls.set_alpha(int(220 * alpha))
+                self.screen.blit(ls, (quote_x, quote_y))
+                quote_y += ls.get_height() + 2
+        # Tip-Zeile unten am Card
+        if tip:
+            tip_y = y + H - 28
+            # Tip-Header
+            th = font_small.render('TIP', True, (240, 200, 100))
+            th.set_alpha(int(255 * alpha))
+            self.screen.blit(th, (quote_x, tip_y))
+            # Tip-Text — wrap auf 70 Zeichen
+            words = tip.split(' ')
+            tip_lines = []
+            cur = ''
+            for w in words:
+                tent = (cur + ' ' + w).strip()
+                if len(tent) > 70 and cur:
+                    tip_lines.append(cur)
+                    cur = w
+                else:
+                    cur = tent
+            if cur:
+                tip_lines.append(cur)
+            tip_text = tip_lines[0] if tip_lines else ''
+            if len(tip_lines) > 1:
+                tip_text = tip_text + ' …'
+            tt = font_small.render(tip_text, True, (220, 210, 180))
+            tt.set_alpha(int(230 * alpha))
+            self.screen.blit(tt, (quote_x + 38, tip_y))
 
     def _draw_tutorial_overlay(self):
         """Update #131 (Y-01): Zeigt das aktuelle First-Run-Tutorial-Panel.
@@ -7893,14 +8956,26 @@ class Game:
         Brassweirs Hafen-Versteinerung.
         """
         from . import outposts as _op
-        puls = abs(math.sin(pygame.time.get_ticks() * 0.003))
-        sway = math.sin(pygame.time.get_ticks() * 0.002)
+        # Update #143: Locked-Portale gedämpfter (grau + kein Puls)
+        is_locked = getattr(op, '_locked', False)
+        if is_locked:
+            puls = 0.3   # statisch dim
+            sway = 0.0
+        else:
+            puls = abs(math.sin(pygame.time.get_ticks() * 0.003))
+            sway = math.sin(pygame.time.get_ticks() * 0.002)
         bob = int(sway * 2)
 
         # Akzent-Farbe aus Outpost-Cfg
         cfg = _op.OUTPOSTS.get(op.outpost_key) if hasattr(op, 'outpost_key') \
             else None
         accent = cfg['color'] if cfg else (220, 200, 140)
+        # Locked: entsättigt zu Grau-Ton
+        if is_locked:
+            avg = (accent[0] + accent[1] + accent[2]) // 3
+            accent = (int(avg * 0.6),
+                       int(avg * 0.6),
+                       int(avg * 0.65))
         glow_c = (min(255, accent[0] + 30),
                   min(255, accent[1] + 30),
                   min(255, accent[2] + 30))
@@ -8179,6 +9254,45 @@ class Game:
                                     (px, py), 4, 1)
 
     def _draw_enemy_at(self, e, sx, sy):
+        # Update #136 (O-19): Aggro-Tell-Animation — bei AGGRO-State-Wechsel
+        # 0.35 s Sprite-Flash (heller Rim) + roter Eye-Glow + Y-Scale-Pulse.
+        # Spieler sieht „der hat mich gesehen!" sofort.
+        if getattr(e, '_aggro_tell_t', 0) > 0:
+            e._aggro_tell_t = max(0.0, e._aggro_tell_t - 0.016)
+            t_left = e._aggro_tell_t / 0.35
+            # 1. Rote Outline-Aura (pulsierend, schnell)
+            r = int(e.radius + 6 + 8 * (1.0 - t_left))
+            tell_a = int(220 * t_left)
+            tell = pygame.Surface((r * 2 + 4, r * 2 + 4),
+                                    pygame.SRCALPHA)
+            pygame.draw.circle(tell, (255, 60, 40, tell_a),
+                                (r + 2, r + 2), r, 3)
+            pygame.draw.circle(tell, (255, 200, 60,
+                                       tell_a // 2),
+                                (r + 2, r + 2), r - 4, 2)
+            self.screen.blit(tell,
+                              (int(sx) - r - 2,
+                               int(sy) - r - 2 - e.radius // 2))
+            # 2. Eye-Glow oben am Mob-Kopf (zwei rote Punkte)
+            eye_y = int(sy) - e.height + 8
+            eye_a = int(255 * t_left)
+            for dx in (-3, 3):
+                ec = pygame.Surface((10, 10), pygame.SRCALPHA)
+                pygame.draw.circle(ec, (255, 60, 40, eye_a),
+                                    (5, 5), 4)
+                pygame.draw.circle(ec, (255, 255, 220, eye_a),
+                                    (5, 5), 2)
+                self.screen.blit(ec, (int(sx) + dx - 5,
+                                        eye_y - 5))
+            # 3. „!"-Tell-Floater einmalig am Anim-Start
+            if t_left > 0.85 and not getattr(e, '_aggro_tell_pushed',
+                                              False):
+                e._aggro_tell_pushed = True
+                self.floaters.append(Floater(
+                    e.pos.x, e.pos.y - e.height - 10,
+                    '!', (255, 80, 50), big=True, life=0.5))
+            if t_left <= 0.0:
+                e._aggro_tell_pushed = False
         # Update #40: Attack-Animation-VFX. Wind-Up zeigt Aura über dem
         # Enemy die anschwillt, Spieler kann reagieren.
         atk_phase = getattr(e, 'atk_phase', 'idle')
@@ -8395,12 +9509,78 @@ class Game:
             pygame.draw.circle(self.screen, (255, 255, 255), (int(x2), int(y2)), 3)
 
     def _draw_bolt(self, b):
+        """Update #138 (M-18): rendert Procedural-Lightning mit Glow-
+        Halo + Main-Polyline + Branch-Polylines (Decay-Alpha).
+
+        3-Layer-Glow: außen breit/transparent (cyan-blau), innen dünn
+        weiß-hell.  Branches mit 60% Alpha gegenüber Main.
+        """
         a = 1 - b.age / b.life
+        if a <= 0:
+            return
         pts = [self.w2s(Vector2(x, y)) for x, y in b.points]
-        if len(pts) >= 2:
+        if len(pts) < 2:
+            return
+        # Glow-Surface über die Bounding-Box des Bolts
+        try:
+            min_x = min(p[0] for p in pts)
+            max_x = max(p[0] for p in pts)
+            min_y = min(p[1] for p in pts)
+            max_y = max(p[1] for p in pts)
+            # Branches mit in die BBox aufnehmen
+            for bpath in getattr(b, 'branches', ()):
+                for x, y in bpath:
+                    bs = self.w2s(Vector2(x, y))
+                    min_x = min(min_x, bs[0]); max_x = max(max_x, bs[0])
+                    min_y = min(min_y, bs[1]); max_y = max(max_y, bs[1])
+            # Padding für Glow
+            pad = 16
+            bbw = max(2, int(max_x - min_x + pad * 2))
+            bbh = max(2, int(max_y - min_y + pad * 2))
+            ox, oy = int(min_x - pad), int(min_y - pad)
+            glow_surf = pygame.Surface((bbw, bbh), pygame.SRCALPHA)
+            # Offset-Helper für Glow-Surface
+            def _shift(p):
+                return (int(p[0] - ox), int(p[1] - oy))
+            main_shift = [_shift(p) for p in pts]
+            # 3-Layer-Render: außen breit + transparent, Mitte normal,
+            # innen schmal + hell-weiß
+            outer_w = max(2, int(8 * a))
+            mid_w = max(1, int(4 * a))
+            inner_w = max(1, int(2 * a))
+            outer_col = (140, 180, 255, int(80 * a))
+            mid_col = (180, 210, 255, int(180 * a))
+            inner_col = (255, 255, 255, int(255 * a))
+            for col, w in ((outer_col, outer_w),
+                            (mid_col, mid_w),
+                            (inner_col, inner_w)):
+                if len(main_shift) >= 2:
+                    pygame.draw.lines(glow_surf, col, False,
+                                       main_shift, w)
+            # Branches mit Decay-Alpha 0.6
+            for bpath in getattr(b, 'branches', ()):
+                if len(bpath) < 2:
+                    continue
+                bpts = [_shift(self.w2s(Vector2(x, y)))
+                         for x, y in bpath]
+                br_outer = (140, 180, 255, int(50 * a))
+                br_mid = (180, 210, 255, int(110 * a))
+                br_inner = (255, 255, 255, int(180 * a))
+                br_outer_w = max(1, int(5 * a))
+                br_mid_w = max(1, int(3 * a))
+                br_inner_w = max(1, int(1 * a))
+                pygame.draw.lines(glow_surf, br_outer, False,
+                                   bpts, br_outer_w)
+                pygame.draw.lines(glow_surf, br_mid, False,
+                                   bpts, br_mid_w)
+                pygame.draw.lines(glow_surf, br_inner, False,
+                                   bpts, br_inner_w)
+            self.screen.blit(glow_surf, (ox, oy))
+        except (TypeError, ValueError):
+            # Fallback auf simple polyline wenn Glow fehlschlägt
             try:
-                pygame.draw.lines(self.screen, (180, 200, 255), False, pts,
-                                  max(1, int(3 * a)))
+                pygame.draw.lines(self.screen, (180, 200, 255),
+                                   False, pts, max(1, int(3 * a)))
             except (TypeError, ValueError):
                 pass
 
@@ -8730,6 +9910,107 @@ class Game:
         'dim':    (160, 150, 130),
         'gem':    (170, 120, 240),
     }
+
+    def _draw_hover_outlines(self):
+        """Update #138 (M-19): POE2-Style Hover-Outline auf Items / Mobs /
+        Interactables.  Vor den Tooltips gerendert, gibt visuelles
+        „Mein Cursor ist hier"-Feedback bevor Spieler die Maustaste
+        drückt.
+
+        Outline-Farben (Lore-konform):
+          - Item-Loot: Rarity-Color (common grau, magic blau, rare gelb,
+            unique orange)
+          - Mobs: Rarity-Color basierend auf elite/affix_tier
+          - NPC / Stelen / Lore-Tablets: cyan (interactable)
+
+        Pulse: 0.6 + 0.4 × |sin(t · 3.0)|
+        """
+        try:
+            mx, my = pygame.mouse.get_pos()
+        except Exception:
+            return
+        # Pulse-Faktor
+        t = pygame.time.get_ticks() * 0.005
+        puls = 0.6 + 0.4 * abs(math.sin(t * 3.0))
+        # 1. Loot-Hover
+        for l in self.loot:
+            sx, sy = self.w2s(l.pos)
+            sy += math.sin(l.bob) * 2
+            if (sx - mx) ** 2 + (sy - my) ** 2 < 18 * 18:
+                if l.kind == 'item' and l.item is not None:
+                    col = self._RARITY_COLOR.get(
+                        l.item.rarity, (200, 200, 200))
+                elif l.kind == 'skill_gem':
+                    col = (200, 150, 240)
+                elif l.kind == 'vital_orb':
+                    col = (240, 130, 160)
+                elif l.kind == 'gem':
+                    col = l.color
+                else:  # gold
+                    col = (255, 215, 90)
+                # 3-Layer pulse-Ring um den Loot-Dot
+                a = int(180 + 60 * puls)
+                outline = pygame.Surface((44, 44), pygame.SRCALPHA)
+                pygame.draw.circle(outline, (*col, a),
+                                    (22, 22), int(14 + puls * 3), 2)
+                pygame.draw.circle(outline, (*col, a // 2),
+                                    (22, 22), int(18 + puls * 4), 1)
+                self.screen.blit(outline, (int(sx) - 22, int(sy) - 22))
+                break
+        # 2. Enemy-Hover
+        for e in self.enemies:
+            sx, sy = self.w2s(e.pos)
+            dx = sx - mx
+            dy = sy - my
+            if dx * dx + dy * dy < (e.radius + 8) ** 2:
+                # Threat-Color: Boss=rot, Elite/Affix=orange, sonst rot-dim
+                # Update #143: `affix_tier` ist ein STRING ('magic'/
+                # 'rare'/'unique') oder None — KEIN int.  Mein vorheriger
+                # `>= 2`-Compare war semantisch falsch und hat bei
+                # affix_tier='rare' gecrashed.  Jetzt: String-Check
+                # gegen Rare-/Unique-Tier-Namen.
+                if getattr(e, 'is_boss', False):
+                    col = (255, 80, 60)
+                elif (getattr(e, 'elite', False)
+                      or getattr(e, 'affix_tier', None)
+                          in ('rare', 'unique')):
+                    col = (255, 160, 80)
+                elif getattr(e, 'is_mini_boss', False):
+                    col = (255, 100, 100)
+                else:
+                    col = (220, 130, 100)
+                r = int(e.radius + 4 + puls * 3)
+                outline = pygame.Surface((r * 2 + 8, r * 2 + 8),
+                                          pygame.SRCALPHA)
+                a = int(160 + 80 * puls)
+                pygame.draw.circle(outline, (*col, a),
+                                    (r + 4, r + 4), r, 2)
+                pygame.draw.circle(outline, (*col, a // 2),
+                                    (r + 4, r + 4), r + 3, 1)
+                self.screen.blit(outline, (int(sx) - r - 4,
+                                            int(sy) - r - 4))
+                break
+        # 3. Decor-Hover (Interactables: lore_tablet, mahnmal_stele,
+        #    altar, rune_circle)
+        INTERACT_KINDS = {'lore_tablet', 'mahnmal_stele', 'altar',
+                          'rune', 'rune_circle'}
+        for d in getattr(self, 'tiles', ()):
+            if getattr(d, 'kind', None) not in INTERACT_KINDS:
+                continue
+            sx, sy = self.w2s_xy(d.x, d.y)
+            dx = sx - mx
+            dy = sy - my
+            if dx * dx + dy * dy < 22 * 22:
+                col = (90, 220, 255)   # cyan = interactable
+                r = int(18 + puls * 4)
+                outline = pygame.Surface((r * 2 + 8, r * 2 + 8),
+                                          pygame.SRCALPHA)
+                a = int(180 + 60 * puls)
+                pygame.draw.circle(outline, (*col, a),
+                                    (r + 4, r + 4), r, 2)
+                self.screen.blit(outline, (int(sx) - r - 4,
+                                            int(sy) - r - 4))
+                break
 
     def _draw_loot_hover_tooltip(self):
         """Findet das Loot-Item unter dem Mauszeiger und rendert dessen
@@ -9064,4 +10345,11 @@ def _weapon_sound_pair(cls, heavy=False):
 
 
 def main():
-    Game().run()
+    # Update #137 (AA-03): Crash-Logger installieren VOR Game.__init__,
+    # damit auch Init-Crashes geloggt werden.  Game-Referenz wird nach
+    # dem Game-Constructor nachgereicht für State-Snapshot.
+    from . import crash_logger as _crash
+    _crash.install()
+    g = Game()
+    _crash.install(g)   # game-ref jetzt verfügbar
+    g.run()

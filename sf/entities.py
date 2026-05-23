@@ -489,17 +489,58 @@ class Decal:
 
 
 class LightningBolt:
+    """Update #138 (M-18): Procedural-Lightning-Bolt mit Bezier-
+    Sub-Segmentierung + Random-Branches.
+
+    Statt eines einzelnen Polyline-Strangs gibt es jetzt:
+      - Main-Path: 5-7 Segmente, ±15 px Random-Offset
+      - 2 Branches: ein Punkt aus dem Main-Path, 2-3 Segmente, kürzere
+        Länge (40-60% des Main-Vektors), Decay-Alpha 0.6 vom Main
+      - Aging: Main + Branches faden gleichzeitig
+
+    Pro M-18 PLAN-Beschreibung: „3-5 Segmente, +2 Abzweigungs-Branches
+    mit Decay-Alpha".  Wir gehen leicht drüber (5-7 Main-Segmente) für
+    mehr organisches Aussehen.
+    """
     def __init__(self, x1, y1, x2, y2):
-        segs = 8
+        # Main-Path
+        segs = random.randint(5, 7)
         self.points = [(x1, y1)]
         for i in range(1, segs):
             t = i / segs
             self.points.append((
-                x1 + (x2 - x1) * t + random.uniform(-12, 12),
-                y1 + (y2 - y1) * t + random.uniform(-12, 12),
+                x1 + (x2 - x1) * t + random.uniform(-15, 15),
+                y1 + (y2 - y1) * t + random.uniform(-15, 15),
             ))
         self.points.append((x2, y2))
-        self.life = 0.2
+        # 2 Branches: starten von zufälligen mid-points
+        self.branches = []
+        if len(self.points) >= 4:
+            dx_main = x2 - x1
+            dy_main = y2 - y1
+            for _ in range(2):
+                # Branch-Start aus 30-70% Main-Pfad-Index
+                start_idx = random.randint(1, len(self.points) - 2)
+                bx, by = self.points[start_idx]
+                # Branch geht in einem 30-60° Winkel weg vom Main
+                ang_offset = random.uniform(-1.0, 1.0)  # rad
+                main_ang = math.atan2(dy_main, dx_main)
+                branch_ang = main_ang + ang_offset
+                branch_len = math.hypot(dx_main, dy_main) * random.uniform(0.35, 0.55)
+                ex = bx + math.cos(branch_ang) * branch_len
+                ey = by + math.sin(branch_ang) * branch_len
+                # 2-3 jittered Sub-Segmente
+                b_segs = random.randint(2, 3)
+                bpts = [(bx, by)]
+                for j in range(1, b_segs):
+                    t = j / b_segs
+                    bpts.append((
+                        bx + (ex - bx) * t + random.uniform(-10, 10),
+                        by + (ey - by) * t + random.uniform(-10, 10),
+                    ))
+                bpts.append((ex, ey))
+                self.branches.append(bpts)
+        self.life = 0.22
         self.age = 0.0
 
 

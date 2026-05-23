@@ -98,16 +98,56 @@ class DungeonGrid:
         return self.is_walkable(cx, cy)
 
     def collide_circle(self, x, y, r):
-        """True wenn ein Kreis um (x,y) mit Radius r in eine Wand ragt."""
-        # Sample 8 Punkte am Rand
-        for k in range(8):
-            a = k * math.pi / 4
-            if not self.is_walkable_world(x + math.cos(a) * r, y + math.sin(a) * r):
+        """True wenn ein Kreis um (x,y) mit Radius r in eine Wand ragt.
+
+        Update #147 (User-Report „durch Wände laufen"): Robuster Check.
+        - Center-Sample (vorher fehlend!) — catched 1-Cell-Walls
+        - 16 statt 8 Perimeter-Samples — catched dünne Wände
+        - Inner-Ring bei r/2 zusätzlich (catched Tunneling bei großem r)
+        """
+        # 1. Center
+        if not self.is_walkable_world(x, y):
+            return True
+        # 2. 16 Perimeter-Samples
+        for k in range(16):
+            a = k * math.pi / 8
+            if not self.is_walkable_world(
+                    x + math.cos(a) * r, y + math.sin(a) * r):
                 return True
+        # 3. 8 Inner-Ring-Samples bei r/2 (catched dünne 1-Cell-Walls)
+        if r > 10:
+            inner_r = r * 0.5
+            for k in range(8):
+                a = k * math.pi / 4 + math.pi / 8  # offset rotated
+                if not self.is_walkable_world(
+                        x + math.cos(a) * inner_r,
+                        y + math.sin(a) * inner_r):
+                    return True
         return False
 
     def slide_move(self, x, y, dx, dy, r):
-        """Bewege (x,y) um (dx,dy) mit Wand-Gleiten. Returnt (new_x, new_y)."""
+        """Bewege (x,y) um (dx,dy) mit Wand-Gleiten. Returnt (new_x, new_y).
+
+        Update #147 (User-Report „durch Wände laufen"): Sub-Stepping bei
+        großen Moves (Dodge mit 560 px/s × 0.05 dt = 28 px > cell/2=16).
+        Splittet den Move in N kleine Schritte um Tunneling zu verhindern.
+        """
+        # Sub-Stepping wenn der Move > cell/3 ist (cell=32 → 10 px)
+        move_len = math.hypot(dx, dy)
+        max_step = self.cell * 0.33
+        if move_len > max_step:
+            n_steps = int(math.ceil(move_len / max_step))
+            step_dx = dx / n_steps
+            step_dy = dy / n_steps
+            cur_x, cur_y = x, y
+            for _ in range(n_steps):
+                cur_x, cur_y = self._slide_step(
+                    cur_x, cur_y, step_dx, step_dy, r)
+            return cur_x, cur_y
+        return self._slide_step(x, y, dx, dy, r)
+
+    def _slide_step(self, x, y, dx, dy, r):
+        """Single-Step-Slide ohne Sub-Division."""
         nx, ny = x + dx, y + dy
         if not self.collide_circle(nx, ny, r):
             return nx, ny

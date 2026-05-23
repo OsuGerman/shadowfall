@@ -229,8 +229,16 @@ LEASH_MAX_RANGE_PX    = 30 * 32  # 30 m
 
 
 def _enter_state(e, state, now_t=None):
+    # Update #136 (O-19): Aggro-Tell-Animation auslösen wenn ein Mob
+    # NEU in den AGGRO-State wechselt.  `_aggro_tell_t` ist die Anim-
+    # Restzeit (0.35 s).  Wird in `sprites.draw_enemy` für Sprite-Flash
+    # + Eye-Glow gerendert.  Player sieht „der hat mich gesehen"
+    # sofort visuell, statt erst durch Combat-Behavior.
+    prev_state = getattr(e, 'ai_state', None)
     e.ai_state = state
     e.ai_state_t = 0.0
+    if state == AIState.AGGRO and prev_state != AIState.AGGRO:
+        e._aggro_tell_t = 0.35
     if state == AIState.ALERT:
         e.ai_alert_left = ALERT_DURATION_S
     elif state == AIState.SEARCH:

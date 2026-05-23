@@ -8,16 +8,14 @@ ElevenLabs.txt
 secrets/
 
 # ============================================================
-# AI-GENERIERTE AUDIO-ARTEFAKTE (groß, regenerierbar)
+# AI-GENERIERTE AUDIO-ARTEFAKTE
 # ============================================================
-sounds/voice/**/*.mp3
+# Update: Audio-Files sind jetzt MIT committet (Repo ist self-contained,
+# Game ist sofort spielbar nach git clone). Re-Generation via
+# tools/voice_gen.py + tools/sfx_gen.py weiterhin möglich.
+# .wav bleibt geblockt (nur Zwischenformate, wir nutzen mp3).
 sounds/voice/**/*.wav
-sounds/sfx/generated/**/*.mp3
 sounds/sfx/generated/**/*.wav
-
-# Voice-Manifest behalten wir (Plain-Text, klein, Status-Tracking)
-!sounds/voice/voice_manifest.json
-!sounds/voice/README.md
 
 # ============================================================
 # PYTHON

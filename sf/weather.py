@@ -284,30 +284,120 @@ def day_night_ambient_alpha(time_seconds):
     return int(180 - 100 * ((t - 0.80) / 0.20))
 
 
+def town_color_grading(time_seconds):
+    """Update #138 (M-21): Dynamic Day/Night Color-Grading.
+
+    Returnt eine (tint_color, blend_mode)-Tupel.  tint_color ist ein
+    multiplikativer RGB-Tint der via `pygame.BLEND_RGB_MULT` auf den
+    finalen Render-Output angewandt wird — Morgen warm, Mittag neutral,
+    Abend rosé, Nacht kalt-blau.
+
+    Multiplikatoren werden als 0..255-Werte zurückgegeben, wobei
+    255 = unverändert, < 255 = darken/tönen.  Verschiedene Channels
+    geben den Color-Cast (Morgen = R erhöht, B leicht reduziert).
+
+    Lore-Anker: Brassweir-Hafenstadt verändert sich subtil über den
+    Tag — die Salzpfützen reflektieren morgens warm-bronze, abends
+    violett-rosé.
+    """
+    t = (time_seconds % 60.0) / 60.0
+    if t < 0.15:
+        # Morgenrot — warm: R+15%, G+5%, B-5%
+        f = t / 0.15
+        return (
+            min(255, int(255 + 35 * (1 - f) * 0.0)),    # neutral als Mult
+            255 if f > 0.5 else int(245 + 10 * f),       # leicht G-warm
+            int(225 + 20 * f),                            # B leicht gedämpft
+        )
+    elif t < 0.40:
+        # Tag — neutral (alle 255)
+        return (255, 255, 255)
+    elif t < 0.55:
+        # Sonnenuntergang — rosé/orange: R neutral, G leicht runter, B runter
+        f = (t - 0.40) / 0.15
+        return (
+            255,
+            int(245 - 25 * f),
+            int(225 - 50 * f),
+        )
+    elif t < 0.80:
+        # Nacht — kalt-blau: R 80%, G 85%, B 100%
+        return (200, 215, 255)
+    else:
+        # Dämmerung — graduell zurück
+        f = (t - 0.80) / 0.20
+        return (
+            int(200 + 55 * f),
+            int(215 + 40 * f),
+            255,
+        )
+
+
 # ============================================================
 # BLUT-PFÜTZEN (persistent am Boden)
 # ============================================================
 class BloodPool:
-    __slots__ = ('x', 'y', 'size', 'age', 'life', 'color')
-    def __init__(self, x, y, size):
+    """Update #136 (V-05): Blood-Pool-Persistence mit Lore-Farben.
+
+    Persistente Blut-Pfütze am Todesort, trocknet über `life`-Sekunden
+    aus.  `color` ist jetzt optional — wenn None, wird ein Default-Rot
+    gewürfelt (Backward-Compat).  Mob-spezifische Farben kommen aus
+    combat._BLOOD_COLORS (Salzgeist silbrig, Glaslord glas-splitter etc.).
+    `kind` markiert Spezial-Decals ('salt_crystal' für Salzgeist statt
+    Blut).
+    """
+    __slots__ = ('x', 'y', 'size', 'age', 'life', 'color', 'kind')
+
+    def __init__(self, x, y, size, color=None, life=15.0,
+                 kind='blood'):
         self.x = x
         self.y = y
         self.size = size
         self.age = 0.0
-        self.life = 25.0  # 25s am Boden
-        self.color = (random.randint(80, 130), random.randint(15, 30), random.randint(15, 30))
+        self.life = float(life)
+        if color is None:
+            self.color = (random.randint(80, 130),
+                          random.randint(15, 30),
+                          random.randint(15, 30))
+        else:
+            self.color = tuple(int(c) for c in color[:3])
+        self.kind = kind   # 'blood' | 'salt_crystal' | 'ash' | 'sap'
 
     def alpha(self):
-        if self.age < self.life - 5:
+        # Letzten 33 % ausblenden (statt nur letzte 5 s) — "trocknet"-Look
+        fade_start = self.life * 0.67
+        if self.age < fade_start:
             return 180
-        # Letzte 5s ausblenden
-        return int(180 * max(0, (self.life - self.age) / 5))
+        fade_dur = max(0.001, self.life - fade_start)
+        return int(180 * max(0, 1.0 - (self.age - fade_start) / fade_dur))
 
 
 def draw_blood_pool(screen, pool, sx, sy):
     a = pool.alpha()
     if a <= 0:
         return
+    kind = getattr(pool, 'kind', 'blood')
+    if kind == 'salt_crystal':
+        # Update #136 (V-05): Salzgeist hinterlässt kleine Salzkristalle
+        # statt einer Blut-Pfütze.  Lore: Bestiarium-Realismus.
+        s = pygame.Surface((int(pool.size) * 2, int(pool.size) * 2),
+                            pygame.SRCALPHA)
+        cx = int(pool.size)
+        # 5 Kristall-Splitter als kleine Diamonds
+        for k in range(5):
+            ang = k * 1.25
+            r = pool.size * 0.7
+            ox = int(math.cos(ang) * r)
+            oy = int(math.sin(ang) * r * 0.5)
+            pts = [(cx + ox,     cx + oy - 3),
+                   (cx + ox + 3, cx + oy),
+                   (cx + ox,     cx + oy + 3),
+                   (cx + ox - 3, cx + oy)]
+            pygame.draw.polygon(s, (*pool.color, a), pts)
+            pygame.draw.polygon(s, (255, 255, 255, a // 2), pts, 1)
+        screen.blit(s, (sx - cx, sy - cx))
+        return
+    # Default Blood-Pool
     s = pygame.Surface((int(pool.size) * 2, int(pool.size)), pygame.SRCALPHA)
     pygame.draw.ellipse(s, (*pool.color, a),
                         (0, 0, int(pool.size) * 2, int(pool.size)))

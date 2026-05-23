@@ -49,21 +49,31 @@ class ShopUI:
             self.restock(level)
 
     def modal_rect(self):
-        w, h = 820, 540
-        return pygame.Rect(SCREEN_W // 2 - w // 2, SCREEN_H // 2 - h // 2, w, h)
+        # Update #147 (User-Report „Shop-UI sieht man nicht ganz"):
+        # Modal-Höhe von 540 → 720.  Layout vorher:
+        #   - Stock-Grid endete bei y=314
+        #   - Inv-Grid startete bei y=320, endete bei y=544 (über Modal-Rand!)
+        #   - Buyback bei y=460 → ÜBERLAPPTE Inv-Reihe 3
+        # Jetzt: jede Section in eigenem Y-Bereich, klare Trennung.
+        w, h = 820, 720
+        return pygame.Rect(SCREEN_W // 2 - w // 2,
+                            SCREEN_H // 2 - h // 2, w, h)
 
     def _stock_rect(self, idx, modal):
         col = idx % self.GRID_COLS
         row = idx // self.GRID_COLS
         x = modal.x + 24 + col * (self.SLOT_SIZE + 6)
-        y = modal.y + 90 + row * (self.SLOT_SIZE + 6)
+        y = modal.y + 100 + row * (self.SLOT_SIZE + 6)
         return pygame.Rect(x, y, self.SLOT_SIZE, self.SLOT_SIZE)
 
     def _inv_rect(self, idx, modal):
         col = idx % self.GRID_COLS
         row = idx // self.GRID_COLS
         x = modal.x + 24 + col * (self.SLOT_SIZE + 6)
-        y = modal.y + 320 + row * (self.SLOT_SIZE + 6)
+        # Update #147: Inv von y=320 → y=360 verschoben.
+        # Stock endet bei modal.y + 100 + 4*56 = +324.  Gap 36 px für
+        # Sub-Label „INVENTAR".  Inv 4×56 = 224 → endet bei +584.
+        y = modal.y + 360 + row * (self.SLOT_SIZE + 6)
         return pygame.Rect(x, y, self.SLOT_SIZE, self.SLOT_SIZE)
 
     def _restock_btn(self, modal):
@@ -103,8 +113,12 @@ class ShopUI:
         return out
 
     def _buyback_rect(self, idx, modal):
+        # Update #147: Buyback-Row unter dem Inv-Grid (klar getrennt).
+        # Inv endet bei modal.y + 360 + 4*56 = +584.  Sub-Label „RÜCKKAUF"
+        # bei +604.  Buyback-Row bei +630 → endet bei +680.  Modal 720
+        # gibt 40 px Footer-Padding.
         x = modal.x + 24 + idx * (self.SLOT_SIZE + 6)
-        y = modal.y + modal.h - 80
+        y = modal.y + 630
         return pygame.Rect(x, y, self.SLOT_SIZE, self.SLOT_SIZE)
 
     def handle_click(self, game, mx, my):
@@ -256,19 +270,29 @@ class ShopUI:
             self._draw_item_slot(screen, r, it, price=buy_price(it) if it else None,
                                  can_afford=(it is not None and p.gold >= buy_price(it)))
 
+        # Update #147: Layout-Refactor — alle Labels zur neuen Position.
+        # Trennlinie zwischen Stock und Inv
+        pygame.draw.line(screen, (90, 65, 40),
+                          (modal.x + 24, modal.y + 340),
+                          (modal.x + modal.w - 24, modal.y + 340), 1)
         # Inventar-Label
-        il = self.font_small.render('INVENTAR (Klick = verkaufen)', True, TEXT_DIM)
-        screen.blit(il, (modal.x + 24, modal.y + 300))
+        il = self.font_small.render(
+            'INVENTAR (Klick = verkaufen)', True, TEXT_DIM)
+        screen.blit(il, (modal.x + 24, modal.y + 344))
         for i, it in enumerate(p.inventory):
             r = self._inv_rect(i, modal)
             self._draw_item_slot(screen, r, it,
                                  price=item_value(it) if it else None,
                                  can_afford=True, sell=True)
 
-        # Buyback-Bereich
+        # Trennlinie zwischen Inv und Buyback
+        pygame.draw.line(screen, (90, 65, 40),
+                          (modal.x + 24, modal.y + 600),
+                          (modal.x + modal.w - 24, modal.y + 600), 1)
+        # Buyback-Bereich (Label + Row)
         bb_label = self.font_small.render(
             'ZURÜCKKAUFEN (letzte 5 verkaufte)', True, TEXT_DIM)
-        screen.blit(bb_label, (modal.x + 24, modal.y + modal.h - 100))
+        screen.blit(bb_label, (modal.x + 24, modal.y + 606))
         for i, it in enumerate(self.buyback):
             r = self._buyback_rect(i, modal)
             self._draw_item_slot(screen, r, it, price=item_value(it),
@@ -276,7 +300,7 @@ class ShopUI:
 
         # Hinweis
         hint = self.font_small.render('F: Schließen', True, TEXT_DIM)
-        screen.blit(hint, (modal.x + 24, modal.y + modal.h - 18))
+        screen.blit(hint, (modal.x + 24, modal.y + modal.h - 22))
 
         # Tooltip
         mx, my = pygame.mouse.get_pos()

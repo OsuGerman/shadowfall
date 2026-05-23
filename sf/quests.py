@@ -286,9 +286,10 @@ class QuestState:
             if hasattr(game, 'shake'):
                 game.shake = max(game.shake, 10)
             # Class-Voice-Line (Triumph) — z.B. crit-Pool als „YES"
+            # Update #148: Voice 0.75 → 0.40 (User-Report „zu laut")
             try:
                 from . import sounds as _snd
-                _snd.play_class_voice(p.cls, 'level_up', volume=0.75)
+                _snd.play_class_voice(p.cls, 'level_up', volume=0.40)
             except Exception:
                 pass
             # Bonus-Floater am Player
@@ -335,32 +336,82 @@ class QuestLog:
                 return st
         return None
 
-    def npc_has_offer(self, npc_name):
-        """True wenn dieser NPC eine neue, noch nicht angenommene Quest hat."""
+    def npc_has_offer(self, npc_name, player=None):
+        """True wenn dieser NPC eine neue, noch nicht angenommene Quest hat.
+
+        Update #145: `player` optional — wenn übergeben, werden Quests
+        die für den aktuellen Akt-Progress UNERREICHBAR sind übersprungen.
+        Verhindert dass Eldon dem Akt-1-Player den Akt-3-Asch-Pakt
+        anbietet (User-Report „komme nicht weiter").
+        """
         for q in _qd.quests_offered_by_npc(npc_name):
             qid = q['id']
-            if qid not in self.active and qid not in self.completed:
-                return q
+            if qid in self.active or qid in self.completed:
+                continue
+            # Update #145: Prerequisite-Check
+            if player is not None and not self._quest_prerequisite_met(
+                    q, player):
+                continue
+            return q
         return None
 
-    def npc_marker(self, npc_name):
+    @staticmethod
+    def _quest_prerequisite_met(quest, player):
+        """Update #145: Returnt True wenn die Quest jetzt akzeptiert
+        werden kann (Akt-Gate erfüllt).
+
+        Logik: parse `region`-Feld der Quest („Akt N — ...") → erforderlicher
+        akt_progress = N - 1.  Player muss `completed_dungeons` mit
+        mind. N-1 Einträgen haben.
+        """
+        import re as _re
+        region = quest.get('region', '')
+        m = _re.search(r'Akt (\d+)', region)
+        if m is None:
+            return True   # No akt-gate → always offerable
+        required_akt = int(m.group(1))
+        akt_progress = len(getattr(player, 'completed_dungeons', ()))
+        # Akt 1 → required_akt=1 → akt_progress >= 0 ✓
+        # Akt 2 → required_akt=2 → akt_progress >= 1
+        # Akt 3 → required_akt=3 → akt_progress >= 2
+        return akt_progress >= (required_akt - 1)
+
+    def npc_marker(self, npc_name, player=None):
         """Returnt '!' wenn neue Quest verfügbar, '?' wenn aktuelle Stage hier
         abzuschließen ist, sonst None.
+
+        Update #145: `player` optional für Akt-Gate-Filter — locked
+        Quests zeigen kein „!"-Marker.
         """
         if self.has_quest_for_npc(npc_name):
             return '?'
-        if self.npc_has_offer(npc_name):
+        if self.npc_has_offer(npc_name, player=player):
             return '!'
         return None
 
     def main_quest_state(self):
-        """Returnt die aktive Hauptquest (zur Anzeige im HUD)."""
-        for st in self.active.values():
-            if st.is_main:
-                return st
-        # Fallback: irgendeine aktive Quest
-        for st in self.active.values():
-            return st
+        """Returnt die aktive Hauptquest (zur Anzeige im HUD).
+
+        Update #145: Smart-Selection — pickt die Quest mit der
+        NIEDRIGSTEN Akt-Nummer im `region`-Feld.  Verhindert dass eine
+        spätere Akt-3-Quest (wenn vor-akzeptiert) den Akt-1-Player
+        verwirrt.  Beispiel: User hat „Der Asch-Pakt" (Akt 3) + „Die
+        Salzwunde" (Akt 1) — letztere wird priorisiert.
+        """
+        import re as _re
+        def _akt_num(st):
+            region = st.quest.get('region', '')
+            m = _re.search(r'Akt (\d+)', region)
+            return int(m.group(1)) if m else 99
+        mains = [st for st in self.active.values() if st.is_main]
+        if mains:
+            mains.sort(key=_akt_num)
+            return mains[0]
+        # Fallback: irgendeine aktive Quest (auch sortiert)
+        non_mains = list(self.active.values())
+        if non_mains:
+            non_mains.sort(key=_akt_num)
+            return non_mains[0]
         return None
 
     def all_active(self):
@@ -462,8 +513,10 @@ def on_talk(game, npc_name):
             _advance(st, game, log)
             progressed = True
     # Dann: neue Quest anbieten
+    # Update #145: player-aware — Akt-Gate blockt zu-frühe Quests
     if not progressed:
-        offer = log.npc_has_offer(npc_name)
+        offer = log.npc_has_offer(npc_name,
+                                     player=getattr(game, 'player', None))
         if offer is not None:
             log.offer(offer['id'])
             _play_quest_sound(game, 'quest_accept')
