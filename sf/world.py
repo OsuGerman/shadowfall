@@ -285,6 +285,15 @@ def draw_dungeon_floor(screen, grid, biome, w2s_xy, camera):
                 except Exception:
                     ai_tile_cell = None
 
+    # Edge-Overlay-Lookup (Auto-Tile-Light, Update #160).
+    # Nur aktiv wenn AI-Wall-Tile vorhanden — sonst bleibt 3D-Procedural
+    # Walls aktiv, die haben bereits eigene Schatten-Logik.
+    try:
+        from . import sprites as _spr
+        edge_enabled = _spr.TILE_WALL_MAP.get(biome) is not None
+    except Exception:
+        edge_enabled = False
+
     # Sichtbarer Cell-Bereich
     cam_cx, cam_cy = grid.world_to_cell(camera.x, camera.y)
     visible_w = SCREEN_W // cell + 2
@@ -309,6 +318,29 @@ def draw_dungeon_floor(screen, grid, biome, w2s_xy, camera):
                     pygame.draw.rect(screen, col, (sx, sy, cell + 1, cell + 1))
                     # Mörtellinie
                     pygame.draw.rect(screen, crack_col, (sx, sy, cell + 1, cell + 1), 1)
+                # Auto-Tile-Edge-Overlay: 4-Neighbor-Bitmask, dann
+                # gradient-Schatten auf Floor-Cells die an Wand grenzen.
+                if edge_enabled and (ai_variants_cell or ai_tile_cell is not None):
+                    em = 0
+                    if grid.in_bounds(cx, cy - 1) and \
+                            grid.tiles[cy - 1][cx] in (dg.VOID, dg.SECRET):
+                        em |= 1  # N
+                    if grid.in_bounds(cx + 1, cy) and \
+                            grid.tiles[cy][cx + 1] in (dg.VOID, dg.SECRET):
+                        em |= 2  # E
+                    if grid.in_bounds(cx, cy + 1) and \
+                            grid.tiles[cy + 1][cx] in (dg.VOID, dg.SECRET):
+                        em |= 4  # S
+                    if grid.in_bounds(cx - 1, cy) and \
+                            grid.tiles[cy][cx - 1] in (dg.VOID, dg.SECRET):
+                        em |= 8  # W
+                    if em:
+                        try:
+                            overlay = _spr.get_edge_overlay(biome, em, cell)
+                        except Exception:
+                            overlay = None
+                        if overlay is not None:
+                            screen.blit(overlay, (sx, sy))
                 # Deterministischer Akzent: nur ~1 von 8 Cells, basierend auf
                 # Hash der Position (damit Pattern stabil bleibt).
                 h = (cx * 73856093 ^ cy * 19349663) & 0xFFFF

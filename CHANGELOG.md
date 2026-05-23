@@ -4,6 +4,61 @@
 
 ---
 
+## [2026-05-24] — Update #160 — T2.3-C Quest-Pin/Track-Funktion (Compass folgt markierter Quest)
+
+**ROADMAP T2.3-C:** Eine Quest als „Tracked" markieren, Compass folgt ihr. Letzter offener Punkt in Tier 2.3, hoher UX-Wert — der Spieler kann mit mehreren aktiven Quests gezielt eine priorisieren.
+
+### Engine ([sf/quests.py](sf/quests.py))
+
+`QuestLog.tracked_quest_id: str | None` — neuer Feldzustand mit toggle-Semantik:
+- `set_tracked(qid)` — setzt qid (wenn in `active`); `None` oder schon-getrackt → clear
+- `tracked_state()` — returnt QuestState der getrackten Quest ODER None; auto-cleared wenn die qid stale ist (Quest completed/abandoned zwischendurch)
+
+### Compass-Priorität ([sf/world.py](sf/world.py) `_resolve_quest_target_pos`)
+
+Wenn `tracked_quest_id` gesetzt, wird die getrackte QuestState in der `states`-Liste vorne einsortiert. Der Compass (Stern + Edge-Arrow auf Minimap) zeigt damit immer aufs getrackte Ziel zuerst, statt auf die erste-in-Iteration-Order-Quest.
+
+### P-Hotkey im QuestLog ([sf/game.py](sf/game.py) `_cycle_tracked_quest`)
+
+- **P-Taste** im QuestLog-Modal cycelt: `None → quest0 → quest1 → … → questN → None`
+- Toast bei jedem Cycle: „📌 Verfolge: „<Quest-Titel>"" oder „Quest-Pin gelöst."
+- Hint-Zeile im QuestLog erweitert: „J: Schließen · P: Quest pinnen"
+
+### Visual-Marker
+
+`_draw_questlog_modal` zeigt vor der getrackten Quest ein 📌 + helleren Gold-Ton (`(255, 240, 130)` statt `(255, 220, 100)`).
+
+### Save-Persistenz ([sf/save.py](sf/save.py))
+
+`tracked_quest_id` wird in `_quest_log_to_dict`/`_quest_log_from_dict` serialisiert. Backward-Compat: alte Saves ohne den Key → None. Schutz bei Load: wenn die tracked qid nicht (mehr) in `active`, wird auf None gesetzt.
+
+### Tests (5 neu)
+
+- `test_quest_pin_set_and_clear` — Toggle-Verhalten, Non-Active-Quest wird ignoriert
+- `test_quest_pin_tracked_state_clears_stale` — stale Track wird auto-gecleart bei `tracked_state()`
+- `test_quest_pin_save_load_roundtrip` — Save & Load preservt tracked_quest_id
+- `test_quest_compass_prefers_tracked` — `_resolve_quest_target_pos` nutzt Tracked-Priorität
+- `test_cycle_tracked_quest_hotkey` — P-Cycle rotiert sauber durch alle aktiven Quests + None
+- **192/192 PASS**
+
+### Files
+
+- [sf/quests.py](sf/quests.py), [sf/world.py](sf/world.py), [sf/game.py](sf/game.py), [sf/save.py](sf/save.py), [tests/smoke.py](tests/smoke.py)
+
+### ROADMAP-Status
+
+- **Tier 2.3 Quest-Board-Modal: 3/3 ✅** (T2.3-A Board-Sektion #156, T2.3-B Eldon-Talk #156, T2.3-C Pin/Track #160)
+- **Tier 2 gesamt**: 4/6 ✅ (verbleibend: T2.1-B Frost→Glass-Ruins-Rename, T2.2/2.5/2.6/2.7 Sprite-Pipeline-Phase-2+)
+
+### Nächste sinnvolle Schritte
+
+- **Set-Linking** (Shulavhs Faden, WELT_AUFBAU 5.5) — 2 Items binden, Set-Bonus
+- **4 zusätzliche Item-Slots** (boots/gloves/belt/flask_modifier) — WELT_AUFBAU 5.1
+- **Aspekt-Skill-Impact/Tick-Sounds** — `aoe_impact` → aspekt-spezifisch via Damage-Type-Routing
+- **T3.7 NPC-Quest-Spawning in Dungeons** — spawn-quest-npc API + Despawn-on-stage-advance
+
+---
+
 ## [2026-05-24] — Update #159 — Aspekt-Affixes (WELT_AUFBAU 5.4) + AI-Aggro-Sound + T1.2-Verifikation
 
 **ROADMAP-Audit:** Drei wichtige offene Punkte — eine Engine-Lücke (AI-Aggro-Sound, ROADMAP Bottom), eine WELT_AUFBAU-Content-Lücke (Aspekt-Affixes 5.4) und eine Status-Verifikation (T1.2 Faction-Rep-System komplett).

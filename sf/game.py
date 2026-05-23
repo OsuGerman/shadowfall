@@ -7786,7 +7786,8 @@ class Game:
         self.screen.blit(title,
                           (x + w // 2 - title.get_width() // 2,
                            y + 32))
-        hint = self.font_small.render('J: Schließen', True, TEXT_DIM)
+        hint = self.font_small.render(
+            'J: Schließen · P: Quest pinnen', True, TEXT_DIM)
         self.screen.blit(hint,
                           (x + w - hint.get_width() - 20, y + 22))
         _asp.draw_ornament_divider(

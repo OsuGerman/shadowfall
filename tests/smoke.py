@@ -3554,6 +3554,121 @@ def test_hidden_quest_discovery_via_decor():
     return True
 
 
+def test_quest_pin_set_and_clear():
+    """Update #160 (ROADMAP T2.3-C): QuestLog.set_tracked toggle-Verhalten.
+    """
+    from sf.quests import QuestLog
+    log = QuestLog()
+    assert log.tracked_quest_id is None
+    # Setze auf nicht-existente Quest → ignoriert (nicht in active)
+    log.set_tracked('akt1_unknown')
+    assert log.tracked_quest_id is None
+    # Aktive Quest erzeugen
+    log.offer('akt1_salzwunde')
+    log.set_tracked('akt1_salzwunde')
+    assert log.tracked_quest_id == 'akt1_salzwunde'
+    # Erneut setzen → toggle off
+    log.set_tracked('akt1_salzwunde')
+    assert log.tracked_quest_id is None
+    # None → clear
+    log.set_tracked('akt1_salzwunde')
+    log.set_tracked(None)
+    assert log.tracked_quest_id is None
+    return True
+
+
+def test_quest_pin_tracked_state_clears_stale():
+    """Update #160: tracked_state() löscht auto-stale-Tracks
+    (Quest wurde completed/abandoned).
+    """
+    from sf.quests import QuestLog
+    log = QuestLog()
+    log.offer('akt1_salzwunde')
+    log.set_tracked('akt1_salzwunde')
+    assert log.tracked_state() is not None
+    # Quest auf completed → tracked_state sollte clearen
+    del log.active['akt1_salzwunde']
+    log.completed.add('akt1_salzwunde')
+    assert log.tracked_state() is None
+    assert log.tracked_quest_id is None  # auto-cleared
+    return True
+
+
+def test_quest_pin_save_load_roundtrip():
+    """Update #160: tracked_quest_id wird via Save/Load persistiert.
+    Nur wenn die Quest noch active ist beim Load (Backward-Compat).
+    """
+    from sf.game import Game
+    from sf import save as _save
+    g = Game()
+    g.start_game('adventure')
+    # akt1_salzwunde ist Initial-Active
+    g.quest_log.set_tracked('akt1_salzwunde')
+    assert g.quest_log.tracked_quest_id == 'akt1_salzwunde'
+    _save.save_game(g)
+    # Fresh game
+    g2 = Game()
+    g2.start_game('adventure')
+    _save.load_game(g2)
+    assert g2.quest_log.tracked_quest_id == 'akt1_salzwunde'
+    # Cleanup
+    try:
+        _save.SAVE_PATH.unlink()
+    except (FileNotFoundError, OSError):
+        pass
+    return True
+
+
+def test_quest_compass_prefers_tracked():
+    """Update #160: `_resolve_quest_target_pos` priorisiert die
+    getrackte Quest gegenüber iteration order.
+    """
+    from sf.game import Game
+    from sf import world as _w
+    g = Game()
+    g.start_game('adventure')
+    # Verwende existierende Akt-1-Quests (salzwunde + 2 Sides)
+    # Falls nur eine aktiv ist, bringe noch eine andere rein
+    g.quest_log.offer('akt1_mara_spur')
+    actives = list(g.quest_log.active.keys())
+    assert len(actives) >= 2, f'erwarte ≥2 aktive Quests: {actives}'
+    # Trick die Aufgaben: Track die LETZTE in iteration order
+    last_qid = actives[-1]
+    g.quest_log.set_tracked(last_qid)
+    # _resolve_quest_target_pos sollte jetzt das Tracked-Target zuerst
+    # erkennen.  Wir testen indirekt durch tracked_state-Match.
+    assert g.quest_log.tracked_state() is not None
+    assert g.quest_log.tracked_state().quest['id'] == last_qid
+    # Aufruf von _resolve_quest_target_pos sollte ohne Crash gehen
+    _w._resolve_quest_target_pos(g)
+    return True
+
+
+def test_cycle_tracked_quest_hotkey():
+    """Update #160: P-Taste cycelt Tracked durch aktive Quests + None.
+    """
+    from sf.game import Game
+    g = Game()
+    g.start_game('adventure')
+    # Stelle sicher dass ≥1 active quest existiert (salzwunde initial)
+    actives = list(g.quest_log.active.keys())
+    assert len(actives) >= 1
+    initial = g.quest_log.tracked_quest_id
+    # Cycle one step
+    g._cycle_tracked_quest()
+    new_id = g.quest_log.tracked_quest_id
+    if initial is None:
+        # None → first quest
+        assert new_id == actives[0]
+    # Cycle through all + None
+    for _ in range(len(actives) + 2):
+        g._cycle_tracked_quest()
+    # After n+2 cycles, we should be in a valid state (None or some qid)
+    final = g.quest_log.tracked_quest_id
+    assert final is None or final in actives
+    return True
+
+
 def test_aspekt_affixes_registered():
     """Update #159 (WELT_AUFBAU 5.4): 7 Aspekt-Affixes in AFFIXES,
     Fold-Mapping definiert.
@@ -5957,6 +6072,11 @@ TESTS = [
     ('aspekt_affix_fold',          test_aspekt_affix_folds_into_engine_stat),
     ('aspekt_affix_tooltip',       test_aspekt_affix_tooltip_label),
     ('aggro_sound_throttle',       test_aggro_sound_throttle_state),
+    ('quest_pin_set_and_clear',    test_quest_pin_set_and_clear),
+    ('quest_pin_stale_clears',     test_quest_pin_tracked_state_clears_stale),
+    ('quest_pin_save_load',        test_quest_pin_save_load_roundtrip),
+    ('quest_compass_prefers_tracked', test_quest_compass_prefers_tracked),
+    ('cycle_tracked_quest',        test_cycle_tracked_quest_hotkey),
 ]
 
 

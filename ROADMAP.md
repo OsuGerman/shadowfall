@@ -161,7 +161,7 @@ Animation-Sheets sind aufwendiger — Scenario.gg hat „Animator"-Models die Mu
 ### 2.3 Quest-Board-Modal *(Eldon hat aktuell keinen UI)*
 - [x] **T2.3-A** Quest-Board-Sektion im QuestLog-Modal — ✅ #156 (`_draw_quest_board_section` listet AVAILABLE + LOCKED, filtert Hidden-Quests)
 - [x] **T2.3-B** Eldon-Talk öffnet QuestLog-Modal — ✅ Seit Day-1 (npc.kind='quest' → modal='questlog'), jetzt mit Quest-Board-Sektion sichtbar
-- [ ] **T2.3-C** Quest-Pin-Funktion (eine Quest als „Tracked" markieren, Compass folgt ihr)
+- [x] **T2.3-C** Quest-Pin-Funktion — ✅ #160 (`QuestLog.tracked_quest_id` + P-Hotkey im QuestLog + Compass-Priorität + 📌-Marker + Save-Persistenz)
 
 ### 2.4 Akt-Gating an Quest-Flags ✅ #156
 - [x] **T2.4-A** `progression.can_enter_akt(player, akt)` + `akt_block_reason(player, akt)` — ✅ #156

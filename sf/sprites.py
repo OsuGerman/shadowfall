@@ -156,6 +156,160 @@ def get_wall_sprite(biome: str | None) -> pygame.Surface | None:
     return _load_ai_sprite(wid) if wid else None
 
 
+# ============================================================
+# EDGE-OVERLAY-SYSTEM (Auto-Tile-Light, Update #160)
+# ============================================================
+# Statt 47-Mask-Tilesets generieren wir prozedural pro Biom Edge-Shadow-
+# Overlays die ueber Floor-Cells geblittet werden wenn diese an Walls
+# grenzen. Das produziert den modularen "POE2-/Hades-/D2-Look" mit nur
+# einem Floor + einem Wall-Tile pro Biom.
+#
+# Bitmask-Konvention (4-direction NESW):
+#   N = 1 (north neighbor is wall)
+#   E = 2
+#   S = 4
+#   W = 8
+# Es gibt 16 Patterns (0..15). Wir cachen pro (biome, cell, mask).
+#
+# Optional: 8-direction mit NE/NW/SE/SW corners — fuer V1 bleiben wir
+# bei 4-direction (16 patterns, reicht fuer den optischen Gewinn).
+
+_EDGE_OVERLAY_CACHE: dict[tuple, pygame.Surface] = {}
+
+EDGE_SHADOW_DEPTH_FRAC = 0.32   # Schatten reicht 32% der Cell-Tiefe ins Floor
+EDGE_SHADOW_ALPHA_MAX  = 170    # Wand-anliegend (0..255)
+EDGE_SHADOW_ALPHA_MIN  = 0      # Innen-Cell-Mitte (vollstaendig transparent)
+
+
+def _build_edge_overlay(cell_size: int, mask: int,
+                        wall_avg_rgb: tuple[int, int, int] | None = None
+                        ) -> pygame.Surface:
+    """Baut eine cell+1 grosse Surface mit Edge-Shadow-Gradient.
+
+    Fuer jede gesetzte Mask-Bit (N/E/S/W) wird auf der entsprechenden
+    Kante ein Dunkel-Gradient gezeichnet, der zur Cell-Mitte hin in
+    Transparenz uebergeht. Schattenfarbe optional getoent durch
+    wall_avg_rgb (Color-Bleed wie in painted ARPGs).
+    """
+    size = cell_size + 1
+    surf = pygame.Surface((size, size), pygame.SRCALPHA)
+    if mask == 0:
+        return surf
+
+    depth = max(2, int(cell_size * EDGE_SHADOW_DEPTH_FRAC))
+    a_max = EDGE_SHADOW_ALPHA_MAX
+    a_min = EDGE_SHADOW_ALPHA_MIN
+    # Schattenfarbe: schwarz, optional leicht mit Wand-Avg getoent (15%)
+    if wall_avg_rgb is not None:
+        r0, g0, b0 = wall_avg_rgb
+        # 85% schwarz + 15% Wand-Farbe → faktisch dunkler Stein-Schatten
+        sr = int(r0 * 0.15)
+        sg = int(g0 * 0.15)
+        sb = int(b0 * 0.15)
+    else:
+        sr = sg = sb = 0
+
+    # Pro gesetzter Bit eine Gradient-Linie
+    # N (top edge)
+    if mask & 1:
+        for d in range(depth):
+            t = d / max(1, depth - 1)
+            a = int(a_max * (1.0 - t) + a_min * t)
+            if a <= 0:
+                continue
+            pygame.draw.line(surf, (sr, sg, sb, a),
+                             (0, d), (size - 1, d), 1)
+    # E (right edge)
+    if mask & 2:
+        for d in range(depth):
+            t = d / max(1, depth - 1)
+            a = int(a_max * (1.0 - t) + a_min * t)
+            if a <= 0:
+                continue
+            x = size - 1 - d
+            pygame.draw.line(surf, (sr, sg, sb, a),
+                             (x, 0), (x, size - 1), 1)
+    # S (bottom edge)
+    if mask & 4:
+        for d in range(depth):
+            t = d / max(1, depth - 1)
+            a = int(a_max * (1.0 - t) + a_min * t)
+            if a <= 0:
+                continue
+            y = size - 1 - d
+            pygame.draw.line(surf, (sr, sg, sb, a),
+                             (0, y), (size - 1, y), 1)
+    # W (left edge)
+    if mask & 8:
+        for d in range(depth):
+            t = d / max(1, depth - 1)
+            a = int(a_max * (1.0 - t) + a_min * t)
+            if a <= 0:
+                continue
+            pygame.draw.line(surf, (sr, sg, sb, a),
+                             (d, 0), (d, size - 1), 1)
+    return surf
+
+
+def _wall_average_rgb(biome: str) -> tuple[int, int, int] | None:
+    """Berechnet Avg-RGB der Wand-Textur fuer Color-Bleed-Schatten.
+    Cached pro Biome."""
+    key = ('_wall_avg', biome)
+    if key in _WALL_AVG_CACHE:
+        return _WALL_AVG_CACHE[key]
+    wall = get_wall_sprite(biome)
+    if wall is None:
+        _WALL_AVG_CACHE[key] = None
+        return None
+    # Sample 16x16 grid, average
+    sw, sh = wall.get_size()
+    rs = gs = bs = 0
+    n = 0
+    step_x = max(1, sw // 16)
+    step_y = max(1, sh // 16)
+    for y in range(0, sh, step_y):
+        for x in range(0, sw, step_x):
+            try:
+                r, g, b, *_ = wall.get_at((x, y))
+            except Exception:
+                continue
+            rs += r
+            gs += g
+            bs += b
+            n += 1
+    if n <= 0:
+        _WALL_AVG_CACHE[key] = None
+        return None
+    avg = (rs // n, gs // n, bs // n)
+    _WALL_AVG_CACHE[key] = avg
+    return avg
+
+
+_WALL_AVG_CACHE: dict[tuple, tuple[int, int, int] | None] = {}
+
+
+def get_edge_overlay(biome: str, mask: int, cell_size: int
+                     ) -> pygame.Surface | None:
+    """Returnt gecachtes Edge-Shadow-Overlay fuer (biome, mask, cell).
+
+    mask = 4-Bit Bitmask NESW. mask == 0 → None (kein Schatten noetig).
+    Wird nur erzeugt wenn Biome ein Wall-Tile registriert hat (sonst
+    bleibt 3D-Procedural-Look aktiv).
+    """
+    if mask == 0:
+        return None
+    if biome not in TILE_WALL_MAP:
+        return None
+    key = (biome, cell_size, mask)
+    surf = _EDGE_OVERLAY_CACHE.get(key)
+    if surf is not None:
+        return surf
+    wall_avg = _wall_average_rgb(biome)
+    surf = _build_edge_overlay(cell_size, mask, wall_avg)
+    _EDGE_OVERLAY_CACHE[key] = surf
+    return surf
+
+
 def get_portrait(npc_key: str | None) -> pygame.Surface | None:
     """Returnt NPC-Portrait fuer Dialog-UI. Mapping ueber Voice-Keys."""
     if not npc_key:
@@ -216,6 +370,8 @@ def reload_sprite_cache() -> None:
     Draw automatisch geladen. Praktisch wenn man via tools/sprite_gen.py
     re-generiert und das Game laeuft."""
     _SPRITE_CACHE.clear()
+    _EDGE_OVERLAY_CACHE.clear()
+    _WALL_AVG_CACHE.clear()
 
 
 # ============================================================
