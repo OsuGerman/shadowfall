@@ -33,13 +33,39 @@ SPRITES_DIR  = PROJECT_ROOT / 'assets' / 'sprites'
 TRANSPARENT_BG_CATEGORIES = {'mobs', 'classes', 'items'}
 
 
+def remove_background(png_path: Path,
+                      threshold: int = 30,
+                      feather: int = 8,
+                      flood_from_edges: bool = True,
+                      erode: int = 0,
+                      bg_color: str = 'black') -> bool:
+    """Macht alle Background-Pixel transparent. bg_color: 'black' (default)
+    oder 'white'. Bei 'white' wird brightness invertiert (nahe-weiss = BG)."""
+    if bg_color == 'white':
+        return _remove_bg_impl(png_path, threshold, feather, flood_from_edges,
+                                erode, invert=True)
+    return _remove_bg_impl(png_path, threshold, feather, flood_from_edges,
+                            erode, invert=False)
+
+
 def remove_black_background(png_path: Path,
                             threshold: int = 30,
                             feather: int = 8,
                             flood_from_edges: bool = True,
                             erode: int = 0) -> bool:
-    """Macht alle schwarzen Pixel transparent. Soft-Edge-Feathering verhindert
-    harte Outlines.
+    """Backwards-Compat-Alias fuer remove_background(bg_color='black')."""
+    return remove_background(png_path, threshold, feather, flood_from_edges,
+                              erode, bg_color='black')
+
+
+def _remove_bg_impl(png_path: Path,
+                    threshold: int,
+                    feather: int,
+                    flood_from_edges: bool,
+                    erode: int,
+                    invert: bool) -> bool:
+    """Implementation. invert=True: weisser BG (brightness>765-threshold = BG).
+    Soft-Edge-Feathering verhindert harte Outlines.
 
     flood_from_edges: Wenn True (Default), wird zusaetzlich ein Edge-Flood-
         Fill durchgefuehrt — nur das vom Bild-Rand aus erreichbare schwarze
@@ -73,19 +99,29 @@ def remove_black_background(png_path: Path,
     try:
         import numpy as np
         pixels = pygame.surfarray.pixels3d(src)          # (w, h, 3)
-        # Pygame surfarray ist (w, h, c) — wir bauen alpha-array
-        brightness = pixels.sum(axis=2)                  # (w, h)
-        # Voll-transparent: brightness < threshold
-        # Voll-opaque: brightness > threshold + feather*3
+        # Pygame surfarray ist (w, h, c) — wir bauen alpha-array.
+        # WICHTIG: sum() liefert uint64 → wir casten zu int32 damit
+        # spaeter (eff - threshold) keinen Unsigned-Underflow ausloest
+        # (uint64 0 - 30 = ~1.8e19 → ganzer Bug-Modus).
+        brightness = pixels.sum(axis=2).astype(np.int32)  # (w, h)
+        # Bei invert (weisser BG): brightness > 765 - threshold = BG.
+        # Wir spiegeln das Problem: effektive_brightness = 765 - brightness.
+        # Dann gilt wieder: low → BG, high → Charakter.
+        if invert:
+            eff_brightness = (765 - brightness).astype(np.int32)
+        else:
+            eff_brightness = brightness
+        # Voll-transparent: eff_brightness < threshold
+        # Voll-opaque: eff_brightness > threshold + feather*3
         # Linear zwischen den beiden
         if feather > 0:
             edge_hi = threshold + feather * 3
             alpha = np.clip(
-                (brightness - threshold) * (255.0 / (edge_hi - threshold)),
+                (eff_brightness - threshold) * (255.0 / (edge_hi - threshold)),
                 0, 255
             ).astype(np.uint8)
         else:
-            alpha = np.where(brightness < threshold, 0, 255).astype(np.uint8)
+            alpha = np.where(eff_brightness < threshold, 0, 255).astype(np.uint8)
 
         # Edge-Flood-Fill: nur BG-erreichbare bereits-transparente Pixel
         # werden komplett transparent (alpha=0). Pixel die der brightness-
@@ -200,15 +236,17 @@ def main():
     ap.add_argument('--erode', type=int, default=0,
                     help='N Pixel vom Rand wegfressen (default 0; '
                          'sinnvoll 1-2 gegen Black-Halos)')
+    ap.add_argument('--bg', choices=['black', 'white'], default='black',
+                    help='Background-Farbe die entfernt wird (default black)')
     args = ap.parse_args()
 
     if args.file:
         p = Path(args.file)
         if not p.is_absolute():
             p = PROJECT_ROOT / p
-        ok = remove_black_background(p, args.threshold, args.feather,
-                                      flood_from_edges=not args.no_flood,
-                                      erode=args.erode)
+        ok = remove_background(p, args.threshold, args.feather,
+                                flood_from_edges=not args.no_flood,
+                                erode=args.erode, bg_color=args.bg)
         print(f'{"OK" if ok else "FAIL"}: {p}')
         return
 

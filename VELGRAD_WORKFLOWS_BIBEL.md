@@ -18,7 +18,7 @@ Outputs (Sprite-Sheets, Mask-Sets, Variants).
 | Workflow | Loest welches Problem | Phase | Kosten/Run | Tool |
 |---|---|---|---|---|
 | **Character Sheet Generator** | 1 Konzept → 4 directional views (Front/Side/Back/3Q) | T2.6 Phase 3 (Animation-Foundation) | ~4 EUR / Charakter | `workflow_character_sheet.py` |
-| **Sprite Animation Frames** | 1 Pose → 8-Frame Walk/Attack Cycle | T2.6 Phase 3 (Animation-Frames) | ~6 EUR / Cycle | `workflow_animation_frames.py` |
+| **Sprite Animation Frames** | 1 Pose → 8-Frame Walk/Attack Cycle | T2.6 Phase 3 (Animation-Frames) | ~6 EUR / Cycle (oder 0 wenn extern erstellt) | `workflow_animation_frames.py` + Engine-Loader |
 | **Texture Tiler** | 1 Floor + 1 Wall → 16-Mask modular Tileset | T2.7 Phase 4 (Modular Tilesets) | ~3 EUR / Biome ODER 0 (procedural) | `workflow_texture_tiler.py` |
 | **Inpaint / Outpaint** | Decor-Variations, BG-Removal-Fixes, Door-Sprites, Wand-Boden-Transitions | jederzeit | ~0.25 EUR / Edit | `workflow_inpaint.py` |
 
@@ -150,6 +150,30 @@ Erst nach Workflow 1 sinnvoll. Priorisierung:
 
 Phase 3 wird daher **selektiv** ausgerollt: erst Held-der-Stunde (warrior), dann
 On-demand-Erweiterung wenn Engine die Frames wirklich nutzt.
+
+### Engine-Integration (Update #164)
+
+Walk-Sheets werden von `sf/sprites.py` automatisch geladen wenn unter
+`assets/sprites/classes/<class>_walk/<class>_<dir>.png` vorhanden:
+
+- **Konvention:** 1 horizontaler Strip pro Direction (down/up/left/right),
+  enthaelt 8 gleich-breite Frames
+- **Direction-Lookup:** `direction_from_facing(p.facing)` → 'down'|'up'|'left'|'right'
+- **Frame-Picker:** `int(walk_phase % 8)` — laeuft mit dem existierenden
+  Procedural-Walk-Phase-Counter mit
+- **Auto-Trim:** transparente Borders um den Charakter werden beim Load
+  weggecroppt → maximale Cell-Auslastung
+- **Fallback-Kette:** Walk-Anim → Static-Sprite (`<class>.png`) → Procedural-Composit
+- **Hot-Reload:** `sprites.reload_sprite_cache()` leert auch den Walk-Frame-Cache
+
+**Externe Quellen** sind erlaubt (selber rendern, AI-Tools wie Krea/Leonardo,
+gepatchte Workflows). Wichtig: nach dem Generieren ggf. via
+`tools/sprite_postprocess.py --bg white|black` den BG transparent machen
+(Vorsicht: PNGs aus manchen Tools sind 24-bit RGB ohne Alpha-Channel und
+brauchen Postprocess auch wenn sie "transparent" aussehen).
+
+**Pilot abgeschlossen:** Monk (Update #164) — 4 Direction-Strips à 8 Frames,
+auto-trimmed, in-Game als walking Animation sichtbar.
 
 ---
 
