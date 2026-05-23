@@ -313,6 +313,31 @@ python tools/workflow_inpaint.py \
 - **Use-Cases offen** — wird on-demand verwendet, kein Batch-Pass geplant
 - **Budget-Reserve:** ~5 EUR/Monat fuer Polish-Inpaints
 
+### External-Tool Fallback fuer BG-Removal
+
+Wenn `tools/sprite_postprocess.py` einen schwarzen Halo um den Charakter
+nicht vollstaendig entfernen kann (kompressionsartefakte / Anti-Aliased-
+Outlines aus Scenario.gg), nutze **https://ai.nero.com/background-remover/**
+als externen Fallback:
+
+1. Lade das problematische PNG dort hoch
+2. Klick "Remove Background"
+3. Download das saubere PNG
+4. Ersetze die Datei in `assets/sprites/<category>/<id>.png`
+5. F5 im Game → Hot-Reload via `sprites.reload_sprite_cache()`
+
+Validiert fuer: `classes/warrior.png` (Update #163). Vorteil: ai.nero.com
+versteht Anti-Aliased-Edges deutlich besser als unsere brightness-basierte
+Flood-Fill-Heuristik und produziert butterweiche Silhouetten.
+
+Verwende es als **erste Wahl** wenn:
+- Sprite hat dunkle Innenbereiche die Flood-Fill aufessen koennte
+- Anti-Aliased-Rand mit Black-Halo
+- Single-Sprite Polish ist noetig (zu wenig fuer Batch)
+
+Eigenes Tool (`sprite_postprocess.py`) bleibt fuer Batch-Verarbeitung (alle
+8 Klassen auf einmal, headless im Workflow).
+
 ---
 
 ## VI. GEMEINSAME INFRASTRUKTUR

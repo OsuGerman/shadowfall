@@ -35,9 +35,22 @@ TRANSPARENT_BG_CATEGORIES = {'mobs', 'classes', 'items'}
 
 def remove_black_background(png_path: Path,
                             threshold: int = 30,
-                            feather: int = 8) -> bool:
+                            feather: int = 8,
+                            flood_from_edges: bool = True,
+                            erode: int = 0) -> bool:
     """Macht alle schwarzen Pixel transparent. Soft-Edge-Feathering verhindert
-    harte Outlines. Returnt True bei Erfolg, False bei Fehler."""
+    harte Outlines.
+
+    flood_from_edges: Wenn True (Default), wird zusaetzlich ein Edge-Flood-
+        Fill durchgefuehrt — nur das vom Bild-Rand aus erreichbare schwarze
+        Areal wird transparent. Innere dunkle Regionen (Charakter-Schatten,
+        Stiefel etc.) bleiben erhalten. Verhindert das typische "schwarzer
+        Rand bleibt"-Problem.
+    erode: Pixel-Erosion-Pass nach BG-Removal. erode=N entfernt N Pixel vom
+        Charakter-Rand (frisst Black-Halos weg). Default 0, sinnvoll 1-2.
+
+    Returnt True bei Erfolg, False bei Fehler.
+    """
     if not png_path.is_file():
         return False
     # Pygame Display nicht noetig - SDL2 unterstuetzt headless image-only.
@@ -73,6 +86,51 @@ def remove_black_background(png_path: Path,
             ).astype(np.uint8)
         else:
             alpha = np.where(brightness < threshold, 0, 255).astype(np.uint8)
+
+        # Edge-Flood-Fill: nur BG-erreichbare bereits-transparente Pixel
+        # werden komplett transparent (alpha=0). Pixel die der brightness-
+        # Rule nach OPAK sind (alpha > 32) blockieren den Flood — somit
+        # bleibt der Charakter intakt und innere dunkle Pixel werden
+        # nicht weggefressen.
+        if flood_from_edges:
+            # Travelable = bereits hauptsaechlich transparent (von Rule 1)
+            travelable = alpha < 32
+            # Seed: alle travelable-Pixel auf der Bild-Kante
+            reachable = np.zeros_like(travelable)
+            reachable[0, :]  = travelable[0, :]
+            reachable[-1, :] = travelable[-1, :]
+            reachable[:, 0]  = travelable[:, 0]
+            reachable[:, -1] = travelable[:, -1]
+            # Iterative 4-neighbour-Dilation, beschraenkt auf travelable.
+            # Schnellabbruch wenn kein neuer Pixel mehr dazukommt.
+            for _ in range(max(w, h)):
+                prev_count = int(reachable.sum())
+                grown = reachable.copy()
+                grown[1:, :]  |= reachable[:-1, :]
+                grown[:-1, :] |= reachable[1:, :]
+                grown[:, 1:]  |= reachable[:, :-1]
+                grown[:, :-1] |= reachable[:, 1:]
+                reachable = grown & travelable
+                if int(reachable.sum()) == prev_count:
+                    break
+            # Nur die BG-erreichbaren Pixel werden voll-transparent.
+            # Alle anderen behalten ihre originale (feathered) Alpha —
+            # innere dunkle Pixel die NICHT von der Kante aus erreichbar
+            # sind bleiben sichtbar. Soft-Edge bleibt erhalten.
+            alpha = np.where(reachable, 0, alpha).astype(np.uint8)
+
+        # Erode: shrink charakter mask um N Pixel (frisst Halos weg)
+        if erode > 0:
+            opaque = alpha > 0
+            for _ in range(erode):
+                eroded = opaque.copy()
+                eroded[1:, :]  &= opaque[:-1, :]
+                eroded[:-1, :] &= opaque[1:, :]
+                eroded[:, 1:]  &= opaque[:, :-1]
+                eroded[:, :-1] &= opaque[:, 1:]
+                opaque = eroded
+            alpha = np.where(opaque, alpha, 0).astype(np.uint8)
+
         # Schreibe Pixel + Alpha in dst
         dst_pixels = pygame.surfarray.pixels3d(dst)
         dst_alpha  = pygame.surfarray.pixels_alpha(dst)
@@ -103,7 +161,8 @@ def remove_black_background(png_path: Path,
         return False
 
 
-def process_directory(category_dir: Path, threshold: int, feather: int) -> tuple[int, int]:
+def process_directory(category_dir: Path, threshold: int, feather: int,
+                       flood: bool = True, erode: int = 0) -> tuple[int, int]:
     """Verarbeitet alle .png-Dateien in einem Kategorie-Unterordner."""
     if not category_dir.is_dir():
         return (0, 0)
@@ -111,7 +170,8 @@ def process_directory(category_dir: Path, threshold: int, feather: int) -> tuple
     ok, fail = 0, 0
     for p in pngs:
         before = p.stat().st_size
-        if remove_black_background(p, threshold, feather):
+        if remove_black_background(p, threshold, feather,
+                                    flood_from_edges=flood, erode=erode):
             after = p.stat().st_size
             delta = after - before
             print(f'  {category_dir.name}/{p.name:<40} {before//1024}K -> {after//1024}K  '
@@ -135,13 +195,20 @@ def main():
     ap.add_argument('--feather', type=int, default=8,
                     help='Soft-Edge-Pixelbereich gegen harte Outlines '
                          '(default 8; 0=hart-Schnitt)')
+    ap.add_argument('--no-flood', action='store_true',
+                    help='Edge-Flood-Fill deaktivieren (default an)')
+    ap.add_argument('--erode', type=int, default=0,
+                    help='N Pixel vom Rand wegfressen (default 0; '
+                         'sinnvoll 1-2 gegen Black-Halos)')
     args = ap.parse_args()
 
     if args.file:
         p = Path(args.file)
         if not p.is_absolute():
             p = PROJECT_ROOT / p
-        ok = remove_black_background(p, args.threshold, args.feather)
+        ok = remove_black_background(p, args.threshold, args.feather,
+                                      flood_from_edges=not args.no_flood,
+                                      erode=args.erode)
         print(f'{"OK" if ok else "FAIL"}: {p}')
         return
 
@@ -161,7 +228,9 @@ def main():
         if not d.is_dir():
             continue
         print(f'=== {sub}/ ===')
-        ok, fail = process_directory(d, args.threshold, args.feather)
+        ok, fail = process_directory(d, args.threshold, args.feather,
+                                       flood=not args.no_flood,
+                                       erode=args.erode)
         total_ok += ok
         total_fail += fail
     print(f'\nFertig. {total_ok} verarbeitet, {total_fail} failed.')

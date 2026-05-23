@@ -599,10 +599,12 @@ def draw_player_at(screen, p, sx, sy, walk_phase):
     # rendere das statt Procedural-Composit. Fall-through wenn keins.
     ai_surf = get_class_sprite(cls)
     if ai_surf is not None:
-        # AI-Sprites haben mehr Body-Fülle als der Procedural-Composit —
-        # daher 3.4x statt 4.4x für korrekte Cell-Proportionen
-        # (Update Sprite-Calibration nach User-Feedback).
-        target_h = int(p.radius * 3.4)
+        # AI-Sprites haben mehr Body-Fülle als der Procedural-Composit.
+        # Calibration-History:
+        #   4.4x → war zu gross in Crypt (head + shoulders sprengten cell)
+        #   3.4x → war zu klein in offenen Biomes (Desert/Sumpf/Eisfeld)
+        #   3.8x → Goldener Mittelweg (Update #163, User-Feedback Wueste)
+        target_h = int(p.radius * 3.8)
         _draw_ai_sprite_at(screen, ai_surf, sx, body_sy + p.radius, target_h)
     else:
         # Sprite-Proxy: neue Lore-Klassen teilen Sprites mit den 3 Base-Klassen
