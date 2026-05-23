@@ -3217,6 +3217,129 @@ def test_escort_npc_lazy_spawn():
     return True
 
 
+def test_settings_persistence_roundtrip():
+    """Update #151 (User-Report „Vollbild/FPS/Seekrankheit müssen
+    gespeichert werden"): Settings werden in ~/.shadowfall_settings.json
+    persistiert und beim Game-Start wieder geladen.
+    """
+    from sf import save as _save
+    # Fake-Game (kein Pygame-Setup nötig — wir prüfen nur save/load)
+    class FakeGame:
+        pass
+    g = FakeGame()
+    g.settings = {
+        'frame_cap': 144,
+        'camera_cursor_lean': True,
+        'camera_lookahead': False,
+        'render_scale': 0.85,
+        'music_vol': 0.42,
+    }
+    g.fullscreen = True
+    _save.save_settings(g)
+    loaded = _save.load_settings()
+    assert loaded.get('frame_cap') == 144
+    assert loaded.get('camera_cursor_lean') is True
+    assert loaded.get('camera_lookahead') is False
+    assert loaded.get('render_scale') == 0.85
+    assert abs(loaded.get('music_vol') - 0.42) < 0.001
+    assert loaded.get('fullscreen') is True
+    # Cleanup
+    try:
+        _save.SETTINGS_PATH.unlink()
+    except (FileNotFoundError, OSError):
+        pass
+    return True
+
+
+def test_settings_persist_on_fullscreen_toggle():
+    """Update #151: Fullscreen-Toggle ruft save_settings auf — auch wenn
+    der User nicht aktiv ins Settings-Modal geht.
+    """
+    from sf.game import Game
+    from sf import save as _save
+    g = Game()
+    # Sicherstellen dass kein altes Settings-File stört
+    try:
+        _save.SETTINGS_PATH.unlink()
+    except (FileNotFoundError, OSError):
+        pass
+    initial = g.fullscreen
+    g._toggle_fullscreen()
+    # Settings-File sollte jetzt existieren
+    assert _save.SETTINGS_PATH.exists()
+    loaded = _save.load_settings()
+    assert loaded.get('fullscreen') == (not initial)
+    # Cleanup
+    try:
+        _save.SETTINGS_PATH.unlink()
+    except (FileNotFoundError, OSError):
+        pass
+    # Reset display mode für andere Tests
+    if g.fullscreen != initial:
+        g._toggle_fullscreen()
+    try:
+        _save.SETTINGS_PATH.unlink()
+    except (FileNotFoundError, OSError):
+        pass
+    return True
+
+
+def test_quest_target_portal_tutorial_fallback():
+    """Update #151: Neuer Char ohne abgeschlossene Dungeons bekommt
+    Tutorial-Highlight aufs Krypta-Portal.
+    """
+    from sf.game import Game
+    g = Game()
+    g.start_game('adventure')
+    g.player.completed_dungeons = set()
+    g.quest_log.active.clear()   # keine Main-Quest aktiv
+    kind, key, label = g._get_quest_target_portal()
+    assert kind == 'dungeon'
+    assert key == 'crypt_lost'
+    assert label == 'HIER STARTEN'
+    return True
+
+
+def test_quest_target_portal_from_main_quest_biome():
+    """Update #151: Aktive Main-Quest mit REACH-Stage biome=crypt
+    → highlight crypt_lost-Portal mit Label „HAUPTQUEST".
+    """
+    from sf.game import Game
+    g = Game()
+    g.start_game('adventure')
+    # akt1_salzwunde ist initial active. Advance auf REACH-Stage (Stage 1)
+    qst = g.quest_log.active.get('akt1_salzwunde')
+    assert qst is not None, 'Initial-Main-Quest fehlt'
+    # Stage 0 = TALK Korven. Skip zu Stage 1 = REACH biome=crypt
+    qst.advance_stage(g)
+    assert qst.stage['type'] == 'reach'
+    assert qst.stage['target'].get('biome') == 'crypt'
+    kind, key, label = g._get_quest_target_portal()
+    assert kind == 'dungeon'
+    assert key == 'crypt_lost'
+    assert label == 'HAUPTQUEST'
+    return True
+
+
+def test_class_specific_basic_attack_vfx():
+    """Update #151: Jede Klasse hat ein eigenes VFX-Profil — keine
+    zwei Klassen teilen sich exakt identische Farben.
+    """
+    from sf.game import Game
+    g = Game()
+    profiles = g._BASIC_ATTACK_VFX
+    cls_keys = ('warrior', 'monk', 'mage', 'witch',
+                 'ranger', 'rogue', 'huntress', 'druid')
+    # Alle 8 Klassen haben ein Profil
+    for c in cls_keys:
+        assert c in profiles, f'{c} hat kein Attack-VFX-Profil'
+    # Farben sind unterschiedlich pro Klasse (mind. primary)
+    cols = {c: profiles[c]['col'] for c in cls_keys}
+    assert len(set(cols.values())) == len(cls_keys), (
+        f'Doppelte Klassen-Farben: {cols}')
+    return True
+
+
 def test_escort_npc_follow_and_arrival():
     """Update #150: ESCORT-NPC folgt dem Player; wenn Player am Ziel
     snappt der NPC ins Ziel und die Stage advanced.
@@ -5158,6 +5281,11 @@ TESTS = [
     ('dungeon_completes_unlocks_akt', test_dungeon_completes_unlocks_next_akt),
     ('escort_npc_lazy_spawn',      test_escort_npc_lazy_spawn),
     ('escort_npc_follow_arrival',  test_escort_npc_follow_and_arrival),
+    ('settings_persistence_roundtrip', test_settings_persistence_roundtrip),
+    ('settings_persist_fullscreen', test_settings_persist_on_fullscreen_toggle),
+    ('quest_target_tutorial',      test_quest_target_portal_tutorial_fallback),
+    ('quest_target_main_biome',    test_quest_target_portal_from_main_quest_biome),
+    ('class_specific_attack_vfx',  test_class_specific_basic_attack_vfx),
 ]
 
 

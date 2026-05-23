@@ -35,7 +35,18 @@ class Game:
     def __init__(self):
         snd.init()  # Mixer früh initialisieren
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        # Update #151 (User-Report „Auflösung könnte schärfer sein"):
+        # `pygame.SCALED` aktivieren — SDL2 nutzt hardware-accelerated
+        # Integer-Scaling.  Auf High-DPI-Monitoren rendert das Spiel
+        # jetzt scharf statt bilinear-gestretched vom Windows-DWM.
+        # Logische Welt-Größe bleibt SCREEN_W × SCREEN_H (1600×900) —
+        # nur die Ausgabe ist crisp.
+        try:
+            self.screen = pygame.display.set_mode(
+                (SCREEN_W, SCREEN_H), pygame.SCALED, vsync=1)
+        except (pygame.error, TypeError):
+            # Fallback wenn SCALED nicht supported (sehr alte SDL)
+            self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         pygame.display.set_caption('Shadowfall — Erweitert')
         self.clock = pygame.time.Clock()
         self.fullscreen = False
@@ -858,6 +869,151 @@ class Game:
     # Tier-3-Dungeon-System. Stattdessen sind alle Akte über Brassweir-
     # Outpost-Portale und Dungeon-Portale erreichbar.
 
+    # Klassen-spezifische Basic-Attack-VFX-Profile.  Lore-Anker:
+    #   warrior — Stahl/Eisen-Funken (helles Bronze/Gelb, schwere Splitter)
+    #   monk    — Stille-Schritte-Aura (mattes Gold + radiale Pulse)
+    #   mage    — Arkan-Funken (Magier-Blau, kompakter)
+    #   witch   — Knochen-Asche (lila-magenta, weicher Drift)
+    #   ranger  — Wind-Schnitte (Pfeilgrün, lange Streichlinien)
+    #   rogue   — Schatten-Klinge (Magenta-Schwarz, scharf)
+    #   huntress— Speer-Wirbel (warmes Orange, Wirbelpartikel)
+    #   druid   — Wurzel-Funken (erdbraun + grün)
+    _BASIC_ATTACK_VFX = {
+        'warrior': dict(col=(255, 220, 130), col2=(190, 110, 60),
+                         count=6, spread=0.55, dist=(6, 22), size=(2, 3.5),
+                         life=0.32),
+        'monk':    dict(col=(250, 240, 200), col2=(220, 200, 130),
+                         count=8, spread=0.9,  dist=(4, 16), size=(1.5, 2.5),
+                         life=0.30, pulse=True),
+        'mage':    dict(col=(140, 170, 255), col2=(80, 100, 220),
+                         count=5, spread=0.4,  dist=(4, 16), size=(1.5, 3.0),
+                         life=0.36),
+        'witch':   dict(col=(200, 110, 220), col2=(120, 60, 160),
+                         count=7, spread=0.7,  dist=(4, 20), size=(1.5, 3.0),
+                         life=0.42),
+        'ranger':  dict(col=(170, 240, 130), col2=(80, 160, 80),
+                         count=5, spread=0.3,  dist=(8, 24), size=(1.0, 2.0),
+                         life=0.28),
+        'rogue':   dict(col=(180, 90, 200), col2=(40, 20, 60),
+                         count=6, spread=0.35, dist=(6, 22), size=(1.5, 2.5),
+                         life=0.30),
+        'huntress':dict(col=(255, 200, 110), col2=(200, 120, 60),
+                         count=7, spread=0.6,  dist=(6, 22), size=(1.5, 3.0),
+                         life=0.34),
+        'druid':   dict(col=(180, 150, 90), col2=(110, 80, 50),
+                         count=6, spread=0.5,  dist=(6, 20), size=(1.5, 3.0),
+                         life=0.36),
+    }
+
+    def _spawn_class_basic_attack_vfx(self, p, crit):
+        """Update #151: Class-specific Basic-Attack-VFX (User-Report
+        „nicht jede Klasse sollte gleich aussehen — Attacken auch nicht").
+
+        Spawnt Partikel + ggf. radialer Pulse-Ring entsprechend dem
+        Klassen-Profil.  Bei Crit wird Count + Distanz erhöht.
+        """
+        prof = self._BASIC_ATTACK_VFX.get(p.cls,
+                                            self._BASIC_ATTACK_VFX['warrior'])
+        count = prof['count'] + (2 if crit else 0)
+        d_min, d_max = prof['dist']
+        s_min, s_max = prof['size']
+        for i in range(count):
+            a = p.facing + random.uniform(-prof['spread'], prof['spread'])
+            r = p.radius + random.uniform(d_min, d_max)
+            # Mix primary/secondary color randomly
+            c = prof['col'] if (i % 2 == 0) else prof['col2']
+            # Velocity: leichter Drift in Schwung-Richtung
+            vx = math.cos(a) * 30.0
+            vy = math.sin(a) * 30.0
+            self.particles.append(Particle(
+                p.pos.x + math.cos(a) * r,
+                p.pos.y + math.sin(a) * r,
+                vx, vy, c,
+                prof['life'], random.uniform(s_min, s_max),
+            ))
+        # Mönch: zusätzlicher radialer Pulse-Ring (Stille-Schritte-Aura)
+        if prof.get('pulse'):
+            self.spawn_particles(p.pos.x, p.pos.y, 12,
+                                  (240, 230, 190),
+                                  life_max=0.4, size_max=2.0, gravity=-10)
+        # Crit-Bonus: kleiner Burst in Klassen-Farbe
+        if crit:
+            self.spawn_particles(p.pos.x, p.pos.y, 8, prof['col'],
+                                  life_max=0.5, size_max=3.5, gravity=0)
+
+    def _get_quest_target_portal(self):
+        """Update #151 (User-Report „20 Portale, planlos"):
+        Bestimmt welches Portal die nächste Quest-Etappe ist.
+
+        Returnt Tuple `(kind, key, label)`:
+          - kind: 'dungeon' (dungeon_portals) oder 'outpost'
+          - key: dungeon_id (z.B. 'crypt_lost') oder outpost_key
+          - label: kurzer Banner-Text (z.B. „HAUPTQUEST")
+
+        Returnt `(None, None, None)` wenn keine eindeutige Empfehlung
+        ableitbar ist (z.B. keine aktive Main-Quest in einer REACH/KILL-
+        Stage).
+
+        Priorität:
+          1. Aktive Main-Quest mit REACH-Stage `biome=...` → mappe Biome
+             auf passendes dungeon_portal / outpost_portal in der Stadt
+          2. Aktive Main-Quest mit KILL/BOSS_ROOM-Stage → gleiches Biome
+          3. Keine Main-Quest aktiv + completed_dungeons leer → crypt_lost
+        """
+        # Biome → Portal-Mapping. dungeon_id wenn Brassweir-Krypta-Portal,
+        # sonst der outpost_key (für Outpost-Portale die ins Biome führen).
+        BIOME_TO_KEY = {
+            'crypt':   ('dungeon', 'crypt_lost'),
+            'desert':  ('outpost', 'zhar_eth_karawane'),
+            'frost':   ('outpost', 'echo_markt'),
+            'lava':    ('outpost', 'saeulen_von_helst'),
+            'swamp':   ('outpost', 'knoten_markt'),
+            'astral':  ('outpost', 'spiegelhof'),
+            'wound_salt': ('outpost', 'drei_wunden_lager'),
+            'hollow_word': ('outpost', 'hohlwort'),
+        }
+        # Region → Outpost-Key Fallback (für Quests deren Stage kein
+        # explizites biome=… hat, aber deren region eindeutig in einem
+        # Outpost liegt — z.B. „Akt 5 — Spiegelstadt" → spiegelhof).
+        REGION_TO_OUTPOST = {
+            'Akt 1b': 'zhar_eth_karawane',
+            'Akt 2 — Glasgoldene Ruinen': 'echo_markt',
+            'Akt 2': 'echo_markt',
+            'Akt 3 — Aschenfelder': 'saeulen_von_helst',
+            'Akt 3': 'saeulen_von_helst',
+            'Akt 4 — Wurzelgrab': 'knoten_markt',
+            'Akt 4': 'knoten_markt',
+            'Akt 5 — Spiegelstadt': 'spiegelhof',
+            'Akt 5': 'spiegelhof',
+            'Akt 6 — Drei-Wunden': 'drei_wunden_lager',
+            'Akt 6': 'drei_wunden_lager',
+            'Akt 7 — Hohlwort': 'hohlwort',
+            'Akt 7': 'hohlwort',
+        }
+        log = getattr(self, 'quest_log', None)
+        if log is not None:
+            for qid, qst in log.active.items():
+                quest = qst.quest
+                if not quest.get('is_main'):
+                    continue
+                st = qst.stage
+                if st is None:
+                    continue
+                tgt = st.get('target', {})
+                biome = tgt.get('biome')
+                if biome and biome in BIOME_TO_KEY:
+                    kind, key = BIOME_TO_KEY[biome]
+                    return (kind, key, 'HAUPTQUEST')
+                # Fallback: Region-Name auf Outpost-Key mappen
+                region = quest.get('region', '')
+                for prefix, ok in REGION_TO_OUTPOST.items():
+                    if region.startswith(prefix):
+                        return ('outpost', ok, 'HAUPTQUEST')
+        # Tutorial-Fallback: kein Dungeon gemacht → Krypta-Portal
+        if len(getattr(self.player, 'completed_dungeons', ())) == 0:
+            return ('dungeon', 'crypt_lost', 'HIER STARTEN')
+        return (None, None, None)
+
     def _push_akt_progression_hint(self, akt_count):
         """Update #144: Nach Boss-Kill einen klaren Hint geben wohin
         als nächstes — verhindert „wo sind die Aschenfelder?"-Konfusion.
@@ -1252,9 +1408,16 @@ class Game:
         self.fullscreen = not self.fullscreen
         if self.fullscreen:
             self.screen = pygame.display.set_mode(
-                (SCREEN_W, SCREEN_H), pygame.FULLSCREEN | pygame.SCALED)
+                (SCREEN_W, SCREEN_H),
+                pygame.FULLSCREEN | pygame.SCALED, vsync=1)
         else:
-            self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+            # Update #151: Windowed-Mode auch mit SCALED für Sharpness
+            # auf High-DPI-Monitoren.
+            try:
+                self.screen = pygame.display.set_mode(
+                    (SCREEN_W, SCREEN_H), pygame.SCALED, vsync=1)
+            except (pygame.error, TypeError):
+                self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         # Update #151: Vollbild-Toggle persistieren
         try:
             save_mod.save_settings(self)
@@ -3779,15 +3942,12 @@ class Game:
                             f'+{int(heal)}', (220, 80, 80)))
                         p.vampire_charges -= 1
                     p.attack_cd = 0.4
-                    for _ in range(5):
-                        a = p.facing + random.uniform(-0.4, 0.4)
-                        r = p.radius + random.uniform(4, 18)
-                        self.particles.append(Particle(
-                            p.pos.x + math.cos(a) * r,
-                            p.pos.y + math.sin(a) * r,
-                            0, 0, (255, 238, 170),
-                            0.3, random.uniform(2, 3),
-                        ))
+                    # Update #151 (User-Report „nicht jede Klasse sollte
+                    # gleich aussehen"): Klassen-spezifische Attack-VFX.
+                    # Jede Klasse bekommt eigenes Partikel-Profil
+                    # (Farbe, Form, Anzahl) — Lore-Anker an die Klassen-
+                    # Color + Waffen-Theme.
+                    self._spawn_class_basic_attack_vfx(p, crit)
             else:
                 p.moving = True
 
@@ -4911,17 +5071,22 @@ class Game:
                         self._draw_npc_quest_marker(sx, sy - 64, mark)
             elif kind == 'dportal':
                 sprites.draw_dungeon_portal_at(self.screen, obj, sx, sy)
-                # Update #130: Tutorial-Glow auf das Akt-1-Krypta-Portal
-                # solange der Spieler noch keinen Dungeon abgeschlossen hat.
-                # Macht klar „DIESES Portal musst du nehmen".
-                if (self.area == 'town'
-                        and len(getattr(self.player,
-                                         'completed_dungeons', ())) == 0
-                        and getattr(obj, 'dungeon_id', None) == 'crypt_lost'):
-                    self._draw_tutorial_portal_arrow(sx, sy,
-                                                     label='HIER STARTEN')
+                # Update #151: Quest-driven Portal-Highlighting — der
+                # Pfeil + Label kommt jetzt auf JEDES Portal, das die
+                # aktive Main-Quest braucht (nicht nur die Krypta).
+                if self.area == 'town':
+                    qkind, qkey, qlbl = self._get_quest_target_portal()
+                    if (qkind == 'dungeon'
+                            and getattr(obj, 'dungeon_id', None) == qkey):
+                        self._draw_tutorial_portal_arrow(sx, sy, label=qlbl)
             elif kind == 'oportal':
                 self._draw_outpost_portal(obj, sx, sy)
+                # Update #151: Quest-driven Outpost-Highlight
+                if self.area == 'town' and not getattr(obj, '_locked', False):
+                    qkind, qkey, qlbl = self._get_quest_target_portal()
+                    if (qkind == 'outpost'
+                            and getattr(obj, 'outpost_key', None) == qkey):
+                        self._draw_tutorial_portal_arrow(sx, sy, label=qlbl)
             elif kind == 'player':
                 self._draw_player_at(sx, sy)
 

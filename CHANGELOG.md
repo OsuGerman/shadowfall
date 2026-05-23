@@ -4,6 +4,85 @@
 
 ---
 
+## [2026-05-23] — Update #151 — Quest-driven Progression, Settings-Persistence, Sharpness, Class-VFX
+
+**User:** „Arbeite weiter an Quest und spielbaren Fortschritt — die Gebiete, nicht jede klasse sollte gleich aussehen genauso wenig wie die attacken. Es soll klar sein bei den Quest was mann wo machen sollte — aktuell geht man planlos in 2 verfügbare portale wobei gefühlt 20 auf einer stelle stehen und kommt dann nicht weiter !!! Einstellungen wie Vollbild diese Seekrankheits einstellung und FPs sollten gespeichert werden. Auch die Auflösung könnte schärfer sein."
+
+Vier-Punkte-Pass über die ausstehenden Komfort- und Klarheits-Defizite.
+
+### 1. Settings-Persistenz ([sf/save.py](sf/save.py) + [sf/game.py](sf/game.py))
+
+- Neuer File: `~/.shadowfall_settings.json` — slot-unabhängig (gilt global für alle Saves)
+- `save_settings(game)` / `load_settings()` API in [sf/save.py](sf/save.py)
+- Persistierte Keys: `fullscreen`, `camera_cursor_lean`, `camera_lookahead`, `frame_cap`, `render_scale`, `music_vol`, `sfx_vol`, `voice_vol`, `multi_threading`, `colorblind_ailments`, `damage_numbers`, `screen_shake`, `show_fps`, `tutorial_active`
+- Geladen in `Game.__init__` — überlagert die Defaults; Fullscreen wird nach Display-Init angewandt
+- Schreib-Trigger:
+  - **Fullscreen-Toggle** (F11 + Settings-Modal): direkt nach `_toggle_fullscreen`
+  - **Settings-Modal-Klick** (Frame-Cap, Camera-Lean, Cursor-Lean, Colorblind, Render-Scale, etc.): `save_settings` am Ende von `_handle_settings_click`
+  - **Slider-Drag** (Music/SFX-Volume): throttled 1×/0.5 s
+- Schreib-Fehler werden geschluckt (read-only Profile bricht nicht die App)
+
+### 2. Render-Schärfe ([sf/game.py](sf/game.py))
+
+- `pygame.display.set_mode(..., pygame.SCALED, vsync=1)` für **beide** Modi (Windowed + Fullscreen)
+- SDL2 hardware-accelerated Integer-Scaling — auf High-DPI-Monitoren rendert das Spiel jetzt scharf statt vom Windows-DWM bilinear gestretched
+- Logische Welt bleibt SCREEN_W × SCREEN_H (1600×900) — nur die Ausgabe ist crisp
+- vsync=1 reduziert Screen-Tearing zusätzlich
+
+### 3. Quest-driven Portal-Highlighting ([sf/game.py](sf/game.py) `_get_quest_target_portal`)
+
+User: „20 Portale auf einer Stelle, planlos."
+
+- Neuer Helper `_get_quest_target_portal()` → `(kind, key, label)`:
+  - Iteriert `quest_log.active`, filtert auf `is_main=True`
+  - Liest aktuelle Stage-`target`:
+    - `biome` → Mapping (`crypt→crypt_lost`, `desert→zhar_eth_karawane`, `frost→echo_markt`, `lava→saeulen_von_helst`, …)
+    - Region-Fallback (`„Akt 5 — Spiegelstadt" → spiegelhof`)
+  - Fallback: completed_dungeons leer → Tutorial-Highlight aufs Krypta-Portal
+- Render-Pass nutzt den Helper jetzt **generisch** für *jedes* Portal (Dungeon + Outpost), nicht nur den Akt-1-Krypta-Spezialfall
+- Label: „HAUPTQUEST" (Main-Quest-Aktiv) oder „HIER STARTEN" (Tutorial)
+- Locked-Outposts werden **nicht** gehighlighted — keine falschen Wege
+
+### 4. Class-spezifische Basic-Attack-VFX ([sf/game.py](sf/game.py) `_spawn_class_basic_attack_vfx`)
+
+User: „nicht jede klasse sollte gleich aussehen — Attacken auch nicht."
+
+Pro Klasse eigenes Partikel-Profil (Farben, Count, Streuung, Lebenszeit). Lore-Anker:
+
+| Klasse | Theme | Primary | Secondary | Spezial |
+|---|---|---|---|---|
+| Krieger | Stahl-Funken | warm-gold | bronze | — |
+| Mönch | Stille-Schritte-Aura | matt-weiß | gold | radialer Pulse-Ring |
+| Magier | Arkan-Funken | hell-blau | tief-blau | — |
+| Hexe | Knochen-Asche | magenta | violett | — |
+| Jägerin | Wind-Schnitte | hell-grün | dunkel-grün | — |
+| Söldner | Schatten-Klinge | magenta | dunkel | scharf |
+| Speerschwester | Speer-Wirbel | warm-orange | tief-orange | — |
+| Wandelnde | Wurzel-Funken | erd-braun | erd-grün | — |
+
+Crit zusätzlich +2 Partikel + Klassen-Farben-Burst.
+
+### Tests (5 neu)
+
+- `test_settings_persistence_roundtrip` — save→load roundtrip
+- `test_settings_persist_on_fullscreen_toggle` — F11 schreibt Settings-File
+- `test_quest_target_portal_tutorial_fallback` — Neuer Char ohne Dungeons → Krypta-Highlight
+- `test_quest_target_portal_from_main_quest_biome` — REACH-Stage biome=crypt → HAUPTQUEST-Highlight
+- `test_class_specific_basic_attack_vfx` — alle 8 Klassen haben ein Profil, keine Farb-Duplikate
+- **160/160 PASS**
+
+### Files
+
+- [sf/game.py](sf/game.py), [sf/save.py](sf/save.py), [tests/smoke.py](tests/smoke.py)
+
+### Noch offen (für spätere Updates)
+
+- **Stadt-Layout lore-konform** (WELT_AUFBAU-Pass) — größere Refaktor-Arbeit
+- **Mob-Attack-Variety** (per Mob-Typ unterschiedliche Patterns) — Combat-Design
+- **Auflösungs-Setting im Modal** (statt nur fixe 1600×900) — UX-Feature
+
+---
+
 ## [2026-05-23] — Update #150 — KRITISCH: Akt-Progression-Blocker + Phantom-Escort-NPC
 
 **User:** „die mission rechts keine ahnung was ich machen muss — beide bosse in beiden portalen x mal getötet — trotzdem komme ich nicht weiter in andere Gebiete"

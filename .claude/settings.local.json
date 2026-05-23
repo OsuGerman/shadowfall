@@ -20,7 +20,8 @@
       "Bash(git branch *)",
       "Bash(git push *)",
       "Bash(git fetch *)",
-      "Bash(git pull *)"
+      "Bash(git pull *)",
+      "Bash(grep -iE \"elevenlabs|\\\\.key$|api_key\")"
     ]
   }
 }
