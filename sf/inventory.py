@@ -524,21 +524,49 @@ class InventoryUI:
         return None
 
     def handle_rightclick(self, game, mx, my):
-        """Rechtsklick auf Inv-Slot = Item droppen (Loot in der Welt)."""
+        """Update #149 (User-Report „verschwindende Ausrüstung"):
+        Rechtsklick auf Inv-Slot ist jetzt SAFE — Item wird ins
+        Equipment ausgerüstet statt gedropped.  Spieler verlor vorher
+        bei Klick-Akzidenten Items in die Welt (die beim Map-Wechsel
+        verschwinden).
+
+        Drop-Action ist jetzt nur via SHIFT+RechtsKlick verfügbar.
+        """
         modal = self.modal_rect()
         if not modal.collidepoint(mx, my):
             return False
+        shift_held = bool(pygame.key.get_mods() & pygame.KMOD_SHIFT)
         for i in range(len(game.player.inventory)):
             if self.inv_slot_rect(i, modal).collidepoint(mx, my):
                 item = game.player.inventory[i]
-                if item is not None:
+                if item is None:
+                    return True
+                # Shift+RClick → Drop (explizite User-Action)
+                if shift_held:
                     self._drop_item(game, item)
                     game.player.inventory[i] = None
+                    game.toast('Item gedropped (Shift+RClick)',
+                                (220, 150, 80))
+                    return True
+                # Default RClick → Equip
+                ok = progression.try_equip(game.player, i)
+                if ok:
+                    try:
+                        from . import sounds as _snd
+                        _snd.play('ui_click', volume=0.4)
+                    except Exception:
+                        pass
+                else:
+                    game.toast('Equip nicht möglich (Slot belegt / Stufe?)',
+                                (220, 150, 80))
                 return True
         # Rechtsklick auf Equipment: in Inventar zurücklegen
         for slot in SLOTS:
             if self.equip_slot_rect(slot, modal).collidepoint(mx, my):
-                progression.try_unequip(game.player, slot)
+                ok = progression.try_unequip(game.player, slot)
+                if not ok:
+                    game.toast('Inventar voll — kann Item nicht ausziehen.',
+                                (220, 130, 80))
                 return True
         return False
 

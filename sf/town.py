@@ -436,11 +436,41 @@ def tick_npc_schedules(game):
     NPCs mit `day_pos`/`night_pos` werden sanft (lerp) zur aktuellen
     Tagesphase-Position gezogen.  Erste 60 s nach Town-Entry sind
     Snap-To-Target (kein „läuft langsam quer durch die Stadt").
+
+    Update #150: Zusätzlich ESCORT-Follow-AI für NPCs mit
+    `_escort_follow_player=True` — sanftes Folgen mit ~70 px Trail-
+    Offset hinter dem Player, max 90 Px/s.
     """
     from . import weather as _w
     t = game.stats.get('time_played', 0.0) if game.stats else 0.0
     is_day = _w.is_day_phase(t)
+    p = getattr(game, 'player', None)
     for npc in getattr(game, 'npcs', ()):
+        # Update #150: ESCORT-Follow-AI hat Priorität über day/night.
+        if getattr(npc, '_escort_follow_player', False) and p is not None:
+            dest = getattr(npc, '_escort_dest', None)
+            # Wenn Player nahe am Ziel ist → NPC snappt aufs Ziel
+            # (escort tick triggert arrived).
+            if dest is not None:
+                pdx = p.pos.x - dest[0]
+                pdy = p.pos.y - dest[1]
+                if (pdx * pdx + pdy * pdy) <= 120.0 * 120.0:
+                    npc.pos.x, npc.pos.y = dest
+                    continue
+            # Folgt dem Player mit Trail-Offset (diagonal hinten).
+            off_x, off_y = 50.0, 50.0
+            target_x = p.pos.x - off_x
+            target_y = p.pos.y - off_y
+            dx = target_x - npc.pos.x
+            dy = target_y - npc.pos.y
+            d = (dx * dx + dy * dy) ** 0.5
+            max_step = 110.0 * (1.0 / 60.0)
+            if d < max_step:
+                npc.pos.x, npc.pos.y = target_x, target_y
+            elif d > 2:
+                npc.pos.x += dx / d * max_step
+                npc.pos.y += dy / d * max_step
+            continue
         day_p = getattr(npc, 'day_pos', None)
         night_p = getattr(npc, 'night_pos', None)
         if day_p is None or night_p is None:

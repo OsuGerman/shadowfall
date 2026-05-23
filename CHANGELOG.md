@@ -4,6 +4,161 @@
 
 ---
 
+## [2026-05-23] — Update #150 — KRITISCH: Akt-Progression-Blocker + Phantom-Escort-NPC
+
+**User:** „die mission rechts keine ahnung was ich machen muss — beide bosse in beiden portalen x mal getötet — trotzdem komme ich nicht weiter in andere Gebiete"
+
+Zwei Tag-1-Bugs, die seit dem Dungeon-System existierten, aber erst durch Spieler-Fortschritt (Akt 2+ erreichen wollen) sichtbar wurden.
+
+### Diagnose
+
+**Bug A — Akt-Progression total kaputt** (der echte Blocker):
+
+Die Legacy-Klasse `Quest` in [sf/quests.py](sf/quests.py#L773) hält `objectives = [[kind, label, reward, target, count, done], ...]`.  Aber **nirgendwo** im Code wurde der `done`-Flag (`o[5]`) jemals auf `True` gesetzt.  Folge:
+
+- `Quest.boss_complete()` returnte **immer False**
+- Der Check in [sf/game.py:4657](sf/game.py#L4657) (`if ... self.active_quest.boss_complete(): self.complete_dungeon()`) feuerte **nie**
+- `player.completed_dungeons` blieb **permanent leer**
+- `outposts.unlocked_outposts()` returnte nur Akt-1b → **alle Akt-2+ Outposts permanent gelockt**
+
+→ Der Spieler konnte 503 Kills + 2 Bosse erledigen — und das Spiel registrierte einfach keinen Dungeon-Clear.
+
+**Bug B — Schwester-Wache existierte nie**:
+
+Die Quest `akt1_tameris_schwester` hat als Stage 2 einen `ESCORT` mit `npc_name='Schwester-Wache'`.  Aber dieser NPC wurde **nirgends gespawnt** — weder im Town-Roster ([sf/town.py:384-391](sf/town.py#L384-L391)) noch dynamisch beim Stage-Übergang.  `_npc_is_alive('Schwester-Wache')` returnte False → der ESCORT-tick feuerte „Schwester-Wache ist gefallen"-Toast jede Frame (deduped auf 1×, aber Quest hing fest).
+
+### Fixes
+
+**1. Boss-Kill markiert legacy `objectives`** ([sf/quests.py](sf/quests.py) `on_kill`):
+- Vor dem QuestLog-Pfad wird jetzt `game.active_quest.objectives` durchlaufen
+- `kind=='boss'` + `enemy.is_boss` → `o[5]=True`, `o[4]=o[3]` (count=target)
+- `kind=='kills'` → `o[4]+=1`, done wenn target erreicht
+- `kind=='elite'` + `enemy.elite` (non-boss) → analog
+- `boss_complete()` returnt jetzt korrekt True nach Story-Boss-Kill → `complete_dungeon()` feuert → `completed_dungeons.add(id)` → nächster Akt unlocked
+
+**2. ESCORT-NPC Lazy-Spawn** ([sf/quests.py](sf/quests.py) `_try_spawn_escort_npc`):
+- Wenn ESCORT-tick `_npc_is_alive(name)==False` UND `area=='town'` → NPC am Stadttor (0, -500) spawnen
+- NPC bekommt `_escort_follow_player=True` + `_escort_dest=(x,y)`
+- Toast: „Schwester-Wache wartet am Stadttor — führe sie zum Ziel."
+- Spam-Toast „ist gefallen" entfernt (Stage wartet still wenn Spieler in Dungeon)
+
+**3. ESCORT-Follow-AI** ([sf/town.py](sf/town.py) `tick_npc_schedules`):
+- NPCs mit `_escort_follow_player` lerpen pro Frame zu `player.pos - (50, 50)`
+- Max 110 Px/s — schnell genug damit sie nicht abgehängt wird
+- Wenn Player innerhalb 120 px vom Ziel → NPC **snappt aufs Ziel** → ESCORT-tick erkennt arrival → Stage advanced
+
+**4. ESCORT-NPC Cleanup bei Stage-Advance** ([sf/quests.py](sf/quests.py) `advance_stage`):
+- Beim Stage-Übergang wird der ESCORT-NPC aus `game.npcs` entfernt (kein lebenslanger Begleiter)
+- Filter prüft beide: `name == npc_name` UND `_escort_follow_player` (löscht keine echten Town-NPCs)
+
+### Tests (neu)
+
+- `test_boss_kill_marks_objective_complete` — Unit: `on_kill` mit Fake-Boss → `o[5]==True` + `boss_complete()==True`
+- `test_dungeon_completes_unlocks_next_akt` — End-to-End: Boss-Kill → `completed_dungeons.add('crypt_lost')` → `'echo_markt' in unlocked_outposts(player)`
+- `test_escort_npc_lazy_spawn` — ESCORT-Stage tick spawnt Schwester-Wache wenn fehlend
+- `test_escort_npc_follow_arrival` — Player teleport zu dest → follow-AI snap → tick returnt arrived=True
+- **155/155 PASS** (149 vorher + 4 neue für #149 + 4 neue für #150 = 4+4+147 base... existing 151 + 4 neue = 155 ✓)
+
+### Recovery für Bestandsspieler
+
+Wer bereits Bosse gekillt hat (wie der User mit 503 Kills): **einmaliger Re-Kill des Akt-1-Bosses** in der Krypta reicht — danach unlocked Akt 2 sofort.  Keine Save-Migration nötig (zu riskant — könnte ungekillte Bosse fälschlich als done markieren).
+
+### Files
+
+- [sf/quests.py](sf/quests.py), [sf/town.py](sf/town.py), [tests/smoke.py](tests/smoke.py)
+
+---
+
+## [2026-05-23] — Update #149 — User-Bugliste-Pass (Equip-Drop, Toast-Overflow, Quest-Spam, NPC-Stuck)
+
+User-Liste (offen aus früheren Reports):
+- ❌ Verschwindende Ausrüstung → Diagnose: Right-Click-Drop war zu nah am Equip-Pfad und wurde verwechselt
+- ❌ Schriften gehen aus Boxen → lange Toast-Lines überspülten Box-Border
+- ❌ NPCs in Objekten → einzelne NPCs spawnten in Decor/Wänden
+- ❌ Zu viele Quests auf einmal → 3 parallele Quests beim Game-Start überluden den Log
+
+### Fixes
+
+**1. Verschwindende Ausrüstung** ([sf/inventory.py](sf/inventory.py) `handle_rightclick`):
+- Right-Click auf Inv-Slot equipped jetzt das Item (statt es zu droppen)
+- Drop nur noch via **Shift+Right-Click** mit explizitem Toast „Item gedropped (Shift+RClick)"
+- Right-Click auf Equip-Slot zieht weiterhin aus → ins Inventar (mit voll-Inventar-Warnung)
+- Eliminiert die häufigste „verschwindende Ausrüstung"-Quelle (versehentlicher Right-Click)
+
+**2. Toast Soft-Wrap** ([sf/game.py](sf/game.py) `_draw_toasts` + neuer `_wrap_text_to_width`):
+- MAX_WIDTH = 600 px Box-Breite
+- Lange Toasts (NPC-Quotes, Quest-Stages, Voice-Lines) werden an Wort-Grenzen umgebrochen
+- Box-Height adaptiert sich an Zeilen-Count → kein Border-Overflow mehr
+
+**3. NPC Auto-Unstuck** ([sf/game.py](sf/game.py) `enter_town` + `enter_outpost`):
+- Nach `_spawn_faction_banners` läuft ein Unstuck-Pass über alle NPCs
+- Wenn ein NPC in Decor steckt → `_unstuck_entity(npc)` (radial-push, gleicher Mechanismus wie für Mobs/Player)
+- Verhindert „NPC in Wand"-Reports beim Town-Entry
+
+**4. Initial-Quest-Filter** ([sf/quest_data.py](sf/quest_data.py) `initial_quests_for_new_game`):
+- Vorher: `['akt1_salzwunde', 'akt1_otreth_stein', 'akt1_mara_spur']` → 3 Quests sofort offen
+- Jetzt: `['akt1_salzwunde']` → nur die Akt-1-Hauptquest startet automatisch
+- Otreth-Stein + Mara-Spur sind weiterhin via `quests_offered_by_npc` über NPC-Talk verfügbar (Spieler bekommt sie durch aktive Interaktion, nicht passiv aufgedrängt)
+- Quest-Log bleibt sauber, Onboarding fokussiert auf die Main-Story
+
+### Tests (neu)
+
+- `test_inventory_rclick_no_drop` — verifiziert: Right-Click equippt, Loot-Count bleibt gleich
+- `test_toast_text_wrap` — verifiziert: langer Text wraps ≥ 2 Zeilen, jede Zeile ≤ 576 px
+- `test_initial_quests_filtered` — verifiziert: nur `akt1_salzwunde` initial, Otreth + Mara via NPC offerable
+- `test_npc_unstuck_in_town` — verifiziert: `_unstuck_entity`-API existiert und wird im Town-Pass aufgerufen
+- **151/151 PASS**
+
+### Files
+
+- [sf/inventory.py](sf/inventory.py), [sf/game.py](sf/game.py), [sf/quest_data.py](sf/quest_data.py), [tests/smoke.py](tests/smoke.py)
+
+### Noch offen (separat priorisiert)
+
+- **Monster-Attack-Variety** (Combat-Design) — erfordert neue Attack-Patterns pro Mob-Typ, kein Single-Pass-Fix
+- **Stadt-Design lore-konform (WELT_AUFBAU)** — größerer Pass über `enter_town` Layout, separater Update geplant
+
+---
+
+## [2026-05-23] — Update #148b — Voice-Volume-Pass (User-Report „Funken kennen mich besser spam + zu laut")
+
+User-Liste:
+- Levelup-Voice „Die Funken kennen mich besser" gespamt
+- Voice-Lines insgesamt zu laut gegenüber Attack-Sounds
+- Boss-Grollen + Phase-Bell zu laut
+
+### Fixes
+
+**1. Levelup-Voice-Cooldown** ([sf/combat.py](sf/combat.py)): 30 s Cooldown + Anti-Repeat-Memo (gleiche Pattern wie boss_kill in #148a). Bei 4-5 Level-Ups in Folge wird nur 1 Toast gezeigt statt 5.
+
+**2. play_voice / play_class_voice Default-Volume** ([sf/sounds.py](sf/sounds.py)):
+- `play_voice` Default 0.85 → **0.50**
+- `play_class_voice` Default 0.85 → **0.45**
+
+**3. Voice-Trigger-Call-Sites** ([sf/combat.py](sf/combat.py), [sf/quests.py](sf/quests.py)):
+- Crit-Voice 0.7 → **0.35**
+- Death-Voice 0.9 → **0.5**
+- Levelup-Audio 0.9 → **0.45**
+- Quest-Complete-Voice 0.75 → **0.40**
+
+**4. Boss-Sound-Caps** ([sf/sounds.py](sf/sounds.py)):
+- `roar` 0.55 → **0.35** (Boss-Grollen)
+- `boss_bong` 0.70 → **0.50** (Phase-Bell)
+- `aoe_impact` 0.35 → **0.30** (Boden-Telegraph)
+- `hit_heavy` 0.65 → **0.55**, `death` 0.65 → **0.55**, `cast_*` 0.70 → **0.60**
+
+### Tests
+
+- `test_aoe_impact_volume_cap` erweitert um Voice-Default-Checks (play_voice/play_class_voice ≤ 0.55)
+- Neu: `test_levelup_voice_cooldown` — verifiziert 30 s Cooldown via Direct-Simulation
+- **147/147 PASS**
+
+### Files
+
+- [sf/combat.py](sf/combat.py), [sf/quests.py](sf/quests.py), [sf/sounds.py](sf/sounds.py), [tests/smoke.py](tests/smoke.py)
+
+---
+
 ## [2026-05-23] — Update #148 — „Schöner Tod" wirklich gefixt (User-Report Follow-Up)
 
 **User:** „mit schöner tod ist noch immer richtig oft"

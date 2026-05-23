@@ -442,11 +442,16 @@ def quests_offered_by_npc(npc_name):
 
 
 def initial_quests_for_new_game():
-    """Quests, die beim Game-Start verfügbar sein sollen (nicht ausgelöst).
+    """Quests, die beim Game-Start verfügbar sein sollen.
 
-    Die Akt-1-Hauptquest „Die Salzwunde" startet automatisch.
+    Update #149 (User-Report „zu viele Quests auf einmal"):
+    NUR die Akt-1-Hauptquest „Die Salzwunde" startet automatisch.
+    Otreth-Stein und Mara-Spur werden jetzt über NPC-Talk (mit
+    „!"-Marker) angeboten — Spieler bekommt sie nur wenn er aktiv
+    mit dem entsprechenden NPC redet. Verhindert dass der Quest-Log
+    von Anfang an mit 3 parallelen Aufgaben überladen ist.
     """
-    return ['akt1_salzwunde', 'akt1_otreth_stein', 'akt1_mara_spur']
+    return ['akt1_salzwunde']
 
 
 # ============================================================

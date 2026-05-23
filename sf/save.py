@@ -51,6 +51,79 @@ SAVE_VERSION = 4
 AUTOSAVE_PATH = Path.home() / '.shadowfall_autosave.json'
 AUTOSAVE_INTERVAL_S = 60.0
 
+# Update #151 (User-Report „Vollbild/Seekrankheits/FPS müssen
+# gespeichert werden"): Settings-File (slot-unabhängig — Settings
+# gelten global für alle Saves).  Persistiert Display/Performance/
+# Audio/Accessibility-Optionen separat vom Player-State.
+SETTINGS_PATH = Path.home() / '.shadowfall_settings.json'
+
+# Welche Settings-Keys werden persistiert. Audio-Volume sind separat
+# bereits live im Sounds-Modul wirksam — wir nehmen sie hier dennoch
+# mit damit der Slider beim Neustart auf dem letzten Wert steht.
+_PERSISTED_SETTING_KEYS = (
+    'fullscreen',
+    'camera_cursor_lean',
+    'camera_lookahead',
+    'frame_cap',
+    'render_scale',
+    'music_vol',
+    'sfx_vol',
+    'voice_vol',
+    'multi_threading',
+    'colorblind_ailments',
+    'damage_numbers',
+    'screen_shake',
+    'show_fps',
+    'tutorial_active',
+)
+
+
+def save_settings(game):
+    """Update #151: Persistiert Game-Einstellungen nach SETTINGS_PATH.
+
+    Wird aufgerufen wann immer eine Option geändert wird (Settings-
+    Modal, F11-Fullscreen-Toggle, etc.).  Schreibt nur Keys aus
+    `_PERSISTED_SETTING_KEYS` plus den `fullscreen`-Toplevel-Flag.
+
+    Schreib-Fehler werden geschluckt (User-Profile read-only?) — wir
+    werfen die App deswegen nicht ab.
+    """
+    try:
+        data = {}
+        settings = getattr(game, 'settings', None) or {}
+        for k in _PERSISTED_SETTING_KEYS:
+            if k in settings:
+                data[k] = settings[k]
+        # `fullscreen` lebt als Toplevel-Attribut auf game (nicht in
+        # settings dict), aber für Persistenz schreiben wir den Wert
+        # ins gleiche File.
+        data['fullscreen'] = bool(getattr(game, 'fullscreen', False))
+        with open(SETTINGS_PATH, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, sort_keys=True)
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def load_settings():
+    """Update #151: Lädt persistierte Settings.  Returnt dict (möglicher-
+    weise leer wenn Datei nicht existiert).  Wird in Game.__init__ vor
+    self.settings-Bau aufgerufen und überlagert die Defaults.
+    """
+    try:
+        if not SETTINGS_PATH.exists():
+            return {}
+        with open(SETTINGS_PATH, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {}
+        # Whitelist filter — kein injecten von unbekannten Keys
+        out = {k: data[k] for k in _PERSISTED_SETTING_KEYS if k in data}
+        if 'fullscreen' in data:
+            out['fullscreen'] = bool(data['fullscreen'])
+        return out
+    except (OSError, ValueError):
+        return {}
+
 # Update #137 (Z-04): Field-Name für den Integrity-SHA256 im Save-Dict.
 # Wird beim Hash-Compute ausgeschlossen (sonst zirkulär).
 _INTEGRITY_FIELD = '_integrity_sha256'

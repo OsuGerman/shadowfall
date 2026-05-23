@@ -140,12 +140,16 @@ class QuestState:
             dest = target.get('destination')
             dest_biome = target.get('biome')
             if not _npc_is_alive(game, npc_name):
-                # NPC tot → Quest scheitert (revert ESCORT-Stage)
-                self.timer = 0.0
-                if hasattr(game, 'toast'):
-                    game.toast(
-                        f'„{self.title}": {npc_name} ist gefallen.',
-                        (220, 130, 80))
+                # Update #150: Lazy-Spawn — NPC fehlt aber existiert
+                # vielleicht noch gar nicht (wurde nie initial gespawnt).
+                # Statt sofort „ist gefallen" zu spammen versuchen wir
+                # den NPC am Stadttor zu spawnen.  Nur in town/outpost,
+                # nie im Dungeon.
+                if _try_spawn_escort_npc(game, npc_name, dest):
+                    return False
+                # Spawn nicht möglich (Dungeon / kein npcs-Container):
+                # still bleiben statt Fail-Toast spam — Stage wartet
+                # bis Spieler zurück in Town ist.
                 return False
             if dest is not None:
                 # Distanz NPC↔dest
@@ -172,6 +176,17 @@ class QuestState:
         st = self.stage
         if st is None:
             return
+        # Update #150: ESCORT-NPC despawnen wenn Stage advances —
+        # die Begleiter-NPC soll nicht für immer hinter dem Player
+        # herlaufen.  Despawn nur Escort-NPCs (`_escort_follow_player`).
+        if st.get('type') == _qd.StageType.ESCORT:
+            npc_name = st.get('target', {}).get('npc_name')
+            if npc_name and hasattr(game, 'npcs'):
+                game.npcs[:] = [n for n in game.npcs
+                                if not (getattr(n, 'name', '') == npc_name
+                                         and getattr(n,
+                                                     '_escort_follow_player',
+                                                     False))]
         # Quote-Toast (Lore-Hook)
         quote = st.get('on_complete')
         if quote and hasattr(game, 'toast'):
@@ -437,7 +452,38 @@ class QuestLog:
 # ============================================================
 
 def on_kill(game, enemy):
-    """Wird in combat.kill_enemy gerufen."""
+    """Wird in combat.kill_enemy gerufen.
+
+    Update #150 (User-Report „beide bosse x mal getötet — komme nicht
+    weiter"): Tickt jetzt AUCH die Legacy-`active_quest.objectives`
+    (DUNGEONS-Spec).  Vorher war dieser Pfad tot — Boss-Kills haben den
+    `done`-Flag nie umgelegt, `boss_complete()` returnte immer False,
+    `complete_dungeon()` feuerte nie, `completed_dungeons` blieb leer
+    und Akt 2+ Outposts waren PERMANENT gelockt.
+    """
+    # ----- 1) Legacy Dungeon-Quest objectives ticken -----
+    aq = getattr(game, 'active_quest', None)
+    if aq is not None and getattr(aq, 'objectives', None):
+        is_boss = bool(getattr(enemy, 'is_boss', False))
+        is_elite = bool(getattr(enemy, 'elite', False)) and not is_boss
+        for obj in aq.objectives:
+            # obj = [kind, label, reward, target, count, done]
+            if obj[5]:
+                continue
+            kind = obj[0]
+            if kind == 'boss' and is_boss:
+                obj[4] = obj[3]   # count = target
+                obj[5] = True
+            elif kind == 'kills':
+                obj[4] += 1
+                if obj[4] >= obj[3]:
+                    obj[5] = True
+            elif kind == 'elite' and is_elite:
+                obj[4] += 1
+                if obj[4] >= obj[3]:
+                    obj[5] = True
+
+    # ----- 2) Neues QuestLog (StageType.KILL) -----
     log = _get_log(game)
     if log is None:
         return
@@ -719,6 +765,40 @@ def _player_near_npc(game, npc_name, radius=200):
     if p is None:
         return False
     return (npc.pos - p.pos).length() <= radius
+
+
+def _try_spawn_escort_npc(game, npc_name, dest):
+    """Update #150: Lazy-Spawn für ESCORT-Quest-NPCs.
+
+    Returnt True wenn der NPC erfolgreich gespawnt wurde (oder bereits
+    existiert).  Nur in town/outpost — im Dungeon wird nichts gespawnt
+    (return False, Stage wartet).
+
+    Spawn-Position: Stadttor (Norden, x=0/y=-500).  Der NPC bekommt ein
+    `_escort_follow_player`-Flag, das die per-frame-Schedule-Logik in
+    `town.py:tick_npc_schedules` triggert (sanftes Lerp zum Player mit
+    Trail-Offset).  Sobald NPC bei `dest` ankommt, advanced der reguläre
+    ESCORT-tick-Check die Stage.
+    """
+    if _find_npc(game, npc_name) is not None:
+        return True
+    if getattr(game, 'area', None) != 'town':
+        return False
+    if not hasattr(game, 'npcs'):
+        return False
+    try:
+        from .entities import NPC as _NPC
+    except Exception:
+        return False
+    spawn_x, spawn_y = 0, -500
+    npc = _NPC(spawn_x, spawn_y, 'escort', npc_name, (220, 200, 150))
+    npc._escort_follow_player = True
+    npc._escort_dest = dest
+    game.npcs.append(npc)
+    if hasattr(game, 'toast'):
+        game.toast(f'{npc_name} wartet am Stadttor — führe sie zum Ziel.',
+                    (220, 220, 150))
+    return True
 
 
 def _check_flag_condition(game, expr):

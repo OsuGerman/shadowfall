@@ -291,6 +291,21 @@ class Game:
             # toggelbar für sehr empfindliche Spieler.
             'camera_lookahead': True,
         }
+        # Update #151 (User-Report „Vollbild/Seekrankheits/FPS müssen
+        # gespeichert werden"): Persistente Settings aus Disk überlagern
+        # die Defaults.  `save_mod.load_settings()` returnt {} wenn die
+        # Datei nicht existiert (erster Start).
+        try:
+            persisted = save_mod.load_settings()
+            for k, v in persisted.items():
+                if k == 'fullscreen':
+                    # Fullscreen ist Toplevel-Attribut; wird unten beim
+                    # _toggle_fullscreen-Aufruf angewandt.
+                    self._pending_fullscreen = bool(v)
+                else:
+                    self.settings[k] = v
+        except Exception:
+            self._pending_fullscreen = False
         # Update #99: Slider-Werte beim Init sofort an Sounds-Modul pushen,
         # damit der Slider-Stand exakt dem laufenden Sound-State entspricht.
         # Behebt User-Bug „Regler funktioniert nicht richtig".
@@ -299,6 +314,14 @@ class Game:
             snd.set_sfx_volume(self.settings['sfx_vol'])
         except Exception:
             pass
+        # Update #151: Apply persisted fullscreen NACH Display-Init
+        # (Toggle erwartet self.screen).
+        if getattr(self, '_pending_fullscreen', False) and not self.fullscreen:
+            try:
+                self._toggle_fullscreen()
+            except Exception:
+                pass
+        self._pending_fullscreen = False
         # C-11 Flash-Limiter: pro Frame-Group max 3 Flashes/s zulassen.
         # Wird in `_emit_photosensitive_flash()` getickt.
         self._flash_window_t = 0.0
@@ -559,6 +582,15 @@ class Game:
         # Banner-Reihe im Hafen-Pier-Bereich (SO der Stadt).
         self._spawn_faction_banners()
         self.shop_ui.maybe_restock(self.player.level)
+        # Update #149 (User-Report „NPCs stecken in Objekten"):
+        # Nach Decor + Faction-Banner-Placement: Auto-Unstuck für alle
+        # NPCs damit sie nicht IN einem Banner/Pfosten/Stele stecken.
+        for npc in self.npcs:
+            # NPC.radius default ist ~12 (NPCs sind keine Combat-Entities)
+            if not hasattr(npc, 'radius'):
+                npc.radius = 12
+            if self._decor_collides(npc.pos.x, npc.pos.y, npc.radius):
+                self._unstuck_entity(npc)
         # Update #132 (B-18): Region-Übergangs-Animation für Brassweir
         self.trigger_region_transition(biome='town')
 
@@ -682,9 +714,13 @@ class Game:
         # einreihen — F-Interact + Click-Handler funktionieren so direkt.
         self.dungeon_portals = [dungeon_portal] if dungeon_portal else []
         self.outpost_return_portal = return_portal
+        # Update #149: NPC-Auto-Unstuck (siehe enter_town).
+        for npc in self.npcs:
+            if not hasattr(npc, 'radius'):
+                npc.radius = 12
+            if self._decor_collides(npc.pos.x, npc.pos.y, npc.radius):
+                self._unstuck_entity(npc)
         # Update #132 (B-18): Region-Übergangs-Animation für Outpost.
-        # Outpost-Biome kann ein Akt-6/7-Wound-Biome sein → REGIONS-
-        # Lookup nutzt den fallback_biome-Mapping bereits.
         self.trigger_region_transition(biome=self.biome)
         return True
 
@@ -1219,6 +1255,11 @@ class Game:
                 (SCREEN_W, SCREEN_H), pygame.FULLSCREEN | pygame.SCALED)
         else:
             self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        # Update #151: Vollbild-Toggle persistieren
+        try:
+            save_mod.save_settings(self)
+        except Exception:
+            pass
 
     def _handle_mousedown(self, sx, sy):
         if self.state == 'title':
@@ -5837,6 +5878,16 @@ class Game:
             r = rows.get(key)
             if r is not None and r.collidepoint(sx, sy):
                 self._apply_slider_value(key, r, sx)
+                # Update #151: throttled persist (max 1×/0.5s)
+                import time as _t
+                now = _t.time()
+                last = getattr(self, '_settings_save_t', 0.0)
+                if now - last > 0.5:
+                    self._settings_save_t = now
+                    try:
+                        save_mod.save_settings(self)
+                    except Exception:
+                        pass
                 return
 
     def _handle_settings_click(self, sx, sy):
@@ -5845,31 +5896,32 @@ class Game:
             return
         for key, r in rows.items():
             if r.collidepoint(sx, sy):
+                changed = False
                 if key == 'back':
                     self.modal = 'pause'
                     return
                 if key == 'fullscreen':
                     self._toggle_fullscreen()
-                    return
+                    return  # _toggle_fullscreen persistiert selbst
                 if key == 'screen_shake':
                     self.settings['screen_shake'] = not self.settings['screen_shake']
-                    return
-                if key == 'photosensitive':
+                    changed = True
+                elif key == 'photosensitive':
                     self.settings['photosensitive'] = not self.settings['photosensitive']
-                    return
-                if key == 'rim_light':
+                    changed = True
+                elif key == 'rim_light':
                     self.settings['rim_light'] = not self.settings.get('rim_light', True)
-                    return
-                if key == 'high_contrast_aoe':
+                    changed = True
+                elif key == 'high_contrast_aoe':
                     self.settings['high_contrast_aoe'] = not self.settings.get('high_contrast_aoe', False)
-                    return
-                if key == 'tactical_reduce':
+                    changed = True
+                elif key == 'tactical_reduce':
                     self.settings['tactical_reduce'] = not self.settings.get('tactical_reduce', False)
-                    return
-                if key == 'minimap_rotate':
+                    changed = True
+                elif key == 'minimap_rotate':
                     self.settings['minimap_rotate'] = not self.settings.get('minimap_rotate', False)
-                    return
-                if key == 'frame_cap':
+                    changed = True
+                elif key == 'frame_cap':
                     cur = int(self.settings.get('frame_cap', 60))
                     options = self._FRAME_CAP_OPTIONS
                     try:
@@ -5877,21 +5929,21 @@ class Game:
                     except ValueError:
                         idx = 1  # 60 als Default
                     self.settings['frame_cap'] = options[(idx + 1) % len(options)]
-                    return
-                if key == 'colorblind_ailments':
+                    changed = True
+                elif key == 'colorblind_ailments':
                     self.settings['colorblind_ailments'] = not self.settings.get(
                         'colorblind_ailments', False)
-                    return
+                    changed = True
                 # Update #141 (Motion-Sickness-Fix): Camera-Toggles
-                if key == 'camera_lookahead':
+                elif key == 'camera_lookahead':
                     self.settings['camera_lookahead'] = not self.settings.get(
                         'camera_lookahead', True)
-                    return
-                if key == 'camera_cursor_lean':
+                    changed = True
+                elif key == 'camera_cursor_lean':
                     self.settings['camera_cursor_lean'] = not self.settings.get(
                         'camera_cursor_lean', False)
-                    return
-                if key == 'particle_density':
+                    changed = True
+                elif key == 'particle_density':
                     # Cycle Niedrig → Mittel → Hoch → Ultra (siehe fx.DENSITY_PRESETS).
                     # Wirkt seit C-02 nur noch auf AMBIENT-Layer (Wetter,
                     # Funken, Dust) — GAMEPLAY/TELEGRAPH bleiben unangetastet.
@@ -5900,10 +5952,17 @@ class Game:
                     idx = min(range(len(options)),
                                key=lambda i: abs(options[i] - cur))
                     self.settings['particle_density'] = options[(idx + 1) % len(options)]
-                    return
-                if key in ('music_vol', 'sfx_vol'):
+                    changed = True
+                elif key in ('music_vol', 'sfx_vol'):
                     self._apply_slider_value(key, r, sx)
-                    return
+                    changed = True
+                # Update #151: Settings persistieren wenn modifiziert
+                if changed:
+                    try:
+                        save_mod.save_settings(self)
+                    except Exception:
+                        pass
+                return
 
     def _draw_settings_modal(self):
         """Velgrad-Tome-Style Settings (Update #30)."""
@@ -8173,36 +8232,62 @@ class Game:
     def _draw_toasts(self):
         """Toast-Stack — Update #36: max 3 sichtbar, kleinere Schrift.
 
-        Spam-Limit verhindert dass die Toasts den ganzen Bildschirm
-        belegen. Älteste Toasts werden gerendert, sobald neuere
-        ausgeblendet sind.
+        Update #149 (User-Report „Schriften gehen aus Boxen"): Soft-Wrap
+        auf max 600 px Breite.  Lange Voice-Quotes + NPC-Lines passten
+        vorher nicht in eine Zeile und überspülten die Box-Border.
         """
         if not self.toast_queue:
             return
         MAX_VISIBLE = 3
-        # Update #54: Toasts jetzt unten-zentriert über der Hotbar.
-        # Vermeidet Overlap mit `event_notifications` (G-12/G-13) die bei
-        # y=95 oben-zentriert wirken — beide nutzten denselben Spot.
-        # Toasts stapeln nach OBEN (jüngster unten).
+        MAX_WIDTH = 600   # Maximale Box-Breite in Pixel
         visible = self.toast_queue[-MAX_VISIBLE:]
-        # Globe-Block belegt bottom ~150 px; jüngster Toast bei y=SCREEN_H-200
-        # Stapeln nach OBEN (älter weiter oben) — neueste ist „augenfällig".
         y = SCREEN_H - 200
         for text, color, life in reversed(visible):
             alpha = min(1.0, life / 0.6) if life < 0.6 else 1.0
-            surf = self.font_small.render(text, True, color)
-            bg = pygame.Surface((surf.get_width() + 20,
-                                  surf.get_height() + 8),
-                                 pygame.SRCALPHA)
+            # Soft-Wrap: zerlege text in Zeilen die in MAX_WIDTH passen
+            font = self.font_small
+            lines = self._wrap_text_to_width(text, font,
+                                              MAX_WIDTH - 24)
+            line_h = font.get_height() + 2
+            box_w = min(MAX_WIDTH,
+                         max(font.size(ln)[0] for ln in lines) + 24)
+            box_h = len(lines) * line_h + 8
+            bg = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
             bg.fill((10, 8, 6, int(200 * alpha)))
-            x = SCREEN_W // 2 - bg.get_width() // 2
+            x = SCREEN_W // 2 - box_w // 2
+            # Toast-Block stapelt nach OBEN → y muss nach Render
+            # nach oben rücken um die volle Höhe der vorigen Box.
             self.screen.blit(bg, (x, y))
             pygame.draw.rect(self.screen, color,
-                             (x, y, bg.get_width(), bg.get_height()), 1)
-            s = surf.copy()
-            s.set_alpha(int(240 * alpha))
-            self.screen.blit(s, (x + 10, y + 3))
-            y -= bg.get_height() + 3
+                              (x, y, box_w, box_h), 1)
+            cy = y + 4
+            for ln in lines:
+                s = font.render(ln, True, color)
+                s.set_alpha(int(240 * alpha))
+                self.screen.blit(s, (x + 12, cy))
+                cy += line_h
+            y -= box_h + 3
+
+    def _wrap_text_to_width(self, text, font, max_w):
+        """Update #149: Soft-Wrap helper.  Returnt Liste von Zeilen die
+        in `max_w` Pixel passen.  Wraps an Wort-Grenzen.
+        """
+        words = text.split(' ')
+        lines = []
+        cur = ''
+        for w in words:
+            tentative = (cur + ' ' + w) if cur else w
+            if font.size(tentative)[0] <= max_w:
+                cur = tentative
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        if not lines:
+            lines = [text]
+        return lines
 
     def _draw_boss_intro(self):
         """Velgrad-Boss-Cinematic mit Letterbox + ornamentalen Linien.
