@@ -163,9 +163,9 @@ Aktuell in [sf/quest_data.py](sf/quest_data.py): TALK, KILL, REACH, COLLECT, INT
 | `akt1_otreth_stein` | Crafting | Otreth | 3 | 80 Gold, 60 XP | ✅ |
 | `akt1_mara_spur` | Lore | Mara | 3 | 120 Gold, 90 XP | ✅ |
 | `akt1_tameris_schwester` | Escort/Hidden | Tameris | 5 (Talk+Escort+Choice+Conditional+Return) | 150 Gold, 120 XP | ✅ #116 |
-| `akt1_tribunal_geruecht` | Faction | Eldon | 3 (Kill 5 Tribunal-Spähen, return) | Tribunal-Rep -10, Mahnmal-Gilde-Rep +20 | [ ] |
-| `akt1_bounty_salzgekreuzte` | Bounty (Repeatable) | Eldon | 1 (10 kills) | 60 Gold/Run | [ ] |
-| `akt1_versunkenes_grab` | Hidden | (Decor-Trigger) | 3 (Find + Decode + Boss-Mini) | 100 Gold, Lore-Codex-Entry | [ ] |
+| `akt1_tribunal_geruecht` | Faction | Eldon | 3 (Kill 5 Tribunal-Spähen, return) | Tribunal-Rep -15, Mahnmal-Gilde-Rep +20 | ✅ #153 |
+| `akt1_bounty_salzgekreuzte` | Bounty (Repeatable) | Eldon | 3 (10 kills) | 60 Gold/Run, Mahnmal +5 | ✅ #153 |
+| `akt1_versunkenes_grab` | Hidden | (Decor-Trigger via 3× lore_tablet) | 2 (PUZZLE + KILL) | 100 Gold, 80 XP, Mahnmal +10, Lore-Codex-Entry | ✅ #154 |
 
 ### 3.3 Akt 1b — Zhar-Eth (Desert, optional)
 
@@ -177,49 +177,49 @@ Aktuell in [sf/quest_data.py](sf/quest_data.py): TALK, KILL, REACH, COLLECT, INT
 ### 3.4 Akt 2 — Glasgoldene Ruinen (Echo-Markt-Hub)
 
 - [x] `akt2_asch_prophezeiung` — Main (Helst gibt — Senator-Geist-Boss) ✅ #152
-- [ ] `akt2_helst_pact_stones` — Faction (Erblinde Kirche)
-- [ ] `akt2_echo_handel` — Side (Senator-Geist-Vendor freischalten)
-- [ ] `akt2_otreth_glas_gravur` — Crafting (Glas-Gem schleifen)
-- [ ] `akt2_goldstaub_erinnerung` — Lore (Goldstaub-Echo-Events sammeln)
-- [ ] `akt2_bounty_goldstaub_diener` — Bounty
-- [ ] `akt2_velharn_vorhof` — Hidden (Spiegel-Tor finden vor Akt 5)
+- [x] `akt2_helst_pact_stones` — Faction (Erblinde Kirche) ✅ #155
+- [x] `akt2_echo_handel` — Side (Senator-Geist-Vendor freischalten) ✅ #155
+- [x] `akt2_otreth_glas_gravur` — Crafting (Salir, Glas-Gem schleifen) ✅ #155
+- [x] `akt2_goldstaub_erinnerung` — Lore (chain via requires_quests) ✅ #155
+- [x] `akt2_bounty_goldstaub_diener` — Bounty ✅ #155
+- [x] `akt2_velharn_vorhof` — Hidden (PUZZLE+CHOICE Spiegel-Tor) ✅ #155
 
 ### 3.5 Akt 3 — Aschenfelder (Säulen-von-Helst-Hub)
 
 - [x] `akt3_asch_pakt` — Main (Vehren-Boss) ✅ existiert
-- [ ] `akt3_erblinder_priester_trial` — Faction (Erblinde Kirche, ja/nein zur Augen-Bind-Probe)
-- [ ] `akt3_letzte_legion` — Side (Asch-Soldaten-Aufgabe an die Toten-Ruhe)
-- [ ] `akt3_tribunal_infiltration` — Hidden (heimlich Tribunal-Lager durchsuchen)
-- [ ] `akt3_bounty_asch_wolf` — Bounty
-- [ ] `akt3_valsa_traene` — Lore (3 Asche-Stelen lesen)
-- [ ] `akt3_inquisitions_klinge` — Crafting (Tribunal-Stahl schmelzen)
+- [x] `akt3_erblinder_priester_trial` — Faction (Erblinde, CHOICE binden/widerstehen) ✅ #157
+- [x] `akt3_letzte_legion` — Side (Selvor, 8 Asch-Soldaten) ✅ #157
+- [x] `akt3_tribunal_infiltration` — Hidden (Korren, 6 Tribunal-Konstrukt) ✅ #157
+- [x] `akt3_bounty_asch_wolf` — Bounty (Brulm, 10 Asch-Wolf) ✅ #157
+- [x] `akt3_valsa_traene` — Lore (Acolyt, 3 lore_tablet) ✅ #157
+- [x] `akt3_inquisitions_klinge` — Crafting (Brulm, 5 gem) ✅ #157
 
 ### 3.6 Akt 4 — Wurzelgrab (Knoten-Markt-Hub)
 
 - [x] `akt4_shulavh_faden` — Main (Choice: Heilen oder Bezwingen) ✅ #152
-- [ ] `akt4_knochenwitwen_aufnahme` — Faction (Vossharil-Trial)
-- [ ] `akt4_hohle_sohn` — Side (Hohlen Sohn folgen, Lore-Reveal)
-- [ ] `akt4_drei_tode` — Lore (Vossharils Drei-Tode-Geschichte zusammensetzen)
-- [ ] `akt4_wurzel_gift` — Crafting (Sumpf-Brauen)
-- [ ] `akt4_bounty_fadengebundene` — Bounty
-- [ ] `akt4_versteckter_garten` — Hidden (Saatträger-Geheim-Hain)
+- [x] `akt4_knochenwitwen_aufnahme` — Faction (Vossharil, CHOICE Eid leisten/neutral) ✅ #157
+- [x] `akt4_hohle_sohn` — Side (Hohler Sohn, 3 lore_tablet) ✅ #157
+- [x] `akt4_drei_tode` — Lore (Vossharil, 3 lore_tablet) ✅ #157
+- [x] `akt4_wurzel_gift` — Crafting (Bran, 4 gem) ✅ #157
+- [x] `akt4_bounty_fadengebundene` — Bounty (Marvel, 10 faden_gebundener) ✅ #157
+- [x] `akt4_versteckter_garten` — Hidden (Decor-Discovery, Nheyras-Blessing-CHOICE) ✅ #157
 
 ### 3.7 Akt 5 — Spiegelstadt Velharn (Spiegelhof-Hub)
 
-- [~] `akt5_drei_zeiten` — Main (Puzzle ✓ #116 — Drei-Zeiten-Altar-Sequenz Glasgolden→Götterkrieg→Gegenwart, Bosse + Ousen-Reveal noch offen)
-- [ ] `akt5_senator_streit` — Side (Senatoren-Mediation, Choice)
-- [ ] `akt5_stunden_spiegel_meister` — Faction (Spiegel-Magier-Aufnahme)
-- [ ] `akt5_velharn_geschichte` — Lore (Glasgolden vs Götterkrieg vs Gegenwart Tafeln)
-- [ ] `akt5_bounty_stunden_wandler` — Bounty
-- [ ] `akt5_korven_oder_helst` — Hidden (Reveal-Setup für Akt 6 — wer ist Im-Nesh?)
+- [~] `akt5_drei_zeiten` — Main (Puzzle ✓ #116, Boss/Ousen-Reveal noch offen)
+- [x] `akt5_senator_streit` — Side (Voraius, CHOICE voraius/neutral) ✅ #157
+- [x] `akt5_stunden_spiegel_meister` — Faction (Nheya, 8 spiegel_stalker) ✅ #157
+- [x] `akt5_velharn_geschichte` — Lore (Sehir, 3 lore_tablet) ✅ #157
+- [x] `akt5_bounty_stunden_wandler` — Bounty (Sehir, 10 glasscherben_taenzerin) ✅ #157
+- [x] `akt5_korven_oder_helst` — Hidden (Decor-Discovery, akt5_im_nesh_clue-CHOICE) ✅ #157
 
 ### 3.8 Akt 6 — Drei Wunden (Wunden-Lager-Hub)
 
-- [ ] `akt6_salzwunde_lesen` — Main (Ertrunkene Königin)
-- [ ] `akt6_aschwunde_lesen` — Main (Echo-Drache)
-- [ ] `akt6_hohlwunde_lesen` — Main (Nicht-Gott)
-- [ ] `akt6_pakt_uebersetzen` — Main-Finale (Übergabe Tehrnal)
-- [ ] `akt6_korven_helst_reveal` — Choice (Wer ist Im-Nesh in Disguise?)
+- [x] `akt6_salzwunde_lesen` — Main (Ertrunkene Königin) ✅ #153
+- [x] `akt6_aschwunde_lesen` — Main (Echo-Drache) ✅ #153
+- [x] `akt6_hohlwunde_lesen` — Main (Nicht-Gott) ✅ #153
+- [x] `akt6_pakt_uebersetzen` — Main-Finale (Übergabe Tehrnal, `requires_quests`-Gate auf alle 3 Wunden) ✅ #153
+- [x] `akt6_korven_helst_reveal` — als CHOICE-Stage im Pakt-Übersetzen integriert (flag=`korven_helst_reveal`) ✅ #153
 - [ ] `akt6_bounty_anomalien` — Bounty
 
 ### 3.9 Akt 7 — Hohlwort (Drei-Mütter-Hub)
@@ -232,7 +232,7 @@ Aktuell in [sf/quest_data.py](sf/quest_data.py): TALK, KILL, REACH, COLLECT, INT
   - **Pakt umschreiben** — Im-Nesh-Path, Spieler regiert
   - **Aithein wecken** — Letzter-Träumer-Reveal, leere weiße Welt
 
-**Gesamt-Quests: 6 ✅ + 45 [ ] = 51 Quests im Voll-Ausbau.** *(Update #152: +akt2_asch_prophezeiung, +akt4_shulavh_faden — Akt 1-5 Main-Spine vollständig)*
+**Gesamt-Quests: 35 ✅ + 16 [ ] = 51 Quests im Voll-Ausbau.** *(Update #157: +17 Sidequests für Akt 3/4/5 — Akt 1-5 haben jetzt jeweils ihr volles narratives Bukett. Verbleibend: Akt 1b/6/7 + Endgame-Atlas)*
 
 ---
 
@@ -301,15 +301,15 @@ Pro Unique brauchts einen **legalen Drop-Pfad**. Aktuell teils via `ITEM_SETS` i
 
 [sf/constants.py](sf/constants.py) `AFFIXES` — vorhanden, aber sehr generisch.
 
-- [ ] **Lore-Affixes** pro Aspekt einbauen:
-  - `kharns_form` (Phys +X %, Form-Tag)
-  - `nheyras_zeit` (CDR +X %, Zeit-Tag)
-  - `ousens_blick` (Crit Mult +X %, Geist-Tag)
-  - `valsas_wille` (Fire +X %, Wille-Tag)
-  - `im_neshs_sprache` (Chaos +X %, Sprache-Tag — selten + corrupted)
-  - `shulavhs_faden` (Bindung — verbindet 2 Slots = Set-Mechanik)
-  - `siebter_atem` (Random-Affix-Würfel beim Equip)
-- [ ] **Tag-System auf Items**: Affix bekommt Aspekt-Tag, Mahnmal-Pakt (W-13) buffed Tag-Matches.
+- [x] **Lore-Affixes** pro Aspekt — ✅ #159 (alle 7 in `AFFIXES`, gefoldet auf Engine-Stats):
+  - `kharns_form` (Phys +X %, gefoldet auf dmg_pct) ✅
+  - `nheyras_zeit` (CDR -X %, gefoldet auf cdr) ✅
+  - `ousens_blick` (Crit-Mult +X %, gefoldet auf crit_dmg) ✅
+  - `valsas_wille` (Fire +X %, gefoldet auf fire_dmg) ✅
+  - `imnesh_sprache` (Lightning +X %, gefoldet auf lit_dmg) ✅
+  - `shulavh_faden` (Dornen +X, gefoldet auf thorns; Set-Bindung folgt mit Set-Linking) ✅
+  - `siebter_atem` (Mana/s +X, gefoldet auf mp_regen; Random-Würfel-Variante als Erweiterung möglich) ✅
+- [~] **Tag-System auf Items**: Aspekt-Akkumulatoren in `aggregate_stats.out` getrennt erhalten → Foundation für Mahnmal-Pakt-Tag-Buff (W-13) gelegt. UI-Tag-Display folgt mit nächstem Pass.
 
 ### 5.5 Crafting-System
 

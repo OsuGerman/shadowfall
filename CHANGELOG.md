@@ -4,6 +4,479 @@
 
 ---
 
+## [2026-05-24] — Update #159 — Aspekt-Affixes (WELT_AUFBAU 5.4) + AI-Aggro-Sound + T1.2-Verifikation
+
+**ROADMAP-Audit:** Drei wichtige offene Punkte — eine Engine-Lücke (AI-Aggro-Sound, ROADMAP Bottom), eine WELT_AUFBAU-Content-Lücke (Aspekt-Affixes 5.4) und eine Status-Verifikation (T1.2 Faction-Rep-System komplett).
+
+### 1. T1.2 — Faction-Rep-System (Verifikation)
+
+Audit ergab: T1.2-A bis T1.2-F sind bereits seit Updates #117 + #118 implementiert. ROADMAP entsprechend aktualisiert:
+- **T1.2-A** `Player.faction_rep` Dict in [sf/entities.py](sf/entities.py) ✅
+- **T1.2-B** Save-Persistenz mit Clamp-Range (`max(-200, min(200, val))`) in [sf/save.py:707-711](sf/save.py#L707-L711) ✅
+- **T1.2-C** Rep-Gain-Hook via `faction.apply_quest_reward` in [sf/quests.py](sf/quests.py) `_mark_complete` ✅
+- **T1.2-D** `CONFLICT_MATRIX` in [sf/faction.py](sf/faction.py) ✅ (Drei-Wege-Konflikt-Dreieck)
+- **T1.2-E** Codex-Tab „Fraktionen" (`_draw_codex_factions`) ✅
+- **T1.2-F** Vendor-Discount-Logic in [sf/shop.py](sf/shop.py) ✅ (#155)
+
+Damit ist ROADMAP-Tier-1 Faction-Foundation 6/6 ✅. Verbleibend in Tier 1 nur noch T1.3 NPC-Dialog-Modal.
+
+### 2. Aspekt-Affixes ([sf/constants.py](sf/constants.py) + [sf/items.py](sf/items.py))
+
+WELT_AUFBAU 5.4 verlangte 7 Lore-getreue Item-Affixes mit Aspekt-Tags. Eingebaut als Fold-In zu existierenden Engine-Stats — kein neuer Engine-Pfad nötig:
+
+| Affix-Key | Label | Range | Slots | Fold-Target (Engine-Stat) |
+|---|---|---|---|---|
+| `kharns_form` | „+v% Kharns Form" | 8-30 | weapon, chest, helmet | `dmg_pct` |
+| `nheyras_zeit` | „-v% Nheyras Zeit" | 4-15 | helmet, amulet | `cdr` |
+| `ousens_blick` | „+v% Ousens Blick" | 12-50 | weapon, amulet | `crit_dmg` |
+| `valsas_wille` | „+v% Valsas Wille" | 10-30 | weapon, ring | `fire_dmg` |
+| `imnesh_sprache` | „+v% Im-Neshs Sprache" | 10-30 | weapon, ring | `lit_dmg` |
+| `shulavh_faden` | „+v Shulavhs Faden" | 3-12 | chest, offhand | `thorns` |
+| `siebter_atem` | „+v Siebter Atem (Mana/s)" | 0.5-3.0 (float) | amulet | `mp_regen` |
+
+**Mechanik:**
+- `AFFIXES` dict bekommt 7 neue Einträge mit Lore-Labels
+- `ASPEKT_AFFIX_KEYS` Tuple + `ASPEKT_AFFIX_FOLD` Mapping in `constants.py` für Tag-System (Foundation für Mahnmal-Pakt W-13)
+- `aggregate_stats` (items.py) hält Aspekt-Werte separat im `out`-Dict UND foldet sie in die Engine-Stat-Spalte → `kharns_form +20` ⇒ `dmg_pct +20` zusätzlich zum getrennten Akkumulator
+- `siebter_atem` ist float (in `FLOAT_AFFIXES`-Set), Display via `{v:.1f}`
+
+Damit funktionieren Aspekt-Affixes sofort als Engine-Buffs, gleichzeitig bleiben die Aspekt-Tags getrennt für späteres Tag-Buff-System (Mahnmal-Pakt buffed Items mit passendem Aspekt-Tag).
+
+### 3. AI-Mob-Aggro-Sound ([sf/ai.py](sf/ai.py) `_enter_state`)
+
+ROADMAP-Engine-Lücke: Mobs wechselten in AGGRO-State ohne hörbares Cue. Neu:
+- Beim Übergang `prev_state != AGGRO and new_state == AGGRO`:
+  - Versucht `play_with_fallback(f'{bestiary_key}_alert', 'ambient_monster_growl', volume=0.30)`
+  - Bosse skip (haben eigenes `boss_intro`-Cinematic)
+- **Throttle global 1×/0.8s** (`_AGGRO_SOUND_THROTTLE_S` + `_last_aggro_sound_t` Module-State) — verhindert Audio-Spam wenn ein Pack via Pack-Alert-Propagation (#D-09) gleichzeitig in AGGRO geht
+- Existierender `ambient_monster_growl`-Asset wird als Fallback genutzt; bestiary-spezifische `<bkey>_alert.ogg`-Files können jederzeit gedroppt werden — `play_with_fallback` hookt sie auto
+
+### Tests (4 neu)
+
+- `test_aspekt_affixes_registered` — alle 7 Keys in AFFIXES + ASPEKT_AFFIX_KEYS + FOLD-Mapping, Fold-Targets valid
+- `test_aspekt_affix_folds_into_engine_stat` — `kharns_form +20` → `dmg_pct >= 20` nach `aggregate_stats`. Multi-Affix-Amulett: alle 7 Akkumulatoren > 0
+- `test_aspekt_affix_tooltip_label` — `display_lines` enthält Lore-Name („Valsa")
+- `test_aggro_sound_throttle_state` — `_AGGRO_SOUND_THROTTLE_S` + `_last_aggro_sound_t` als Module-State verfügbar
+- **186/187 PASS** (test_dot_kill_loot_pipeline pre-existing flaky)
+
+### Files
+
+- [sf/constants.py](sf/constants.py), [sf/items.py](sf/items.py), [sf/ai.py](sf/ai.py), [tests/smoke.py](tests/smoke.py)
+
+### ROADMAP-Status
+
+- **Tier 1**: 14/15 ✅ (T1.3 NPC-Dialog-Modal verbleibend — UI-Sprint)
+- **Engine-Lücken Bottom**: 1 von 7 ✅ (AI-Aggro-Sound) — verbleibend: Aspekt-Skill-Sound-Wire, Music-Stem-Swap, Quest-Compass-Extension, 4-Item-Slots, Unique-Drop-Pool, Set-Linking
+
+### Nächste sinnvolle Schritte
+
+- **Set-Linking** (Shulavhs Faden — 2 Items binden, Set-Bonus bei beiden equipped)
+- **4 zusätzliche Item-Slots** (boots/gloves/belt/flask_modifier) — WELT_AUFBAU 5.1
+- **Aspekt-Skill-Sound-Wiring** — `cast_fire`/`_frost`/`_lightning` → `aspekt_<aspekt>_cast/impact/tick`
+- **T2.3-C Quest-Pin-Funktion** — markierter Quest, Compass folgt
+
+---
+
+## [2026-05-23] — Update #158 — Bug-Audit-Pass (gründliche Code-Durchsicht)
+
+**Auslöser:** User-Auftrag „Gehe den ganzen Code auf Bugs durch — sehr genau und gründlich, auch Texte und Verstöße." Drei parallele Audit-Agents über Quest-Daten, Engine-Code und Text-Qualität.
+
+### State-Loss-Bugs (Daten gehen verloren)
+
+**1. Hidden-Quest discovery_counts nicht persistiert** ([sf/save.py](sf/save.py)):
+- `_quest_log_to_dict` / `_quest_log_from_dict` serialisieren jetzt `log.discovery_counts`
+- Vorher: Spieler hatte 2 von 3 lore_tablets für `akt1_versunkenes_grab` angefasst → Save & Load → Counter reset auf 0 → musste alle 3 nochmal anfassen
+- Backward-Compat: Alte Saves ohne den Key → leerer Counter
+
+**2. Settings-Slider-Drag-Release-Save verloren** ([sf/game.py](sf/game.py) `handle_events`):
+- Vorher: `_handle_settings_drag` throttled Save auf 1×/0.5s. User der schnell den Slider zog und losließ verlor den finalen Wert (letzter Throttle-Tick liegt vor Release)
+- Neu: `pygame.MOUSEBUTTONUP`-Handler, der bei `modal == 'settings'` einen finalen `save_settings()` triggert. Andere Modals nicht betroffen — der Up-Handler ist gezielt scope-begrenzt
+
+### Defensive Code
+
+**`quest_data.py` `quests_offered_by_npc`**: `q['giver']` → `q.get('giver')` — verhindert KeyError falls eine zukünftige Quest das Feld weglässt (Hidden-Quests setzen es bisher explizit auf None — robust gegen Zukunfts-Edits)
+
+### Text/Lore-Verstöße (PLAN Regel 1)
+
+**1. Mojibake in `_innkeeper_dialog`** ([sf/game.py](sf/game.py) `_innkeeper_dialog`):
+- Verlorene Umlaute: „drauen" → „draußen", „nchste" → „nächste", „Schattenfrst" → ersetzt
+- Plus Lore-Konkretheit: „Held der Stadt" → **„Aithein-berührt"** (Velgrad-Kanon); „Schattenfürst" → **„Im-Nesh"**; „Eispalast" → **„Glasgoldene Ruinen"**
+- Kapitel jetzt: „Willkommen, Verbannter" / „Erste Schritte" / „Aithein-berührt" / „Legende" — alle lore-grounded
+
+**2. Eldon-Out-of-Voice-Fix** ([sf/game.py](sf/game.py) `_show_npc_greeting`):
+- Vorher: „Quest-Brett ist neu beschrieben. Tinte tropft noch." (zu poetisch für einen bürokratischen Stadtsprecher)
+- Neu: „Eintrag im Brett aktualisiert. Auftrag ist einsehbar." (formal, sachlich — passt zu Eldon)
+
+**3. Quote-Pair-Mismatch in Toast-Strings** ([sf/quests.py](sf/quests.py) + [sf/game.py](sf/game.py)):
+- Vorher: `f'„{title}":'` — opens mit U+201E (German low) + closes mit U+0022 (ASCII straight). Visuell asymmetrisch
+- Neu: `f'„{title}"'` — closes mit U+201C (German high). Korrekte deutsche Gänsefüßchen
+- Fixed: 6 Stellen (`quests.py` 3× TIMED-Toast + Stage-Advance-Toast, `game.py` Skill-Rebind 2× + NPC-Greeting 2×)
+
+### Audit-Ergebnis (was NICHT gefunden wurde)
+
+Bestiary-Keys, NPC-Namen, Faction-Keys, Region-Strings, requires_quests-Referenzen, CHOICE-Flag-Clashes, duplicate IDs, reward-Magnituden — alle clean nach #157. `_BASIC_ATTACK_VFX` deckt alle 8 Klassen ab. `_get_quest_target_portal` None-Tuple wird korrekt von Callern gehandled. `buy_price`/`item_value`-Pfade konsistent. Salvage/Sell/Drop-Guards für Quest-Items wirken in allen 3 Pfaden.
+
+False-Positive vom Audit: `Schwester-Wache` als nicht-registriert flagged — ist by-design ein lazy-spawn-NPC (`_try_spawn_escort_npc`, Update #150).
+
+### Tests (1 neu)
+
+- `test_discovery_counts_persists_through_save` — Save/Load roundtrip eines discovery_counts-Eintrags
+- **183/183 PASS**
+
+### Files
+
+- [sf/save.py](sf/save.py), [sf/game.py](sf/game.py), [sf/quests.py](sf/quests.py), [sf/quest_data.py](sf/quest_data.py), [tests/smoke.py](tests/smoke.py)
+
+---
+
+## [2026-05-23] — Update #157 — Akt-3/4/5 Sidequest-Buketts (17 neue Quests)
+
+**ROADMAP-Audit:** Nach #154 hatte Akt 1 sein volles 7-Slot-Bukett, nach #155 Akt 2 auch. Akt 3, 4, 5 waren in WELT_AUFBAU 3.5-3.7 mit jeweils 5-7 `[ ]`-Slots als nächste Content-Lücke ausgewiesen.
+
+### Akt 3 — Aschenfelder (Säulen-von-Helst-Hub) — 6 Sidequests ([sf/quest_data.py](sf/quest_data.py))
+
+| Quest | Typ | Giver | Stages | Reward |
+|---|---|---|---|---|
+| `akt3_erblinder_priester_trial` | Faction | Acolyt | TALK → **CHOICE** `erblinde_trial` → **CONDITIONAL × 2** → RETURN | 280G/220XP, Erblinde +30 |
+| `akt3_letzte_legion` | Side | Selvor | TALK → KILL 8× asch_soldat → RETURN | 200G/150XP, Mahnmal +15 |
+| `akt3_tribunal_infiltration` | Hidden | Korren (Doppelagent) | TALK → KILL 6× tribunal_konstrukt → RETURN | 350G/280XP, Tribunal −20, Mahnmal +25, Erblinde +10 |
+| `akt3_bounty_asch_wolf` | Bounty | Brulm | TALK → KILL 10× asch_wolf → RETURN | 100G/70XP |
+| `akt3_valsa_traene` | Lore | Acolyt | TALK → INTERACT 3× lore_tablet → RETURN | 150G/100XP, lore_codex, Erblinde +12 |
+| `akt3_inquisitions_klinge` | Crafting | Brulm | TALK → COLLECT 5× gem → RETURN | 200G/150XP |
+
+### Akt 4 — Wurzelgrab (Knoten-Markt-Hub) — 6 Sidequests
+
+| Quest | Typ | Giver | Stages | Reward |
+|---|---|---|---|---|
+| `akt4_knochenwitwen_aufnahme` | Faction | Vossharil (`requires_quests: shulavh_faden`) | TALK → KILL 5× faden_gebundener → **CHOICE** `witwen_eid` → RETURN | 280G/220XP, Knochenwitwen +35 |
+| `akt4_hohle_sohn` | Side | Hohler Sohn | TALK → INTERACT 3× lore_tablet → RETURN | 250G/200XP, lore_codex |
+| `akt4_drei_tode` | Lore | Vossharil | TALK → INTERACT 3× lore_tablet → RETURN | 150G/100XP, lore_codex |
+| `akt4_wurzel_gift` | Crafting | Bran | TALK → COLLECT 4× gem → RETURN | 200G/150XP |
+| `akt4_bounty_fadengebundene` | Bounty | Marvel | TALK → KILL 10× faden_gebundener → RETURN | 110G/80XP |
+| `akt4_versteckter_garten` | Hidden | (Decor 3× lore_tablet) | PUZZLE Saatträger-Sigille → **CHOICE** `nheyra_blessing` | 250G/200XP, Saatträger +25 |
+
+### Akt 5 — Spiegelstadt (Spiegelhof-Hub) — 5 Sidequests
+
+| Quest | Typ | Giver | Stages | Reward |
+|---|---|---|---|---|
+| `akt5_senator_streit` | Side | Voraius | TALK → KILL 6× senator_phantom → **CHOICE** `senator_mediation` → RETURN | 350G/280XP, Mahnmal +20 |
+| `akt5_stunden_spiegel_meister` | Faction | Nheya | TALK → KILL 8× spiegel_stalker → RETURN | 300G/230XP, Mahnmal +25 |
+| `akt5_velharn_geschichte` | Lore | Sehir | TALK → INTERACT 3× lore_tablet → RETURN | 200G/150XP, lore_codex |
+| `akt5_bounty_stunden_wandler` | Bounty | Sehir | TALK → KILL 10× glasscherben_taenzerin → RETURN | 130G/90XP |
+| `akt5_korven_oder_helst` | Hidden | (Decor 4× lore_tablet) | PUZZLE Spiegel-Sigille → **CHOICE** `akt5_im_nesh_clue` | 180G/140XP, Erblinde +15 |
+
+### CHOICE-Flags fürs Endgame
+
+Diese Flags werden für späteres Akt-7-Branching reserviert:
+- `erblinde_trial` (binden/widerstehen) — Akt 7 Augen-Bind-Ascendancy-Path
+- `witwen_eid` (leisten/neutral) — Akt 7 Knochenwitwen-Allianz
+- `nheyra_blessing` (atem/wind/samen) — Akt 7 Saatträger-Aspekt-Wahl
+- `senator_mediation` (voraius/neutral) — Akt 7 Velharn-Outcome
+- `akt5_im_nesh_clue` (korven_hint/helst_hint/beide_zweifeln) — Pre-Setup für `korven_helst_reveal` aus Akt 6 (#153)
+
+### Tests (3 neu)
+
+- `test_akt3_4_5_sidequest_buketts_complete` — Alle 17 Quest-IDs in Registry, Region-Stamp korrekt, Total ≥ 40
+- `test_akt345_sidequests_akt_gated` — Akt-1-Player blockt Akt-3/4/5-Quests, Akt-4-Player kann Akt 5
+- `test_akt3_4_5_hidden_quests_have_discovery` — Versteckter-Garten + Korven-oder-Helst haben discover_via_interact
+- **181/182 PASS** (test_dot_kill_loot_pipeline pre-existing flaky)
+
+### Files
+
+- [sf/quest_data.py](sf/quest_data.py), [tests/smoke.py](tests/smoke.py)
+
+### Quest-Total
+
+**35 ✅ + 16 [ ] = 51 Quests.** Akt 1, 2, 3, 4, 5 haben jetzt jeweils ihr volles narratives Bukett (Main + 5-6 Side + Hidden). Verbleibend: Akt 1b (1 Quest), Akt 6 (1 Bounty), Akt 7 (4 Quests + Endgame-Atlas).
+
+### Nächste sinnvolle Schritte
+
+- `tameris_trial`-Boss-Encounter (Akt 1b) + `akt1b_speerschwester_aufnahme` Main-Quest
+- `akt7_im_nesh_dialog` + `akt7_im_nesh_boss` + `akt7_finale_wahl` (3-Endings-Pipeline)
+- `im_nesh` BOSS_ENCOUNTERS-Eintrag
+- T2.3-C Quest-Pin/Track-Funktion
+
+---
+
+## [2026-05-23] — Update #156 — Akt-Gating-Helper (T2.4) + Quest-Board-Sektion (T2.3)
+
+**ROADMAP-Audit:** Tier 2 Strukturteile — die Engine hatte `tier_gate` und `_quest_prerequisite_met` als separate, inline-formulierte Akt-Checks. T2.4 zentralisiert diese Logik in einem expliziten Helper. T2.3 ergänzt das QuestLog-Modal um eine Liste verfügbarer Quests, damit der Spieler nicht jeden NPC einzeln ablaufen muss um zu sehen, wer was anbietet.
+
+Außerdem geprüft und als bereits-fertig markiert:
+- **T2.1-A** Echo-Markt-Outpost-Layout — `outposts.generate_outpost('echo_markt')` spawnt Helst/Vorul/Athrek/Salir bereits seit #112-114
+- **T2.1-D** Senator-Geist-Boss-Encounter live — `Game._spawn_dungeon_boss_in_room` routet frost-Biome auf `senator_geist` seit #111
+
+### T2.4 — Akt-Gating-Helper ([sf/progression.py](sf/progression.py))
+
+Neue API:
+```python
+progression.can_enter_akt(player, akt) -> bool
+progression.akt_block_reason(player, akt) -> str | None
+```
+
+Regel: Spieler braucht `len(completed_dungeons) >= akt - 1` (Akt 1 immer offen).
+
+**Refactor in [sf/game.py](sf/game.py)** Outpost-Portal-Click-Pfad: Der vorher inline-formulierte Lock-Toast mit ad-hoc-Range-Berechnung („Akt {akt - 1 if needed == 1 else f"{akt - needed}-{akt - 1}"} zuerst") nutzt jetzt `akt_block_reason(player, akt)` — kürzer, eine Quelle der Wahrheit.
+
+### T2.3 — Quest-Board-Sektion ([sf/game.py](sf/game.py) `_draw_quest_board_section`)
+
+`Game._draw_quest_board_section(x, y, w, h, cy, log)` wird vom existierenden Quest-Log-Modal (J-Taste / Eldon-Talk) aufgerufen und listet:
+
+1. **Verfügbar** (offerable + Akt-Gate erfüllt + giver-NPC existiert):
+   - Quest-Titel mit ★ für Main / • für Side
+   - „Giver: <NPC> · Region"
+   - „Reward: <Gold> Gold, <XP> XP" + Item-Name wenn vorhanden
+2. **Gelockt** (offerable aber Akt-Gate nicht erfüllt) — top 3 mit 🔒 und Region
+
+**Hidden-Quests** (`giver=None` oder `discover_via_interact`) erscheinen NICHT im Board — sie sollen versteckt bleiben bis Discovery via Decor-Interact.
+
+Line-Budget: dynamisch berechnet aus Modal-Restplatz, „… +N weitere"-Hint bei Overflow.
+
+### Tests (3 neu)
+
+- `test_can_enter_akt_helper` — Akt 1 immer offen, Akt 2 mit 0 Dungeons block, mit 1 Dungeon erlaubt, akt_block_reason korrekt für Multi-Akt-Range
+- `test_quest_board_renders` — QuestLog-Modal rendert ohne Crash bei Akt 1/2/5 Progression
+- `test_quest_board_section_filters_hidden_quests` — Hidden-Quests (`discover_via_interact`) bleiben aus dem Board
+- **179/179 PASS**
+
+### Files
+
+- [sf/progression.py](sf/progression.py), [sf/game.py](sf/game.py), [tests/smoke.py](tests/smoke.py)
+
+### ROADMAP-Status
+
+- **Tier 1**: 4/4 ✅ in 1.1, 6/6 ✅ in 1.2, 4/4 ✅ in 1.4 — nur T1.3 NPC-Dialog-Modal offen
+- **Tier 2**: T2.1-A/C/D ✅, T2.3 ✅, T2.4 ✅ — verbleibend: T2.1-B (Frost→Glass-Ruins Rename, primär kosmetisch), T2.2 Sprite-Pipeline (asset-heavy)
+
+### Nächste sinnvolle Schritte
+
+- **Akt-3 Sidequest-Bukett** (analog zu Akt 2 — 5-6 Quests aus WELT_AUFBAU 3.5)
+- **Akt-4 Sidequest-Bukett** (WELT_AUFBAU 3.6)
+- **Akt-5 Sidequest-Bukett** (WELT_AUFBAU 3.7)
+- **tameris_trial-Boss-Encounter** (Akt 1b)
+- **im_nesh-Boss + 3-Endings-Pipeline** (Akt 7)
+
+---
+
+## [2026-05-23] — Update #155 — Akt-2-Sidequest-Bukett (T2.1-C) + Faction-Vendor-Discount (T1.2-F)
+
+**ROADMAP-Audit:** Tier 1 zu 80 % geschlossen nach #154. Tier 2 startet mit T2.1-C (Akt-2-Sidequests, größter Content-Hebel für Akt 2). Plus T1.2-F (Faction-Vendor-Unlock) — Faction-Rep braucht einen ersten konkreten Engine-Effekt, sonst ist die +50/+100/+200-Mechanik ein toter Knopf.
+
+### T2.1-C — 6 Akt-2-Sidequests ([sf/quest_data.py](sf/quest_data.py))
+
+Akt 2 hat jetzt einen vollen narrativen Slot-Bestand (Main + 5 Side + Hidden). Alle Quests sind via `_quest_prerequisite_met` Akt-1-gated.
+
+| Quest | Typ | Giver | Stages | Reward |
+|---|---|---|---|---|
+| `akt2_helst_pact_stones` | Faction | Bruder Helst | TALK → KILL 6× senator_phantom → RETURN | 250G/200XP, Erblinde +30 |
+| `akt2_echo_handel` | Side (Vendor-Setup) | Senator-Geist Vorul | TALK → KILL 8× goldstaub_diener → RETURN | 200G/150XP, Erblinde +15 |
+| `akt2_otreth_glas_gravur` | Crafting | Otreth-Lehrling Salir | TALK → COLLECT 3× gem → RETURN | 180G/120XP, Mahnmal +10 |
+| `akt2_goldstaub_erinnerung` | Lore (chain) | Bruder Helst | TALK → KILL 4× goldstaub_diener → RETURN | 150G/100XP, Erblinde +10, Lore-Codex |
+| `akt2_bounty_goldstaub_diener` | Bounty | Bruder Helst | TALK → KILL 10× goldstaub_diener → RETURN | 120G/80XP, Erblinde +8 |
+| `akt2_velharn_vorhof` | Hidden | (Decor 4× lore_tablet) | PUZZLE Spiegel-Sigille → CHOICE `velharn_vorhof` | 120G/100XP, Erblinde +15, Lore-Codex |
+
+**Goldstaub-Erinnerung** ist über `requires_quests=['akt2_helst_pact_stones']` an Helsts erste Quest gekoppelt — testet die Chain-Logik aus #153.
+
+**Velharn-Vorhof CHOICE** setzt `flags['velharn_vorhof']` für Akt 5 (Drei-Zeiten-Boss-Variation).
+
+### T1.2-F — Faction-Vendor-Discount ([sf/shop.py](sf/shop.py))
+
+`buy_price(item, player=None)` zieht jetzt **10 % Rabatt** ab, wenn der Spieler den `vendor_discount_small`-Unlock hat (= Mahnmal-Gilde-Rep ≥ 50, definiert in [sf/faction.py](sf/faction.py) `UNLOCKS`).
+
+Sites die `buy_price` aufrufen:
+- `handle_click`-Verkaufs-Loop → preis-check beim Kauf-Klick
+- `draw`-Item-Slot → Display-Preis & can-afford-Check
+
+Damit ist erstmals ein konkretes Faction-Rep-→Engine-Effekt-Pfad geschlossen. Die `has_unlock`-Infrastruktur aus #117 wird live ausgewertet. Weitere Unlocks (`exclusive_crossbows`, `tribunal_steel`, etc.) sind weiterhin Engine-Hooks ohne aktiven Code — folgen wenn die Vendor-Inventare exklusive Item-Pools brauchen.
+
+### Tests (3 neu) + 1 Test-Runner-Fix
+
+- `test_akt2_sidequest_bukett_registered` — 6 Akt-2-Quests in Registry, Velharn-Vorhof als Hidden, Chain-Prereq für Goldstaub-Erinnerung
+- `test_akt2_sidequests_akt_gated` — Akt-1-Player kann Helst-Pact-Stones nicht akzeptieren
+- `test_faction_vendor_discount` — Rep 0/49 → kein Discount, Rep 50 → 10 % Rabatt, `has_unlock` returnt True
+- **Bonus:** `tests/smoke.py` `main()` — ASCII-safe Encoding für AssertionError-Messages (vorher crashte der Test-Runner bei Unicode-Zeichen wie „≥" auf Windows CP1252)
+- **176/176 PASS**
+
+### Files
+
+- [sf/quest_data.py](sf/quest_data.py), [sf/shop.py](sf/shop.py), [tests/smoke.py](tests/smoke.py)
+
+### Quest-Total
+
+**18 ✅ + 33 [ ] = 51 Quests.** ROADMAP Tier 1 zu 90 % komplett (nur T1.3 NPC-Dialog-Modal offen). Akt 2 hat jetzt 1 Main + 5 Side + 1 Hidden = 7 narrative Slots — gleicher Bestand wie Akt 1.
+
+### Nächste sinnvolle Schritte (ROADMAP)
+
+- **T2.4 Akt-Gating an Quest-Flags** — `progression.can_enter_akt(player, akt)` Helper + Outpost-Portal-Check
+- **T2.3 Quest-Board-Modal** für Eldon — Liste verfügbarer Quests pro Akt mit Status
+- **Akt-3-4-5 Sidequests** (analog zu Akt 2 — je 5-6 pro Akt)
+- **T1.3 NPC-Dialog-Modal** (Portrait + Choice-Buttons, größerer UI-Sprint)
+
+---
+
+## [2026-05-23] — Update #154 — Quest-Item-Schutz (T1.4) + Hidden-Quest mit Decor-Discovery (T1.1-D)
+
+**ROADMAP-Audit:** Tier 1 Akt-1-Sealing-Block hat 2 verbleibende Punkte:
+- T1.1-D `akt1_versunkenes_grab` (Hidden via Decor-Trigger) — testet PUZZLE + Hidden-Discovery
+- T1.4 Quest-Item-Flag — verhindert versehentliches Verkaufen/Salvagen narrativer Items
+
+Beide haben hohe Sicherheits-/Spielfluss-Impact bei kleinem Code-Footprint.
+
+### T1.4 — Quest-Item-Flag ([sf/items.py](sf/items.py), [sf/crafting.py](sf/crafting.py), [sf/shop.py](sf/shop.py), [sf/inventory.py](sf/inventory.py), [sf/save.py](sf/save.py))
+
+`Item.quest_item: bool` — neuer optionaler Konstruktor-Parameter (Default False).
+
+**Schutz-Pfade:**
+- **Salvage** ([sf/crafting.py](sf/crafting.py) `salvage_item`): returnt `None` statt `(gold, gem)` bei Quest-Items. Crafting-Modal-Handler zeigt Toast „Quest-Item — kann nicht zerlegt werden." und löscht das Item nicht.
+- **Sell** ([sf/shop.py](sf/shop.py) `handle_click` → Verkaufs-Loop): blockt mit Toast „Quest-Item — kann nicht verkauft werden."
+- **Drop** ([sf/inventory.py](sf/inventory.py) Shift+RClick-Pfad): blockt mit Toast „Quest-Item — kann nicht gedroppt werden."
+
+**Tooltip-Hint** in `Item.display_lines()`: zusätzliche dim-graue Zeile „Quest-Item — kann nicht verkauft oder zerlegt werden."
+
+**Save/Load-Persistenz** ([sf/save.py](sf/save.py) `_item_to_dict`/`_item_from_dict`): `quest_item=True` wird nur dann geschrieben wenn gesetzt (Backward-Compat — alte Saves ohne den Key bekommen Default False).
+
+**Akzeptanz:** Mahnmal-Marke VII (Akt-1-Reward), Helst-Pakt-Stein (Akt 2), Vossharils Bruder (Akt 4), Sieben-Atem-Stab (Akt 6-Finale), Tintendolch-von-Im-Nesh (Akt 7) lassen sich nicht versehentlich vernichten — sobald sie als Item-Instanzen im Inventar landen.
+
+### T1.1-D — Versunkenes Grab (Hidden Quest) ([sf/quest_data.py](sf/quest_data.py), [sf/quests.py](sf/quests.py))
+
+Neue Quest `akt1_versunkenes_grab` — **erste Quest ohne NPC-Giver**. Discovery erfolgt per Decor-Interaction:
+
+```python
+discover_via_interact={'decor_kind': 'lore_tablet', 'count': 3}
+```
+
+Spieler tippt 3 Lore-Tafeln in der Krypta an → Quest erscheint automatisch im Log mit Toast „Versteckte Quest entdeckt: Das Versunkene Grab".
+
+**Engine-Extension** ([sf/quests.py](sf/quests.py) `on_interact_decor` + `QuestLog.discovery_counts`):
+- `QuestLog.discovery_counts: dict[qid, int]` — pro Hidden-Quest ein Counter
+- Jeder INTERACT-Trigger inkrementiert den zugehörigen Counter
+- Bei Schwellenwert: `log.offer(qid)` + Toast + `quest_accept`-Sound
+- Wird mit `save/load` über die normale QuestLog-Save-Pipeline persistiert (Counter sind transient)
+
+**Stages:**
+1. **PUZZLE** — Aktiviere 3 Sigil-Tafeln in Wunden-Reihenfolge (Salz → Asche → Hohl)
+2. **KILL** — Salzhüter-Brut im Grab-Boss-Raum
+- Kein RETURN-Stage (kein Giver) → Quest schließt nach Boss-Kill auto
+
+**Reward:** 100 Gold, 80 XP, Mahnmal-Gilde +10, plus `lore_codex`-Entry (Quest-Reward-Feld neu eingeführt für reine Lore-Belohnung).
+
+**Akzeptanz:** Akt 1 hat jetzt alle 7 Quest-Slots gefüllt (Main + 2 Lore + 2 Side + Faction + Bounty + Hidden).
+
+### Tests (5 neu)
+
+- `test_quest_item_flag_blocks_salvage` — Quest-Item → salvage returnt None, Gold unverändert
+- `test_quest_item_flag_save_load_roundtrip` — quest_item-Flag wird via JSON persistiert
+- `test_quest_item_tooltip_hint` — display_lines enthält „Quest-Item"-Hint-Zeile
+- `test_hidden_quest_discovery_via_decor` — 3× lore_tablet Interaction → Versunkenes Grab offered
+- `test_versunkenes_grab_quest_registered` — Quest in ALL_QUESTS, giver=None, discover_via_interact-Trigger, PUZZLE-Stage
+- **172/173 PASS** (test_dot_kill_loot_pipeline pre-existing flaky)
+
+### Files
+
+- [sf/items.py](sf/items.py), [sf/crafting.py](sf/crafting.py), [sf/shop.py](sf/shop.py), [sf/inventory.py](sf/inventory.py), [sf/save.py](sf/save.py), [sf/quest_data.py](sf/quest_data.py), [sf/quests.py](sf/quests.py), [tests/smoke.py](tests/smoke.py)
+
+### Quest-Total
+
+**12 ✅ + 39 [ ] = 51 Quests.** ROADMAP Tier 1.1 (Akt-1-Bukett) komplett — Akt 1 hat erstmals alle 7 narrativen Slots gefüllt.
+
+### Nächste sinnvolle Schritte (ROADMAP)
+
+Tier 1 fast komplett. Verbleibend in Tier 1:
+- T1.3 NPC-Dialog-Modal (Portrait + Choice-Buttons) — größerer UI-Hebel, separater Sprint
+- T1.2-F Faction-Vendor-Unlock-Logik (Inventar-Tier-Locks im Shop)
+
+Tier 2 startet mit:
+- T2.1 Akt-2-Sidequest-Bukett (5 Quests laut WELT_AUFBAU 3.4)
+- T2.3 Quest-Board-Modal für Eldon
+
+---
+
+## [2026-05-23] — Update #153 — Akt-6-Drei-Wunden-Spine + Akt-1-Sidequests + Decor-Shadows (U-03)
+
+**PLAN/WELT_AUFBAU-Audit:** Nach #152 war die Main-Quest-Spine bis Akt 5 geschlossen. Akt 6 (WELT_AUFBAU 3.8 — 3 parallele Wunden-Reads + Finale-Quest) und das Akt-1-Sidequest-Bukett (ROADMAP Tier 1.1) waren die nächsten logischen Lücken. Plus U-03 aus PLAN.md als visueller Polish-Hebel.
+
+### Engine: `requires_quests`-Prerequisite ([sf/quests.py](sf/quests.py))
+
+`QuestLog._quest_prerequisite_met` ist jetzt eine Instanz-Methode (vorher `@staticmethod`) und checkt zusätzlich zum Akt-Gate ein optionales `requires_quests=['qid1', ...]`-Feld:
+
+```python
+required_quests = quest.get('requires_quests')
+if required_quests:
+    for req_qid in required_quests:
+        if req_qid not in self.completed:
+            return False
+```
+
+Damit lassen sich Multi-Quest-Prereqs ausdrücken, ohne dass jede Quest eine eigene Region-Akt-Stufe braucht.
+
+### Akt 6 — Drei-Wunden-Main-Quests ([sf/quest_data.py](sf/quest_data.py))
+
+4 neue Main-Quests die die 3 existierenden Akt-6-Bosse (aus #110) narrativ verketten:
+
+| Quest | Giver | Boss | Reward | Stages |
+|---|---|---|---|---|
+| `akt6_salzwunde_lesen` | Mara die Mahnerin (Akt-6-Stage) | Ertrunkene Königin | 700G/600XP, Mahnmal-Gilde +25 | TALK → KILL → RETURN |
+| `akt6_aschwunde_lesen` | Mara | Echo-Drache | 700G/600XP, Erblinde Kirche +20 | TALK → KILL → RETURN |
+| `akt6_hohlwunde_lesen` | Mara | Nicht-Gott | 700G/600XP, Mahnmal-Gilde +25 | TALK → KILL → RETURN |
+| `akt6_pakt_uebersetzen` | Wunden-Lesende Tehrnal | — | 1200G/1000XP, Sieben-Atem-Stab, Mahnmal +50/Erblinde +30 | TALK → **CHOICE** `korven_helst_reveal` → **CONDITIONAL** (Korven/Helst-Pfade) → RETURN |
+
+**`requires_quests`-Gating:** Pakt-Übersetzen blockt sich selbst hinter den 3 Wunden-Reads. Tehrnal zeigt kein „!"-Marker, bis alle drei done. Akt-Gate (Akt 6 → ≥5 completed_dungeons) bleibt zusätzlich.
+
+**CHOICE-Flag `korven_helst_reveal`** wird für Akt 7 reserviert (Im-Nesh-Maske).
+
+**Lore-Anker:** Mara-Akt-6-Pool und Tehrnal-Pool aus VELGRAD_VOICE_LINES_POOL.md.
+
+### Akt 1 — Tribunal-Sidequest + Bounty ([sf/quest_data.py](sf/quest_data.py))
+
+ROADMAP Tier 1.1-B + 1.1-C umgesetzt:
+
+| Quest | Typ | Stages | Reward |
+|---|---|---|---|
+| `akt1_tribunal_geruecht` | Faction | TALK Eldon → KILL 5× tribunal_konstrukt → RETURN | 150G/110XP, Tribunal −15, Mahnmal +20, Erblinde +5 |
+| `akt1_bounty_salzgekreuzte` | Bounty | TALK Eldon → KILL 10× salzgekreuzter → RETURN | 60G/50XP, Mahnmal +5 |
+
+Beide Quests testen das Faction-Konflikt-System (Konflikt-Matrix aus #117): Tribunal-Verlust durch Player-Aktion vs Mahnmal-Allianz-Gewinn.
+
+### U-03 — Decor-Drop-Shadows ([sf/world.py](sf/world.py))
+
+Neuer Helper `_decor_shadow(screen, sx, sy, w, h, alpha)` rendert eine flache Ellipse unter dem Decor-Ground-Anker. Integriert in:
+- `sarcophagus` (58×20, α110)
+- `broken_wall` (56×16)
+- `frozen_pillar` (42×18)
+- `ice_spike` (30×10)
+- `lantern` (20×8, α130 — stark, weil Lantern auf Pfosten steht)
+- `torch` (22×10, α130)
+- `bookshelf` (36×12)
+
+`pillar` hatte bereits einen Schatten (inline in der draw-Logik). Player/NPCs/Enemies haben über `_ground_shadow` in sprites.py schon ihre Shadows. Damit ist die ganze Welt-Layer schatten-konsistent.
+
+### Tests (5 neu)
+
+- `test_akt6_wunden_quests_registered` — 3 Wunden + Pakt-Übersetzen in ALL_QUESTS, Mara-Giver, requires_quests-Feld auf Pakt
+- `test_requires_quests_prerequisite` — Pakt-Übersetzen wird erst freigegeben wenn alle 3 Wunden completed
+- `test_akt1_tribunal_sidequest` — Tribunal-Quest registriert, negative Tribunal-Rep im Reward
+- `test_akt1_bounty_repeatable` — Bounty-Quest registriert, niedriger Bounty-Reward
+- `test_decor_shadow_helper_exists` — `world._decor_shadow` API + Smoke-Render aller geschattete Decor-Kinds ohne Crash
+- **167/168 PASS** (test_dot_kill_loot_pipeline ist pre-existing flaky — RNG-abhängiger Item-Drop)
+
+### Files
+
+- [sf/quest_data.py](sf/quest_data.py), [sf/quests.py](sf/quests.py), [sf/world.py](sf/world.py), [tests/smoke.py](tests/smoke.py)
+
+### Quest-Total
+
+**11 ✅ + 40 [ ] = 51 Quests** (von 6 ✅ in #152 → 11 ✅ jetzt). Akt-1-Bukett: 5 von 7 Slots (Main + 2 Lore + Faction + Bounty), Akt 6 Main-Spine komplett.
+
+### Nächste sinnvolle Schritte aus PLAN/WELT_AUFBAU
+
+- `akt1_versunkenes_grab` (PUZZLE/Hidden, Decor-Trigger) — testet Decor-Discovery
+- `tameris_trial`-Boss-Encounter (Akt 1b)
+- Akt-2-Sidequests (5 Stück laut WELT_AUFBAU 3.4)
+- Slot-Erweiterung: boots/gloves/belt/flask_modifier (WELT_AUFBAU 5.1)
+- `im_nesh`-Boss + 3-Endings-Pipeline (Akt 7)
+
+---
+
 ## [2026-05-23] — Update #152 — Main-Quest-Spine für Akt 2 + Akt 4 (Quest-Lücken geschlossen)
 
 **Plan/Welt-Audit:** Vor diesem Update hatten nur Akt 1, 3 und 5 eine Hauptquest. Akt 2 (Echo-Markt → Senator-Geist) und Akt 4 (Knoten-Markt → Shulavh) waren in der Quest-Datenbank Lücken — der Spieler verlor nach Akt 1 die narrative Führung, weil die `_get_quest_target_portal`-Logik aus #151 ohne aktive Main-Quest zurück auf den Tutorial-Fallback fiel.

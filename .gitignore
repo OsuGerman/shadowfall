@@ -3,6 +3,10 @@
 # ============================================================
 ElevenLabs.txt
 .elevenlabs_key
+scenario.txt
+Scenario.txt
+.scenario_key
+shadowfall.csv
 .env
 *.key
 secrets/

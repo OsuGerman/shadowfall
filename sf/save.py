@@ -164,7 +164,7 @@ def _effective_path(slot=None):
 def _item_to_dict(item):
     if item is None:
         return None
-    return {
+    d = {
         'slot': item.slot,
         'rarity': item.rarity,
         'name': item.name,
@@ -173,6 +173,10 @@ def _item_to_dict(item):
         'sockets': list(item.sockets),
         'set_id': item.set_id,
     }
+    # Update #154: quest_item nur schreiben wenn True (Backward-Compat)
+    if getattr(item, 'quest_item', False):
+        d['quest_item'] = True
+    return d
 
 
 def _item_from_dict(d):
@@ -183,11 +187,17 @@ def _item_from_dict(d):
         affixes=[tuple(a) for a in d['affixes']], ilvl=d['ilvl'],
         sockets=list(d['sockets']),
         set_id=d.get('set_id'),
+        quest_item=d.get('quest_item', False),
     )
 
 
 def _quest_log_to_dict(log):
-    """Serialisiert QuestLog für Save (PLAN Quest-Save)."""
+    """Serialisiert QuestLog für Save (PLAN Quest-Save).
+
+    Update #158: `discovery_counts` werden mit-persistiert — sonst
+    verliert ein Spieler, der 2 von 3 Lore-Tafeln für eine Hidden-
+    Quest angefasst hat, seinen Fortschritt beim Save/Load.
+    """
     if log is None:
         return None
     return {
@@ -198,6 +208,10 @@ def _quest_log_to_dict(log):
         'completed': list(log.completed),
         'discovered_lore': list(log.discovered_lore),
         'bestiary_seen': list(log.bestiary_seen),
+        # Update #158: Hidden-Quest-Discovery-Counter (#154 T1.1-D)
+        'discovery_counts': dict(getattr(log, 'discovery_counts', {})),
+        # Update #160 (ROADMAP T2.3-C): Quest-Pin
+        'tracked_quest_id': getattr(log, 'tracked_quest_id', None),
     }
 
 
@@ -216,6 +230,15 @@ def _quest_log_from_dict(d):
     log.completed = set(d.get('completed', []))
     log.discovered_lore = set(d.get('discovered_lore', []))
     log.bestiary_seen = set(d.get('bestiary_seen', []))
+    # Update #158: discovery_counts restaurieren (Backward-Compat:
+    # alte Saves haben den Key nicht → {})
+    log.discovery_counts = dict(d.get('discovery_counts', {}))
+    # Update #160 (T2.3-C): tracked_quest_id restaurieren
+    tracked = d.get('tracked_quest_id')
+    if tracked and tracked in log.active:
+        log.tracked_quest_id = tracked
+    else:
+        log.tracked_quest_id = None
     return log
 
 

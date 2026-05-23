@@ -73,9 +73,37 @@ AFFIXES = {
     'thorns':      ('+{v} Dornen',                   2, 10,  ['chest']),
     # B-05 (Update #50): Light-Radius — Cells/Frame mehr Fog-of-War-Reveal
     'light_radius': ('+{v} Sichtweite',              1, 3,   ['helmet', 'amulet']),
+    # Update #159 (WELT_AUFBAU 5.4): Aspekt-Affixes.  7 Lore-getreue
+    # Item-Affixes mit Aspekt-Tags.  Engine-Effekt: fold-in zu der
+    # zugehörigen Base-Affix-Spalte (siehe items.aggregate_stats),
+    # damit kein neuer Engine-Pfad gebaut werden muss.  Lore-Anker:
+    # VELGRAD_LORE_BIBEL Teil 2 (Sieben Aspekte).
+    'kharns_form':     ('+{v}% Kharns Form',           8, 30,  ['weapon', 'chest', 'helmet']),
+    'nheyras_zeit':    ('-{v}% Nheyras Zeit',          4, 15,  ['helmet', 'amulet']),
+    'ousens_blick':    ('+{v}% Ousens Blick',         12, 50,  ['weapon', 'amulet']),
+    'valsas_wille':    ('+{v}% Valsas Wille',         10, 30,  ['weapon', 'ring']),
+    'imnesh_sprache':  ('+{v}% Im-Neshs Sprache',     10, 30,  ['weapon', 'ring']),
+    'shulavh_faden':   ('+{v} Shulavhs Faden',         3, 12,  ['chest', 'offhand']),
+    'siebter_atem':    ('+{v:.1f} Siebter Atem',     0.5, 3.0, ['amulet']),
 }
 # Welche Affixe sind float-werte?
-FLOAT_AFFIXES = {'hp_regen', 'mp_regen'}
+FLOAT_AFFIXES = {'hp_regen', 'mp_regen', 'siebter_atem'}
+
+# Update #159: Aspekt-Affix-Keys (für Tag-Filter / Mahnmal-Pakt-Logic)
+ASPEKT_AFFIX_KEYS = (
+    'kharns_form', 'nheyras_zeit', 'ousens_blick', 'valsas_wille',
+    'imnesh_sprache', 'shulavh_faden', 'siebter_atem',
+)
+# Mapping Aspekt-Affix → zugehörige Engine-Stat (für aggregate_stats-Fold)
+ASPEKT_AFFIX_FOLD = {
+    'kharns_form':    'dmg_pct',
+    'nheyras_zeit':   'cdr',
+    'ousens_blick':   'crit_dmg',
+    'valsas_wille':   'fire_dmg',
+    'imnesh_sprache': 'lit_dmg',
+    'shulavh_faden':  'thorns',
+    'siebter_atem':   'mp_regen',
+}
 
 # ---- Klassen-Definitionen ----
 CLASSES = {

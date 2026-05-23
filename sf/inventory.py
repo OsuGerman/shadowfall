@@ -543,6 +543,13 @@ class InventoryUI:
                     return True
                 # Shift+RClick → Drop (explizite User-Action)
                 if shift_held:
+                    # Update #154 (ROADMAP T1.4): Quest-Items dürfen nicht
+                    # gedropped werden.
+                    if getattr(item, 'quest_item', False):
+                        game.toast(
+                            'Quest-Item — kann nicht gedroppt werden.',
+                            (220, 150, 80))
+                        return True
                     self._drop_item(game, item)
                     game.player.inventory[i] = None
                     game.toast('Item gedropped (Shift+RClick)',

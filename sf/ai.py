@@ -228,6 +228,10 @@ LEASH_LOSE_SIGHT_S    = 5.0
 LEASH_MAX_RANGE_PX    = 30 * 32  # 30 m
 
 
+_AGGRO_SOUND_THROTTLE_S = 0.8   # global anti-spam, 1 alert/0.8s max
+_last_aggro_sound_t = 0.0
+
+
 def _enter_state(e, state, now_t=None):
     # Update #136 (O-19): Aggro-Tell-Animation auslösen wenn ein Mob
     # NEU in den AGGRO-State wechselt.  `_aggro_tell_t` ist die Anim-
@@ -239,6 +243,35 @@ def _enter_state(e, state, now_t=None):
     e.ai_state_t = 0.0
     if state == AIState.AGGRO and prev_state != AIState.AGGRO:
         e._aggro_tell_t = 0.35
+        # Update #159 (ROADMAP Engine-Lücke): Mob-Aggro-Sound.  Spielt
+        # bestiary-spezifischen `<bkey>_alert`-SFX falls vorhanden,
+        # sonst Fallback auf generic `ambient_monster_growl`.  Throttled
+        # global auf 1×/0.8s — verhindert Spam wenn ein Pack gleichzeitig
+        # aggrot. Bosse skip — die haben eigenes boss_intro-Cinematic.
+        if not getattr(e, 'is_boss', False):
+            try:
+                import time as _t
+                global _last_aggro_sound_t
+                now = _t.time()
+                if now - _last_aggro_sound_t > _AGGRO_SOUND_THROTTLE_S:
+                    _last_aggro_sound_t = now
+                    from . import sounds as _snd
+                    bkey = getattr(e, 'bestiary_key', None)
+                    fallback = 'ambient_monster_growl'
+                    cue = f'{bkey}_alert' if bkey else fallback
+                    # play_at: positional (Stereo-Pan + Distance-Falloff)
+                    px = getattr(e.pos, 'x', 0)
+                    py = getattr(e.pos, 'y', 0)
+                    if hasattr(_snd, 'play_with_fallback'):
+                        # Note: play_with_fallback is positional-unaware,
+                        # but for an alert cue the small position diff
+                        # is acceptable.  Future: play_at_with_fallback.
+                        _snd.play_with_fallback(cue, fallback,
+                                                  volume=0.30)
+                    elif hasattr(_snd, 'play_at'):
+                        _snd.play_at(fallback, px, py, volume=0.30)
+            except Exception:
+                pass
     if state == AIState.ALERT:
         e.ai_alert_left = ALERT_DURATION_S
     elif state == AIState.SEARCH:

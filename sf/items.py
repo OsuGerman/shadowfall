@@ -36,10 +36,16 @@ class Item:
                  # N-08 (Update #65): Unique-Item-Audio-Override (Multiplikator
                  # für Music-Volume während Item equipped, 0.0–1.0).  Beispiel:
                  # „The Last Lament"-Crossbow mit music_mute=0.0.
-                 'music_mute')
+                 'music_mute',
+                 # Update #154 (ROADMAP T1.4): Quest-Item-Flag.  True =
+                 # Item lässt sich NICHT verkaufen UND NICHT salvagen.
+                 # Lore-Anker: Mahnmal-Marke VII, Tintendolch-von-Im-Nesh,
+                 # Helst-Pakt-Stein u.a. — narrative Anker dürfen nicht
+                 # versehentlich vernichtet werden.
+                 'quest_item')
 
     def __init__(self, slot, rarity, name, affixes, ilvl=1, sockets=None,
-                 set_id=None, music_mute=None):
+                 set_id=None, music_mute=None, quest_item=False):
         self.slot = slot
         self.rarity = rarity
         self.name = name
@@ -52,6 +58,7 @@ class Item:
         # N-08 (Update #65): None = kein Override, sonst 0.0–1.0 als
         # Multiplikator auf Music-Volume während Item equipped.
         self.music_mute = music_mute
+        self.quest_item = bool(quest_item)
 
     def display_lines(self):
         """Mehrzeilige Tooltip-Beschreibung."""
@@ -80,6 +87,11 @@ class Item:
             for pieces, (akey, val) in spec['bonuses'].items():
                 lines.append((f'  ({pieces}P) +{val}% {AFFIXES.get(akey, [akey])[0]}',
                               'affix'))
+        # Update #154 (ROADMAP T1.4): Quest-Item-Hint
+        if getattr(self, 'quest_item', False):
+            lines.append(
+                ('Quest-Item — kann nicht verkauft oder zerlegt werden.',
+                 'dim'))
         return lines
 
     def gem_affixes(self):
@@ -160,7 +172,14 @@ def make_item(ilvl=1, rarity=None, slot=None, rarity_boost=0):
 # ---------- Aggregation der Item-Stats für den Spieler ----------
 
 def aggregate_stats(player):
-    """Summiert alle Affixe der equipped Items + Set-Boni."""
+    """Summiert alle Affixe der equipped Items + Set-Boni.
+
+    Update #159 (WELT_AUFBAU 5.4): Aspekt-Affixes werden eingesammelt
+    und in die zugehörigen Engine-Stats gefoldet (z.B. `kharns_form`
+    → `dmg_pct`).  Die Aspekt-Werte bleiben ebenfalls separat im out
+    Dict — für Tag-Filter (Mahnmal-Pakt W-13) + UI-Display.
+    """
+    from .constants import ASPEKT_AFFIX_KEYS, ASPEKT_AFFIX_FOLD
     out = {
         'dmg_flat': 0, 'dmg_pct': 0,
         'hp': 0, 'mp': 0,
@@ -173,6 +192,10 @@ def aggregate_stats(player):
         # B-05 (Update #50): Light-Radius-Bonus aus Helmen/Amuletten.
         # Cells, die der Spieler aufdeckt pro Frame (Minimap Fog-of-War).
         'light_radius': 0,
+        # Update #159: Aspekt-Affix-Akkumulatoren (Lore-getreu, gefoldet)
+        'kharns_form': 0, 'nheyras_zeit': 0, 'ousens_blick': 0,
+        'valsas_wille': 0, 'imnesh_sprache': 0, 'shulavh_faden': 0,
+        'siebter_atem': 0.0,
     }
     set_counts = {}
     for item in player.equipment.values():
@@ -199,4 +222,13 @@ def aggregate_stats(player):
                 if key in out:
                     out[key] += val
                 break
+    # Update #159: Aspekt-Affixes in die Engine-Stat-Spalten folden,
+    # damit kein progression.effective()-Refactor nötig ist.
+    # Die Aspekt-Werte bleiben separat im out-Dict erhalten (für
+    # Tag-Filter / UI-Display).
+    for asp_key in ASPEKT_AFFIX_KEYS:
+        if out[asp_key] > 0:
+            target = ASPEKT_AFFIX_FOLD[asp_key]
+            if target in out:
+                out[target] += out[asp_key]
     return out

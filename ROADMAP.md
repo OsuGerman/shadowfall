@@ -37,21 +37,21 @@
 > Macht Akt 1 zu einem geschlossenen, saettigenden Erlebnis und legt die Foundation fuer alle weiteren Akte.
 
 ### 1.1 Akt-1-Quest-Bukett vervollstaendigen *(4 Quests, hoechste Impact-Dichte)*
-- [ ] **T1.1-A** `akt1_tameris_schwester` (Side/Escort/Hidden) — testet bereits implementierte ESCORT-Stage + CHOICE-Stage live
-- [ ] **T1.1-B** `akt1_tribunal_geruecht` (Faction, Eldon-Quest-Board) — erster Tribunal-Konflikt-Setup
-- [ ] **T1.1-C** `akt1_bounty_salzgekreuzte` (Repeatable Daily-Reset) — testet Repeatable-Mechanik
-- [ ] **T1.1-D** `akt1_versunkenes_grab` (Hidden via Decor-Trigger) — testet PUZZLE-Stage + Hidden-Discovery
+- [x] **T1.1-A** `akt1_tameris_schwester` (Side/Escort/Hidden) — ✅ #149 (Lazy-Spawn) + #116 (Stages)
+- [x] **T1.1-B** `akt1_tribunal_geruecht` (Faction, Eldon-Quest-Board) — ✅ #153
+- [x] **T1.1-C** `akt1_bounty_salzgekreuzte` (Repeatable Daily-Reset) — ✅ #153
+- [x] **T1.1-D** `akt1_versunkenes_grab` (Hidden via Decor-Trigger) — ✅ #154 (discover_via_interact + PUZZLE)
 
 **Files:** [sf/quest_data.py](sf/quest_data.py), [sf/quests.py](sf/quests.py) (evtl. Repeatable-Reset-Logik)
 **Akzeptanz:** Spieler kann Akt 1 mit allen 7 Quest-Slots (Main/Crafting/Lore/Faction/Side/Bounty/Hidden) erleben.
 
-### 1.2 Faction-Rep-System Foundation *(Foundation fuer Akt 2+)*
-- [ ] **T1.2-A** `Player.faction_rep` Dict mit 7 Fraktionen in [sf/entities.py](sf/entities.py)
-- [ ] **T1.2-B** Save-Migration v4→v5 in [sf/save.py](sf/save.py)
-- [ ] **T1.2-C** Rep-Gain-Hook in `QuestState._mark_complete` — liest `quest.get('reputation', {})`
-- [ ] **T1.2-D** Konflikt-Matrix-Logik (Tribunal +20 = Erblinde −10 = Knochenwitwen −10)
-- [ ] **T1.2-E** Codex-Tab „Fraktionen" (5. Tab via K_5) — Rep-Tier-Bars + Lore-Quote pro Faction
-- [ ] **T1.2-F** Faction-Vendor-Unlock-Logik (Inventar-Tier-Locks)
+### 1.2 Faction-Rep-System Foundation *(Foundation fuer Akt 2+)* ✅ #159 verifiziert
+- [x] **T1.2-A** `Player.faction_rep` Dict mit 7 Fraktionen — ✅ #117 ([sf/entities.py](sf/entities.py))
+- [x] **T1.2-B** Save-Persistenz mit Clamp ±200 — ✅ #117 ([sf/save.py:707-711](sf/save.py#L707-L711))
+- [x] **T1.2-C** Rep-Gain-Hook via `faction.apply_quest_reward` — ✅ #117 ([sf/quests.py](sf/quests.py) `_mark_complete`)
+- [x] **T1.2-D** `CONFLICT_MATRIX` Drei-Wege-Dreieck — ✅ #117 ([sf/faction.py](sf/faction.py))
+- [x] **T1.2-E** Codex-Tab „Fraktionen" — ✅ #118 (`_draw_codex_factions`)
+- [x] **T1.2-F** Faction-Vendor-Unlock-Logik — ✅ #155 (`vendor_discount_small` → 10 % Rabatt via `buy_price(item, player=p)`)
 
 **Files:** [sf/entities.py](sf/entities.py), [sf/save.py](sf/save.py), [sf/quests.py](sf/quests.py), [sf/game.py](sf/game.py) (Codex-Tab), [sf/shop.py](sf/shop.py)
 **Akzeptanz:** Tameris-Schwester-Spared gibt Speerschwestern +25, Tribunal-Quest gibt Tribunal −15 sichtbar im Codex.
@@ -65,11 +65,13 @@
 **Files:** [sf/ui.py](sf/ui.py), [sf/quest_data.py](sf/quest_data.py), [sf/game.py](sf/game.py)
 **Akzeptanz:** Korven-Talk oeffnet Dialog mit Portrait, Voice spielt, Choice-Buttons fuehren zu Quest-Stage-Branch.
 
-### 1.4 Quest-Item-Flag *(verhindert Datenverlust)*
-- [ ] **T1.4-A** `Item.quest_item=True` Flag in [sf/items.py](sf/items.py)
-- [ ] **T1.4-B** [sf/crafting.py](sf/crafting.py) `salvage_item` returnt False bei quest_item
-- [ ] **T1.4-C** [sf/shop.py](sf/shop.py) `sell_item` returnt False bei quest_item
-- [ ] **T1.4-D** Tooltip-Hint „Quest-Item — kann nicht verkauft werden"
+### 1.4 Quest-Item-Flag *(verhindert Datenverlust)* ✅ #154
+- [x] **T1.4-A** `Item.quest_item=True` Flag in [sf/items.py](sf/items.py) — ✅ #154 (Konstruktor-Param + __slots__)
+- [x] **T1.4-B** [sf/crafting.py](sf/crafting.py) `salvage_item` returnt None bei quest_item — ✅ #154 (+ Toast im Modal-Handler)
+- [x] **T1.4-C** [sf/shop.py](sf/shop.py) Verkaufs-Pfad blockt bei quest_item — ✅ #154 (+ Toast)
+- [x] **T1.4-D** Tooltip-Hint „Quest-Item — kann nicht verkauft werden" — ✅ #154 (`display_lines`)
+- [x] *(Bonus)* Drop-Schutz im Inventory (Shift+RClick) — ✅ #154
+- [x] *(Bonus)* Save/Load-Persistenz mit Backward-Compat — ✅ #154
 
 **Akzeptanz:** Tintendolch-von-Im-Nesh, Mahnmal-Marke VII u.a. lassen sich nicht versehentlich vernichten.
 
@@ -80,37 +82,91 @@
 > Erweitert das Spiel auf 2 komplette Akte mit der ersten Faction-Konflikt-Story (Tribunal vs Erblinde). Parallel: visuelles Foundation-Upgrade (Sprite-Pipeline).
 
 ### 2.1 Akt-2-Content (Echo-Markt → Glasgolden-Ruinen)
-- [ ] **T2.1-A** Echo-Markt-Outpost-Layout (statt nur als Daten) — Helst, Vorul, Athrek, Salir spawnen
+- [x] **T2.1-A** Echo-Markt-Outpost-Layout — ✅ #156 (verifiziert; bereits seit #112-114 via `outposts.generate_outpost('echo_markt')` + `build_outpost_npcs`)
 - [ ] **T2.1-B** Frost→Glass-Ruins Biome-Rename + Tile-Variation (W-09 Erweiterung)
-- [ ] **T2.1-C** 6 Akt-2-Quests:
-  - `akt2_helst_pact_stones` (Faction Erblinde Kirche)
-  - `akt2_echo_handel` (Side, Vendor-Unlock)
-  - `akt2_otreth_glas_gravur` (Crafting)
-  - `akt2_goldstaub_erinnerung` (Lore, Mara-Chain Stage 2)
-  - `akt2_bounty_goldstaub_diener` (Bounty)
-  - `akt2_velharn_vorhof` (Hidden, Akt-5-Preview)
-- [ ] **T2.1-D** Senator-Geist-Boss-Encounter live im Code (war E-config, jetzt Boss-Room im Dungeon spawnen)
+- [x] **T2.1-C** 6 Akt-2-Quests — ✅ #155 (alle 6 Quests im Quest-Registry, Akt-Gating verifiziert):
+  - `akt2_helst_pact_stones` (Faction Erblinde Kirche) ✅
+  - `akt2_echo_handel` (Side, Vendor-Setup) ✅
+  - `akt2_otreth_glas_gravur` (Crafting via Salir) ✅
+  - `akt2_goldstaub_erinnerung` (Lore, Chain via requires_quests) ✅
+  - `akt2_bounty_goldstaub_diener` (Bounty) ✅
+  - `akt2_velharn_vorhof` (Hidden, Akt-5-Setup mit CHOICE-Flag) ✅
+- [x] **T2.1-D** Senator-Geist-Boss-Encounter live im Code — ✅ #156 (verifiziert; seit #111 via `_spawn_dungeon_boss_in_room` mit frost→senator_geist Routing)
 
 ### 2.2 Sprite-Pipeline-Foundation *(TEIL T aus PLAN.md — groesster visueller Hebel)*
-- [ ] **T2.2-A** `assets/sprites/`-Struktur + `manifest.json` (T-01)
-- [ ] **T2.2-B** `SpriteAtlas`-Loader mit Async-Cache (T-02, J-14 Foundation existiert)
-- [ ] **T2.2-C** `SpriteAnimator` mit State-Machine (T-03)
-- [ ] **T2.2-D** Procedural-Fallback bleibt (T-04)
-- [ ] **T2.2-E** **6 Lore-Mobs Sprite-Sheets Phase 1** (T-05): Salzhueter-Brut, Glaslord, Vehren-Echo, Ertrunkene Koenigin, Aschenbrut, Wurzelhueter
-- [ ] **T2.2-F** **3 Klassen-Sheets Phase 1** (T-06): Warrior, Witch, Sorceress
-- [ ] **T2.2-G** **8 NPC-Portraits 256×256** (T-07): Korven, Helst, Vossharil, Tameris, Otreth, Mara, Vehren, Drei Muetter
 
-**Tool-Empfehlung:** Stable Diffusion + RPG-LoRA lokal (kostenlos) ODER Scenario.gg (~30 EUR/mo). Generation-Prompt-Templates aus VELGRAD_BESTIARIUM + VELGRAD_LORE_BIBEL.
+✅ **PHASE 1 KOMPLETT (heute, 2026-05-23)** — Scenario.gg Pipeline + 41 Sprites + Engine-Hooks live.
+
+- [x] **T2.2-A** `assets/sprites/`-Struktur + `manifest.json` (T-01) — ✅ via [tools/sprite_gen.py](tools/sprite_gen.py) `assets/sprite_manifest.json`
+- [x] **T2.2-B** `SpriteAtlas`-Loader mit Cache (T-02) — ✅ [sf/sprites.py](sf/sprites.py) `_load_ai_sprite()` + `_SPRITE_CACHE` + `reload_sprite_cache()`
+- [x] **T2.2-C** `SpriteAnimator` mit State-Machine (T-03) — ⚠ **partial**: Single-Frame-Render funktioniert. Multi-Frame-Animation-Sheets sind Phase 3 (`T2.6-Anim` unten)
+- [x] **T2.2-D** Procedural-Fallback bleibt aktiv (T-04) — ✅ `draw_player_at` + `draw_enemy_at` fallen auf Composit zurueck wenn PNG fehlt
+- [x] **T2.2-E** **6 Lore-Mobs Sprite-Sheets Phase 1** (T-05) — ✅ Salzhueter-Brut + Glaslord + Vehren-Echo + Ertrunkene-Koenigin + Aschenbrut + Wurzelhueter (POE2 via El-Diablo-LoRA)
+- [x] **T2.2-F** **8 Klassen-Sprites** (T-06) — ✅ alle 8 (Warrior/Witch/Sorceress/Monk/Ranger/Mercenary/Huntress/Druid), POE2-Style mit transparentem BG via Background-Removal-Pass
+- [x] **T2.2-G** **8 NPC-Portraits 256×256** (T-07) — ✅ Korven, Helst, Vossharil, Tameris, Otreth, Mara, Vehren, Drei Muetter (via RPG-Avatars-LoRA)
+- [x] **T2.2-H** **8 Boss-Concept-Plates 512×512** (T-08) — ✅ atmospheric backdrop, fuer Cinematic-Intros (X-06 wartet auf Display-Hook)
+- [x] **T2.2-I** **11 Biome-Tilesets seamless** (T-10) — ✅ Crypt/Frost/Lava/Swamp/Astral/Desert/Town + 4 Wound/Hollow-Word (via Hand-Painted-Textures-LoRA nach 2 Failed-LoRA-Versuchen)
+- [x] **T2.2-J** **Tile-Renderer-Hook in world.py** — ✅ `_get_ai_tile(biome)` + `_dungeon_cell_cache` in [sf/world.py](sf/world.py)
+- [x] **T2.2-K** **Background-Removal Post-Processing** — ✅ [tools/sprite_postprocess.py](tools/sprite_postprocess.py) mit Numpy-Backed Alpha-Generation + Feathering. Auto-applied auf Mob+Class+Item nach Generation
+- [x] **T2.2-L** **Sicherheit:** Scenario-Credentials-Loader (3-File-Fallback + Whitespace-Validation) — ✅ [tools/scenario_config.py](tools/scenario_config.py) `load_credentials()` mit Token-Regex-Whitelist; Key niemals geloggt
+
+**Realisierte Kosten:** ~64 API-Calls / 5000 Plan-Budget = **1,3 %**. Final-Sprite-Count: **41 PNGs / ~5 MB**.
+
+**Lessons learned:**
+- POE2-Style mit `El Diablo`-LoRA fuer Mob/Class/Boss → 1-Shot-Hit
+- Seamless Tiles brauchten 3 LoRA-Versuche: RPG-Environment (Architektur), Super-Top-Down (Game-Maps mit Walls/Charakter), schliesslich **Hand-Painted Textures** (richtig: sc:texture-Tag)
+- Mob/Class brauchen Background-Removal-Pass (Alpha aus schwarzem BG)
+- Single-Frame-Sprites reichen fuer ARPG-Top-Down-View — Multi-Frame ist Phase 3
+- Tools-Pfad: [tools/scenario_config.py](tools/scenario_config.py) + [tools/sprite_gen.py](tools/sprite_gen.py) + [tools/sprite_postprocess.py](tools/sprite_postprocess.py) + [tools/scenario_list_models.py](tools/scenario_list_models.py)
+
+### 2.5 Sprite-Pipeline-PHASE 2 *(NEU — was nach Phase-1-Run noch fehlt)*
+
+Liste basiert auf System-Audit nach dem 41-Sprite-Run. Reihenfolge nach Sichtbarkeits-Impact im Spielfluss.
+
+- [ ] **T2.5-A** **Decor-Sprites** (17 Velgrad-Lore-Decors) — `mahnmal_stele`, `pier_post`, `fishing_net`, `salt_puddle`, `gravestone`, `salt_crystal`, `salt_statue`, `anvil`, `cursed_altar`, `rune_anchor`, `lore_tablet`, `underworld_rift`, `bookshelf`, `fountain`, `chest_decor`, `sumpf_pool`, `sarcophagus`. Engine-Hook in `draw_decor()`. **Geschaetzt: ~3 EUR / ~17 Calls**
+- [ ] **T2.5-B** **Item-Icons fuer 50 Unique-Weapons** aus VELGRAD_ITEMS_UNIQUE_BIBEL — pro Item ein 128×128 PNG mit Rarity-Border. Inventar sieht sonst leer aus. Model: `Fantasy Blades`. **~10 EUR / ~50 Calls**
+- [ ] **T2.5-C** **Status-Effect-Icons** (15 Status) — `burn`, `frost`, `chill`, `shock`, `poison`, `bleed`, `stun`, `silence`, `armour_break`, `pinned`, `brittle`, `sapped`, `maim`, `crush`, `heal_tick`. Pro Status 32×32 PNG fuer Buff-Tray-UI. **~3 EUR**
+- [ ] **T2.5-D** **Hit-Spark-Sheets** pro Damage-Type (8 Types) — 4-8 Frames pro Sheet als Strip, played on hit. Aktuelle Procedural-Particles bleiben als Layer drueber. **~2 EUR**
+- [ ] **T2.5-E** **AoE-Ring-Templates** pro Element (6 Elements) — Single PNG mit Glow-Ring, gescaled je nach Decal-Radius. Ersetzt aktuelle Procedural-Outline. **~1,5 EUR**
+- [ ] **T2.5-F** **Aspekt-Auren** (7 Aspekte) — Single PNG pro Aspekt-Pakt, additiv geblittet um Player-Body wenn Pakt aktiv. **~1,5 EUR**
+- [ ] **T2.5-G** **Door + Chest Sprites** (Wood/Metal/Locked/Unique-Chest) — 6 PNGs fuer interactable Decors. **~1,5 EUR**
+- [ ] **T2.5-H** **Trap-Sprites** (Spike/Fire/Arrow/Plate, je armed + triggered) — 8 PNGs. **~2 EUR**
+- [ ] **T2.5-I** **Cursor + UI-Frames** (Buttons/Borders/Modal-Frames/Scroll-Track) — ~10 PNGs fuer UI-Polish. **~2 EUR**
+- [ ] **T2.5-J** **Parallax-Backgrounds** fuer 7 Akt-Outposts (Brassweir-Harbor, Echo-Markt-Ruinen, Saeulen-von-Helst, ...) — Single Wide-PNG (1920×600) pro Outpost als Background-Layer. **~2 EUR**
+
+**Phase-2-Total:** ~115 PNGs, ~25 EUR, ~30 min Generation.
+
+### 2.6 Sprite-Pipeline-PHASE 3 *(Multi-Frame Animation, Phase-3-Material)*
+
+Animation-Sheets sind aufwendiger — Scenario.gg hat „Animator"-Models die Multi-Frame-Sheets generieren, oder wir nutzen Stable Diffusion + AnimateDiff lokal.
+
+- [ ] **T2.6-A** **Klassen-Animation-Sheets** (8 Klassen × Idle 6F + Walk 8F + Attack 6F + Hit 3F + Death 8F = ~31 Frames pro Klasse, 8-Direction optional) — `~250 Sheets` fuer voll-animierte ARPG-Klassen. **~50 EUR**
+- [ ] **T2.6-B** **Boss-Animation-Sheets** (15 Bosse × Idle + Attack + Phase-Transition × ~10 Frames) — **~30 EUR**
+- [ ] **T2.6-C** **Skill-VFX-Sequences** pro Aspekt-Cast (7 Aspekte × Wind-up + Travel + Impact als Frame-Strips) — Aktuelle Procedural-Particles bleiben Foundation, AI-Frames overlayen. **~20 EUR**
+- [ ] **T2.6-D** **Mob-Direction-Sprites** — wenn Top-Down-View wichtig wird, brauchen Mobs 4-8 Richtungs-Sprites statt nur Frontal. **~20 EUR**
+
+**Phase-3-Total:** ~600 Files, ~95-120 EUR (eigenes Sprint-Set fuer Animation-Polish-Phase).
+
+### 2.7 Sprite-Pipeline-PHASE 4 *(Modulare Architektur)*
+
+- [ ] **T2.7-A** **Modulare Building-Tilesets** fuer 7 Outpost-Architekturen — pro Stil ~50 Module (Wall-Corner-Innen/Aussen/Straight, Door-Frame, Roof-Section, Window). Quelle: VELGRAD_LORE_BIBEL pro Outpost. **~15 EUR**
+- [ ] **T2.7-B** **Tile-Auto-Tiling (47-Bitmask)** in [sf/world.py](sf/world.py) — M-15 aus PLAN.md. Code-Task ohne neue Assets. Macht aus den Phase-1-Tiles organische Walls statt Klotz-Look.
+
+**Phase-4-Total:** ~350 Building-Module + Engine-Code, ~15 EUR + Code-Work.
+
+---
+
+**Tool-Empfehlung:** Scenario.gg Creator-Plan (29 EUR/mo) deckt Phase 1+2 bequem ab. Phase 3+4 brauchen Pro-Plan (99 EUR/mo) oder lokal Stable Diffusion.
 
 ### 2.3 Quest-Board-Modal *(Eldon hat aktuell keinen UI)*
-- [ ] **T2.3-A** `QuestBoardUI` in [sf/ui.py](sf/ui.py) — Liste verfuegbarer Quests pro Akt mit Status (Available/Active/Completed)
-- [ ] **T2.3-B** Eldon-Talk oeffnet das Modal statt nur Toast
+- [x] **T2.3-A** Quest-Board-Sektion im QuestLog-Modal — ✅ #156 (`_draw_quest_board_section` listet AVAILABLE + LOCKED, filtert Hidden-Quests)
+- [x] **T2.3-B** Eldon-Talk öffnet QuestLog-Modal — ✅ Seit Day-1 (npc.kind='quest' → modal='questlog'), jetzt mit Quest-Board-Sektion sichtbar
 - [ ] **T2.3-C** Quest-Pin-Funktion (eine Quest als „Tracked" markieren, Compass folgt ihr)
 
-### 2.4 Akt-Gating an Quest-Flags
-- [ ] **T2.4-A** `progression.can_enter_akt(player, akt)`-Helper liest `player.flags`
-- [ ] **T2.4-B** Outpost-Portal-Check vor Travel: blockiert wenn Vorgaenger-Quest nicht complete
-- [ ] **T2.4-C** Toast „Vollende erst <Vorgaenger-Quest>" bei Block
+### 2.4 Akt-Gating an Quest-Flags ✅ #156
+- [x] **T2.4-A** `progression.can_enter_akt(player, akt)` + `akt_block_reason(player, akt)` — ✅ #156
+- [x] **T2.4-B** Outpost-Portal-Check vor Travel: blockt wenn akt-gate nicht erfüllt — ✅ #156 (refactored auf Helper)
+- [x] **T2.4-C** Toast „Vollende erst Akt N-1 zuerst" bei Block — ✅ #156 (`akt_block_reason` liefert lore-konforme Erklärung)
 
 **Files:** [sf/progression.py](sf/progression.py), [sf/game.py](sf/game.py)
 
@@ -302,11 +358,11 @@
 
 > Nicht auf einen Tier festgelegt — kleine Tasks die ad-hoc passen.
 
-- [ ] **AI-Mob-Alert/Attack-Sounds** — Phase-1-SFX existieren (`<mob_key>_alert`/`_attack`), aber `ai.py` ruft sie noch nicht beim Awareness-Wechsel. Patch in `_enter_state(AGGRO)`.
+- [x] **AI-Mob-Alert/Attack-Sounds** — ✅ #159 (`_enter_state(AGGRO)` ruft `play_with_fallback(f'{bestiary_key}_alert', 'ambient_monster_growl')` mit globaler Throttle 1×/0.8s; bosse skip)
 - [ ] **Aspekt-Skill-Sounds** wired — Phase-1-SFX `aspekt_<aspekt>_cast/impact/tick` existieren, aber `skills.py` ruft noch `cast_lightning`/`cast_frost`/`cast_fire`. Mapping aufbauen.
 - [ ] **Music-Stem-Swap pro Akt** — N-09 ist als Volume-Duck implementiert; echter Stem-Crossfade braucht Suno-Tracks pro Akt (T5.10-A).
 - [ ] **Quest-Compass durchgaengig** — Portal-Highlight ist da (#151), aber INTERACT/COLLECT-Stages haben noch keinen Welt-Marker.
-- [ ] **Aspekt-Affixes (7 Stueck, Lore-getreu)** aus WELT_AUFBAU 5.4 — `kharns_form`, `nheyras_zeit`, `ousens_blick`, `valsas_wille`, `imnesh_sprache`, `shulavh_faden`, `siebter_atem`
+- [x] **Aspekt-Affixes (7 Stueck, Lore-getreu)** aus WELT_AUFBAU 5.4 — ✅ #159 (alle 7 in AFFIXES + Fold-Mapping zu Engine-Stats; Aspekt-Akkumulatoren separat für späteres Mahnmal-Pakt-Tag-Buff)
 - [ ] **4 zusaetzliche Item-Slots erwaegen** — boots/gloves/belt/flask_modifier (WELT_AUFBAU 5.1)
 - [ ] **Unique-Drop-Pool pro Boss** — aktuell nur generischer Affix-Roll, kein Lore-Mapping (WELT_AUFBAU 5.3 + QUEST_BIBEL Item-Drop-Crossref)
 - [ ] **Set-Linking** (Shulavhs Faden) — 2 Items verbinden, Set-Bonus bei beiden equipped

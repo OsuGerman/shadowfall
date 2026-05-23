@@ -3,15 +3,219 @@
 Konvention: alle draw_X_at(screen, entity, sx, sy) bekommen (sx, sy) als
 GROUND/FUSS-Position. Der Sprite wird von dort nach oben (negative Y)
 gezeichnet. Das ergibt den "stehende Figur"-Look.
+
+ROADMAP T2.2 (Update #X): AI-Sprite-Atlas-Integration. Wenn fuer eine
+Klasse/Mob ein PNG in sf/sprite_registry.py registriert ist, wird der
+AI-Sprite gerendert. Procedural-Composit bleibt als Fallback bestehen.
 """
 
 import math
+import os
 import pygame
 
 from .constants import (
     GOLD, GOLD_BRIGHT, WHITE, BLACK, FIRE, FROST, POISON, CLASSES,
     STATUS_EFFECTS,
 )
+
+
+# ============================================================
+# AI-SPRITE-ATLAS (ROADMAP T2.2-B + T2.2-C + T2.2-D)
+# ============================================================
+# Lazy-load von PNGs aus assets/sprites/, Cache pro target_id.
+# Bei fehlender Datei: returnt None → Aufrufer faellt auf Procedural-
+# Composit-Renderer zurueck. Kein Hard-Fail.
+_SPRITE_CACHE: dict[str, pygame.Surface | None] = {}
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Klassen-Aliases (Engine-cls -> Sprite-ID)
+CLASS_SPRITE_ALIAS = {
+    'mage':  'sorceress',     # Lore: Sorceress ist die Caster-Klasse
+    'rogue': 'mercenary',     # Rogue-Slot wird vom Mercenary belegt
+}
+
+# Mob-Aliases (bestiary_key -> Sprite-ID)
+# Sprite-IDs aus VELGRAD_SPRITE_BIBEL haben Lore-Suffixe — wir mappen
+# die Engine-bestiary-keys auf die generierten PNG-Namen.
+MOB_SPRITE_ALIAS = {
+    'salzhueter_brut': 'salzhueter_brut',
+    'glaslord':        'glaslord_senator_geist_akt_2',
+    'echo_senator':    'glaslord_senator_geist_akt_2',
+    'vehren_echo':     'vehren_echo_akt_3_mini_variante',
+    'ertrunkene_koenigin': 'ertrunkene_koenigin_akt_6a_boss_mini',
+    'asch_soldat':     'aschenbrut_akt_3_generic_mob',
+    'aschenbrut':      'aschenbrut_akt_3_generic_mob',
+    'wurzelhueter':    'wurzelhueter_akt_4_generic_mob',
+    'mark_krieger':    'wurzelhueter_akt_4_generic_mob',
+}
+
+# Tile-Aliases (biome -> Sprite-ID)
+TILE_SPRITE_ALIAS = {
+    'crypt':        'crypt_akt_1',
+    'frost':        'frost_glass_ruins_akt_2',
+    'lava':         'lava_akt_3',
+    'swamp':        'swamp_akt_4',
+    'astral':       'astral_akt_5',
+    'desert':       'desert_akt_1b',
+    'town':         'town_brassweir',
+    'wound_salt':   'wound_salt_akt_6a',
+    'wound_ash':    'wound_ash_akt_6b',
+    'wound_hollow': 'wound_hollow_akt_6c',
+    'hollow_word':  'hollow_word_akt_7',
+}
+
+
+def _load_ai_sprite(target_id: str) -> pygame.Surface | None:
+    """Lazy-load PNG via sf.sprite_registry.sprite_path(). Cached."""
+    if target_id in _SPRITE_CACHE:
+        return _SPRITE_CACHE[target_id]
+    try:
+        from . import sprite_registry as _reg
+    except ImportError:
+        _SPRITE_CACHE[target_id] = None
+        return None
+    rel = _reg.sprite_path(target_id)
+    if not rel:
+        _SPRITE_CACHE[target_id] = None
+        return None
+    abs_path = os.path.join(_PROJECT_ROOT, rel.replace('/', os.sep))
+    if not os.path.exists(abs_path):
+        _SPRITE_CACHE[target_id] = None
+        return None
+    try:
+        surf = pygame.image.load(abs_path).convert_alpha()
+    except Exception:
+        _SPRITE_CACHE[target_id] = None
+        return None
+    _SPRITE_CACHE[target_id] = surf
+    return surf
+
+
+def get_class_sprite(cls: str) -> pygame.Surface | None:
+    """Returnt die AI-Klassen-Sprite-Surface oder None (Procedural-Fallback)."""
+    sprite_id = CLASS_SPRITE_ALIAS.get(cls, cls)
+    return _load_ai_sprite(sprite_id)
+
+
+def get_mob_sprite(bestiary_key: str | None) -> pygame.Surface | None:
+    """Returnt AI-Mob-Sprite oder None."""
+    if not bestiary_key:
+        return None
+    sprite_id = MOB_SPRITE_ALIAS.get(bestiary_key, bestiary_key)
+    return _load_ai_sprite(sprite_id)
+
+
+def get_tile_sprite(biome: str | None) -> pygame.Surface | None:
+    """Returnt AI-Tile-Surface fuer biome oder None.
+
+    Sucht zuerst die alte Single-Tile-ID (biome.png), fuer Backward-Compat.
+    Variants werden via get_tile_variant() abgerufen (siehe unten).
+    """
+    if not biome:
+        return None
+    sprite_id = TILE_SPRITE_ALIAS.get(biome, biome)
+    return _load_ai_sprite(sprite_id)
+
+
+# Tile-Variants pro Biome (T1a/T1b/T1c/T1d). Wird verwendet wenn
+# vorhanden — sonst Fallback auf Single-Tile via get_tile_sprite().
+TILE_VARIANT_MAP = {
+    # Update: Variants temporaer auf nur 1 reduziert (User-Feedback
+    # 2026-05-24: 4 Variants ergaben optisches Patchwork — Variants b/c/d
+    # hatten Farb-/Mood-Mismatches. Variant a hat den staerksten Crypt-Salz-Look.
+    # Re-Generation mit harmonisierten Prompts oder Asset-Pack-Switch
+    # offen — siehe ROADMAP T2.5.
+    'crypt':  ['crypt_floor_a'],
+}
+
+TILE_WALL_MAP = {
+    'crypt': 'crypt_wall_w',
+    # Andere Biomes ebenfalls mit Phase 2
+}
+
+
+def get_tile_variants(biome: str | None) -> list[pygame.Surface]:
+    """Returnt alle verfuegbaren Tile-Variants fuer biome.
+    Leere Liste wenn keine Variants registriert oder geladen werden konnten."""
+    if not biome:
+        return []
+    ids = TILE_VARIANT_MAP.get(biome, [])
+    surfs = []
+    for tid in ids:
+        s = _load_ai_sprite(tid)
+        if s is not None:
+            surfs.append(s)
+    return surfs
+
+
+def get_wall_sprite(biome: str | None) -> pygame.Surface | None:
+    """Returnt Wall-Tile-Surface fuer biome (T<biome>w-PNG)."""
+    if not biome:
+        return None
+    wid = TILE_WALL_MAP.get(biome)
+    return _load_ai_sprite(wid) if wid else None
+
+
+def get_portrait(npc_key: str | None) -> pygame.Surface | None:
+    """Returnt NPC-Portrait fuer Dialog-UI. Mapping ueber Voice-Keys."""
+    if not npc_key:
+        return None
+    # Portrait-Sprite-IDs aus Manifest sind Lore-Beschreibungs-Slugs
+    PORTRAIT_ALIAS = {
+        'korven':       'korven_vor_soeldnermeister',
+        'helst':        'bruder_helst_der_hundertjaehrige',
+        'vossharil':    'vossharil_die_dreimalige',
+        'tameris':      'tameris_die_lichtsucherin',
+        'otreth':       'otreth_hohlauge_gemcutter',
+        'mara':         'mara_die_mahnerin',
+        'vehren':       'inquisitor_general_vehren',
+        'drei_muetter': 'die_drei_muetter_trias_in_einem_portrait',
+    }
+    sprite_id = PORTRAIT_ALIAS.get(npc_key, npc_key)
+    return _load_ai_sprite(sprite_id)
+
+
+def get_boss_plate(encounter_key: str | None) -> pygame.Surface | None:
+    """Returnt Boss-Concept-Plate fuer Cinematic-Intro (X-06)."""
+    if not encounter_key:
+        return None
+    # Boss-Encounter-Keys mappen 1:1 zu boss_plate-Sprite-IDs
+    BOSS_ALIAS = {
+        'salzhueter_brut':     'salzhueter_brut',
+        'vehren':              'vehren',
+        'senator_geist':       'senator_geist',
+        'shulavh':             'shulavh',
+        'velharn_trio':        'velharn_trio',
+        'ertrunkene_koenigin': 'ertrunkene_koenigin',
+        'echo_drache':         'echo_drache',
+        'nicht_gott':          'nicht_gott',
+    }
+    sprite_id = BOSS_ALIAS.get(encounter_key, encounter_key)
+    return _load_ai_sprite(sprite_id)
+
+
+def _draw_ai_sprite_at(screen, surf: pygame.Surface, sx: int, sy: int,
+                        target_height: int) -> None:
+    """Zeichnet die AI-Sprite-Surface so dass deren Fuesse bei (sx, sy) sind
+    und Hoehe `target_height` ist. Behaelt Aspect-Ratio bei."""
+    sw, sh = surf.get_size()
+    if sh <= 0:
+        return
+    scale = target_height / sh
+    new_w = max(1, int(sw * scale))
+    new_h = max(1, int(sh * scale))
+    scaled = pygame.transform.smoothscale(surf, (new_w, new_h))
+    # Fuesse bei sy, Sprite nach oben
+    blit_x = sx - new_w // 2
+    blit_y = sy - new_h
+    screen.blit(scaled, (blit_x, blit_y))
+
+
+def reload_sprite_cache() -> None:
+    """F5-Hot-Reload: Cache leeren, neue Sprites werden beim naechsten
+    Draw automatisch geladen. Praktisch wenn man via tools/sprite_gen.py
+    re-generiert und das Game laeuft."""
+    _SPRITE_CACHE.clear()
 
 
 # ============================================================
@@ -235,14 +439,24 @@ def draw_player_at(screen, p, sx, sy, walk_phase):
                            (h, h), p.radius + 14, 3)
         screen.blit(glow, (sx - h, body_sy - h - p.radius))
 
-    # Sprite-Proxy: neue Lore-Klassen teilen Sprites mit den 3 Base-Klassen
-    proxy = CLASSES.get(cls, {}).get('sprite_proxy', cls)
-    if proxy == 'warrior':
-        _draw_warrior_iso(screen, p, sx, body_sy, walk_phase, base_color)
-    elif proxy == 'mage':
-        _draw_mage_iso(screen, p, sx, body_sy, walk_phase, base_color)
+    # ROADMAP T2.2: AI-Sprite-Hook — wenn ein AI-Klassen-PNG existiert,
+    # rendere das statt Procedural-Composit. Fall-through wenn keins.
+    ai_surf = get_class_sprite(cls)
+    if ai_surf is not None:
+        # AI-Sprites haben mehr Body-Fülle als der Procedural-Composit —
+        # daher 3.4x statt 4.4x für korrekte Cell-Proportionen
+        # (Update Sprite-Calibration nach User-Feedback).
+        target_h = int(p.radius * 3.4)
+        _draw_ai_sprite_at(screen, ai_surf, sx, body_sy + p.radius, target_h)
     else:
-        _draw_rogue_iso(screen, p, sx, body_sy, walk_phase, base_color)
+        # Sprite-Proxy: neue Lore-Klassen teilen Sprites mit den 3 Base-Klassen
+        proxy = CLASSES.get(cls, {}).get('sprite_proxy', cls)
+        if proxy == 'warrior':
+            _draw_warrior_iso(screen, p, sx, body_sy, walk_phase, base_color)
+        elif proxy == 'mage':
+            _draw_mage_iso(screen, p, sx, body_sy, walk_phase, base_color)
+        else:
+            _draw_rogue_iso(screen, p, sx, body_sy, walk_phase, base_color)
 
     _status_overlay(screen, sx, body_sy, h, p.status)
 
@@ -653,6 +867,23 @@ def draw_enemy_at(screen, e, sx, sy):
                 pygame.draw.circle(screen, col, (cx, icon_y), dot_w // 2 + 1)
                 pygame.draw.circle(screen, (10, 6, 4), (cx, icon_y),
                                     dot_w // 2 + 1, 1)
+
+    # ROADMAP T2.2: AI-Mob-Sprite-Hook — wenn bestiary_key auf ein PNG
+    # mappt, rendere das statt Procedural. Bosse haben Concept-Plates
+    # die nur fuer Cinematic-Intros sind; im Spielfeld bleibt Procedural
+    # (Boss-Aura/Phase-VFX brauchen das).
+    bestiary_key = getattr(e, 'bestiary_key', None)
+    if bestiary_key and not e.is_boss:
+        ai_mob = get_mob_sprite(bestiary_key)
+        if ai_mob is not None:
+            # Mob-Sprite-Calibration: e.height = radius*2.2, plus ~80%
+            # Body-Cap. Insgesamt ~2.5x radius. Update analog zum
+            # Player-Sprite-Fix nach User-Feedback.
+            target_h = int(e.radius * 2.5)
+            _draw_ai_sprite_at(screen, ai_mob, sx, sy, target_h)
+            # Status-Effekte trotzdem rendern (uebernimmt der Block unten)
+            _status_overlay(screen, sx, sy, e.height, e.status)
+            return
 
     if e.is_boss:
         if e.boss_kind == 'necromancer':

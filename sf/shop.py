@@ -16,9 +16,25 @@ def item_value(item):
     return base + item.ilvl * 5
 
 
-def buy_price(item):
-    """Kaufpreis (~3× Verkaufswert)."""
-    return item_value(item) * 3
+def buy_price(item, player=None):
+    """Kaufpreis (~3× Verkaufswert).
+
+    Update #155 (ROADMAP T1.2-F): Faction-Vendor-Unlock — wenn der
+    Spieler Mahnmal-Gilde-Rep ≥50 erreicht hat (Unlock
+    `vendor_discount_small`), bekommt er **10 % Rabatt** auf alle
+    Items bei Korven Vor.  `vendor_discount_small` wird in
+    [sf/faction.py](sf/faction.py) UNLOCKS definiert.
+    """
+    price = item_value(item) * 3
+    if player is not None:
+        try:
+            from . import faction as _fac
+            if _fac.has_unlock(player, 'mahnmal_gilde',
+                                 'vendor_discount_small'):
+                price = int(price * 0.9)
+        except Exception:
+            pass
+    return price
 
 
 class ShopUI:
@@ -144,7 +160,7 @@ class ShopUI:
             if it is None:
                 continue
             if self._stock_rect(i, modal).collidepoint(mx, my):
-                price = buy_price(it)
+                price = buy_price(it, player=p)
                 if p.gold >= price:
                     for k, s in enumerate(p.inventory):
                         if s is None:
@@ -170,6 +186,14 @@ class ShopUI:
             if self._inv_rect(i, modal).collidepoint(mx, my):
                 it = p.inventory[i]
                 if it is not None:
+                    # Update #154 (ROADMAP T1.4): Quest-Items dürfen nicht
+                    # verkauft werden.  Toast statt silent-block.
+                    if getattr(it, 'quest_item', False):
+                        if hasattr(game, 'toast'):
+                            game.toast(
+                                'Quest-Item — kann nicht verkauft werden.',
+                                (220, 150, 80))
+                        return True
                     p.gold += item_value(it)
                     p.inventory[i] = None
                     # In Buyback-Liste (max 5)
@@ -267,8 +291,11 @@ class ShopUI:
         # Bestand
         for i, it in enumerate(self._filtered_stock()):
             r = self._stock_rect(i, modal)
-            self._draw_item_slot(screen, r, it, price=buy_price(it) if it else None,
-                                 can_afford=(it is not None and p.gold >= buy_price(it)))
+            # Update #155: Faction-Discount im Display-Preis
+            it_price = buy_price(it, player=p) if it else None
+            self._draw_item_slot(screen, r, it, price=it_price,
+                                 can_afford=(it is not None
+                                              and p.gold >= it_price))
 
         # Update #147: Layout-Refactor — alle Labels zur neuen Position.
         # Trennlinie zwischen Stock und Inv

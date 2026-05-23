@@ -7,6 +7,42 @@ from .constants import (
 from . import items as items_mod
 
 
+# ============================================================
+# Akt-Gating (ROADMAP T2.4)
+# ============================================================
+def can_enter_akt(player, akt):
+    """Update #156 (ROADMAP T2.4): Returnt True wenn der Spieler den
+    gegebenen Akt betreten darf.
+
+    Regel: Spieler braucht `akt_progress >= akt - 1` abgeschlossene
+    Dungeons.  Akt 1 (akt_progress >= 0) ist immer erlaubt.
+
+    Synchron zur outposts.unlocked_outposts und zur Quest-Prereq-Logik.
+    Kann von UI-Code (Outpost-Portal-Click, Travel-Modal, Quest-Board)
+    aufgerufen werden für einen einheitlichen Gating-Pfad.
+    """
+    if akt is None or akt <= 1:
+        return True
+    akt_progress = len(getattr(player, 'completed_dungeons', ()))
+    return akt_progress >= (akt - 1)
+
+
+def akt_block_reason(player, akt):
+    """Returnt eine lore-konforme Erklär-Zeile wenn `can_enter_akt`
+    False ist — sonst None.
+
+    Beispiel: „Akt 3 noch verschlossen — schließe Akt 1-2 zuerst ab."
+    """
+    if can_enter_akt(player, akt):
+        return None
+    akt_progress = len(getattr(player, 'completed_dungeons', ()))
+    needed = (akt - 1) - akt_progress
+    if needed == 1:
+        return f'Akt {akt} noch verschlossen — schließe Akt {akt - 1} zuerst ab.'
+    return (f'Akt {akt} noch verschlossen — schließe Akt '
+            f'{akt - needed}-{akt - 1} zuerst ab.')
+
+
 # ---- Effektive Stats (Basis + Attribute + Items + Skill-Tree) ----
 
 def effective(player):

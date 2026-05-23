@@ -1138,6 +1138,16 @@ class Game:
                     self._handle_mousedown(*ev.pos)
                 elif ev.button == 3:
                     self._handle_rightclick(*ev.pos)
+            elif ev.type == pygame.MOUSEBUTTONUP:
+                # Update #158: Settings-Slider-Release-Save.  Der
+                # throttled Drag-Save (1×/0.5s) verpasst sonst den
+                # Final-Value beim Loslassen. Nur im Settings-Modal
+                # relevant — andere Modals brauchen keinen Up-Handler.
+                if ev.button == 1 and self.modal == 'settings':
+                    try:
+                        save_mod.save_settings(self)
+                    except Exception:
+                        pass
             elif ev.type == pygame.MOUSEWHEEL:
                 # Update #58: Fullmap Mouse-Wheel-Zoom (User-Wunsch).
                 # Scroll-Up zoom in, Scroll-Down zoom out.  Andere Modals
@@ -1353,6 +1363,12 @@ class Game:
                 self._open_town_portal()
         elif ev.key == pygame.K_j:
             self.modal = None if self.modal == 'questlog' else 'questlog'
+        elif ev.key == pygame.K_p and self.modal == 'questlog':
+            # Update #160 (ROADMAP T2.3-C): P-Hotkey im QuestLog cycelt
+            # die getrackte Quest durch alle aktiven Quests
+            # (None → quest0 → quest1 → ... → None).  Compass folgt der
+            # getrackten Quest.
+            self._cycle_tracked_quest()
         elif ev.key == pygame.K_n:
             # N = Notizen / Codex (Lore-Discoveries, Bestiarium-Entdeckungen)
             self.modal = None if self.modal == 'codex' else 'codex'
@@ -1398,6 +1414,42 @@ class Game:
         elif ev.key == pygame.K_b:
             from . import skills as _sk
             _sk.cast_teleport(self)
+
+    def _cycle_tracked_quest(self):
+        """Update #160 (ROADMAP T2.3-C): Cycelt durch active Quests +
+        „kein Track" als Stop.
+
+        Sequenz: None → quest0 → quest1 → … → questN → None → …
+        Toast meldet den aktuellen Stand.  Compass folgt automatisch
+        via `_resolve_quest_target_pos`-Priorität.
+        """
+        log = getattr(self, 'quest_log', None)
+        if log is None or not log.active:
+            return
+        active_qids = list(log.active.keys())
+        cur = getattr(log, 'tracked_quest_id', None)
+        if cur is None:
+            # Track first active quest
+            log.set_tracked(active_qids[0])
+        else:
+            try:
+                idx = active_qids.index(cur)
+            except ValueError:
+                idx = -1
+            next_idx = idx + 1
+            if next_idx >= len(active_qids):
+                # Wrap to None
+                log.tracked_quest_id = None
+            else:
+                log.set_tracked(active_qids[next_idx])
+        # Toast
+        new_tracked = log.tracked_quest_id
+        if new_tracked is None:
+            self.toast('Quest-Pin gelöst.', (200, 180, 140))
+        else:
+            qst = log.active.get(new_tracked)
+            title = qst.title if qst else new_tracked
+            self.toast(f'📌 Verfolge: „{title}“', (255, 220, 100))
 
     def _cycle_class(self, dir):
         keys = list(CLASSES.keys())
@@ -1806,7 +1858,7 @@ class Game:
                 if sid in self.player.unlocked_skills:
                     self._skill_rebind_pending = sid
                     self.toast(
-                        f'Drücke eine Taste für „{sid}"  (Esc = Abbruch)',
+                        f'Drücke eine Taste für „{sid}“  (Esc = Abbruch)',
                         (255, 220, 100))
                 return
 
@@ -1842,7 +1894,7 @@ class Game:
         bindings[key] = sid
         self.player.skill_bindings = bindings
         key_name = _pg.key.name(key).upper()
-        self.toast(f'„{sid}" → [{key_name}]', (140, 220, 140))
+        self.toast(f'„{sid}“ → [{key_name}]', (140, 220, 140))
 
     # ----- Update #95: KOMBINIERTE Vital-Flasche (User-Wunsch) -----
     def _use_flask(self, kind='vital'):
@@ -2143,14 +2195,19 @@ class Game:
         snd.play('boss_intro', volume=0.8)
 
     def _innkeeper_dialog(self):
-        """Story-Dialog beim Wirt: zeigt Story-Kapitel je Fortschritt."""
+        """Story-Dialog beim Wirt: zeigt Story-Kapitel je Fortschritt.
+
+        Update #158: Mojibake-Fix (verlorene Umlaute) + Lore-Konkretheit
+        (PLAN Regel 1) — „Held"/„Schattenfürst" sind generic-fantasy,
+        ersetzt durch Velgrad-Vokabular (Aithein-berührt, Im-Nesh).
+        """
         chapters = [
-            ('Willkommen, Wanderer',
-             'Bleib eine Weile am Feuer. Da drauen herrscht Dunkelheit.'),
+            ('Willkommen, Verbannter',
+             'Bleib eine Weile am Feuer. Da draußen atmet die Salzküste.'),
             ('Erste Schritte',
-             'Du hast den ersten Boss erschlagen. Im Eispalast wartet der nchste.'),
-            ('Held der Stadt',
-             'Drei Bosse besiegt, drei Biome gereinigt. Der Schattenfrst regt sich.'),
+             'Du hast den Salzhüter gefällt. Velharn hörte — die Glasgoldenen Ruinen warten.'),
+            ('Aithein-berührt',
+             'Drei Wunden gelesen, drei Aspekte berührt. Im-Nesh atmet wieder.'),
             ('Legende',
              'Du bist eine Legende geworden. Selbst die Toten murmeln deinen Namen.'),
         ]
@@ -2304,21 +2361,17 @@ class Game:
                 return
             if kind == 'oportal':
                 if getattr(obj, '_locked', False):
+                    # Update #156 (ROADMAP T2.4): zentralisierter
+                    # Akt-Gating-Check via progression.akt_block_reason.
                     from . import outposts as _op
                     cfg = _op.OUTPOSTS.get(obj.outpost_key, {})
-                    akt = cfg.get('akt', '?')
-                    gate = cfg.get('tier_gate', '?')
-                    akt_prog = len(getattr(self.player,
-                                            'completed_dungeons', ()))
-                    needed = max(0, (gate - 1) - akt_prog)
-                    if needed > 0:
-                        msg = (f'🔒 {cfg.get("region_name", "?")} '
-                                f'noch verschlossen — schließe Akt '
-                                f'{akt - 1 if needed == 1 else f"{akt - needed}-{akt - 1}"} '
-                                f'zuerst ab.')
+                    akt = cfg.get('akt', 1)
+                    reason = progression.akt_block_reason(self.player, akt)
+                    region = cfg.get("region_name", "?")
+                    if reason:
+                        msg = f'🔒 {region} — {reason}'
                     else:
-                        msg = (f'🔒 {cfg.get("region_name", "?")} '
-                                f'noch verschlossen.')
+                        msg = f'🔒 {region} noch verschlossen.'
                     self.toast(msg, (220, 150, 100))
                     try:
                         snd.play('ui_click', volume=0.3)
@@ -7602,6 +7655,93 @@ class Game:
             lines.append(cur)
         return lines
 
+    def _draw_quest_board_section(self, x, y, w, h, cy, log):
+        """Update #156 (ROADMAP T2.3): Quest-Board-Sektion im QuestLog-
+        Modal.  Listet alle Velgrad-Quests die nicht aktiv UND nicht
+        completed sind — gruppiert in 2 Sektionen (Verfügbar / Gelockt).
+
+        Pro Quest-Zeile: Titel, Giver, Region, Stage-Count, Gold/XP.
+        Hidden-Quests (giver=None, noch nicht entdeckt) werden NICHT
+        gelistet — sie sollen versteckt bleiben bis Discovery.
+
+        Returnt new cy (Y-Cursor nach der Sektion).
+        """
+        from . import quest_data as _qd
+        head = self.font_med.render('Quest-Board', True, GOLD_BRIGHT)
+        self.screen.blit(head, (x + 20, cy)); cy += 26
+        available = []
+        locked = []
+        for q in _qd.ALL_QUESTS:
+            qid = q['id']
+            if qid in log.active or qid in log.completed:
+                continue
+            # Hidden-Quests mit Discovery-Trigger: nicht im Board zeigen
+            if q.get('discover_via_interact') is not None:
+                continue
+            # Quests ohne NPC-Giver (außer Hidden) sind auto-quests —
+            # zeigen wir nicht als „verfügbar" (gibt keinen NPC-Anker).
+            if q.get('giver') is None:
+                continue
+            if log._quest_prerequisite_met(q, self.player):
+                available.append(q)
+            else:
+                locked.append(q)
+        if not available and not locked:
+            ls = self.font_small.render(
+                'Keine offenen Quests — alles gemeldet.', True, TEXT_DIM)
+            self.screen.blit(ls, (x + 30, cy)); cy += 22
+            cy += 12
+            return cy
+        # Render limit (Modal-Höhe begrenzt)
+        line_budget = max(2, (y + h - cy - 240) // 36)
+        if line_budget < 1:
+            cy += 12
+            return cy
+        if available:
+            sub = self.font_small.render(
+                f'Verfügbar ({len(available)})', True, (180, 220, 140))
+            self.screen.blit(sub, (x + 30, cy)); cy += 18
+            for q in available[:line_budget]:
+                marker = '★' if q.get('is_main') else '•'
+                col_t = (255, 220, 100) if q.get('is_main') \
+                        else (220, 200, 150)
+                title_t = self.font_small.render(
+                    f' {marker} {q["title"]}', True, col_t)
+                self.screen.blit(title_t, (x + 40, cy)); cy += 16
+                meta = (f'   Giver: {q["giver"]} · {q.get("region", "?")}')
+                ms = self.font_small.render(meta, True, TEXT_DIM)
+                self.screen.blit(ms, (x + 40, cy)); cy += 14
+                rwd = q.get('reward') or {}
+                rwd_s = (f'   Reward: {rwd.get("gold", 0)} Gold, '
+                         f'{rwd.get("xp", 0)} XP')
+                if rwd.get('item'):
+                    rwd_s += f' + {rwd["item"]}'
+                rs = self.font_small.render(rwd_s, True, (180, 180, 140))
+                self.screen.blit(rs, (x + 40, cy)); cy += 18
+            remain = len(available) - line_budget
+            if remain > 0:
+                more = self.font_small.render(
+                    f'   … +{remain} weitere', True, TEXT_DIM)
+                self.screen.blit(more, (x + 40, cy)); cy += 18
+        if locked and (y + h - cy) > 140:
+            sub = self.font_small.render(
+                f'Gelockt ({len(locked)})', True, (180, 140, 90))
+            self.screen.blit(sub, (x + 30, cy)); cy += 18
+            # Nur top 3 gelocktes zeigen
+            for q in locked[:3]:
+                marker = '★' if q.get('is_main') else '•'
+                title_t = self.font_small.render(
+                    f' 🔒 {marker} {q["title"]} — {q.get("region", "?")}',
+                    True, (160, 130, 100))
+                self.screen.blit(title_t, (x + 40, cy)); cy += 16
+            remain = len(locked) - 3
+            if remain > 0:
+                more = self.font_small.render(
+                    f'   … +{remain} weitere', True, TEXT_DIM)
+                self.screen.blit(more, (x + 40, cy)); cy += 16
+        cy += 12
+        return cy
+
     def _draw_questlog_modal(self):
         """Quest-Log: Velgrad-Storyquests + Dungeon-Objectives + erledigte.
         Update #30: Velgrad-Tome-Style.
@@ -7664,10 +7804,15 @@ class Game:
                 ls = self.font_small.render(
                     'Keine aktiven Velgrad-Quests.', True, TEXT_DIM)
                 self.screen.blit(ls, (x + 30, cy)); cy += 22
+            tracked_qid = getattr(log, 'tracked_quest_id', None)
             for qs in actives:
                 marker = '★' if qs.is_main else '•'
+                # Update #160 (T2.3-C): Pin-Marker für getrackte Quest
+                is_tracked = (qs.quest['id'] == tracked_qid)
+                pin = '📌 ' if is_tracked else ''
+                col = (255, 240, 130) if is_tracked else (255, 220, 100)
                 head_q = self.font_small.render(
-                    f' {marker} {qs.title}', True, (255, 220, 100))
+                    f' {pin}{marker} {qs.title}', True, col)
                 self.screen.blit(head_q, (x + 30, cy)); cy += 18
                 reg = self.font_small.render(
                     f'    {qs.region}', True, TEXT_DIM)
@@ -7681,6 +7826,12 @@ class Game:
                     f'Velgrad-Quest(s)', True, (160, 200, 140))
                 self.screen.blit(done, (x + 30, cy)); cy += 20
             cy += 12
+
+            # Update #156 (ROADMAP T2.3): Quest-Board — Liste aller
+            # noch nicht angenommenen Quests mit Status (AVAILABLE/
+            # LOCKED), Giver, Region und kurzer Reward-Preview.
+            cy = self._draw_quest_board_section(
+                x, y, w, h, cy, log)
 
         # Aktiver Dungeon
         if self.active_quest:
@@ -9001,7 +9152,7 @@ class Game:
             spec = _op.NPC_ROSTER.get(roster_key)
             if spec and spec.get('voice_lines'):
                 line = _r.choice(spec['voice_lines'])
-                self.toast(f'{npc.name}: „{line}"', (255, 230, 180))
+                self.toast(f'{npc.name}: „{line}“', (255, 230, 180))
                 return
         GREETINGS = {
             'Korven Vor': [
@@ -9030,14 +9181,16 @@ class Game:
             ],
             'Stadtsprecher Eldon': [
                 'Was Brassweir vergisst, vergisst der Stadtsprecher nicht.',
-                'Quest-Brett ist neu beschrieben. Tinte tropft noch.',
+                # Update #158: Eldon-Voice-Fix — vorher „Tinte tropft noch"
+                # (zu poetisch). Eldon ist bürokratisch-formal.
+                'Eintrag im Brett aktualisiert. Auftrag ist einsehbar.',
             ],
         }
         pool = GREETINGS.get(npc.name)
         if not pool:
             return
         line = _r.choice(pool)
-        self.toast(f'{npc.name}: „{line}"', (255, 230, 180))
+        self.toast(f'{npc.name}: „{line}“', (255, 230, 180))
 
     def _draw_skill_tooltip(self):
         """G-14: Tooltip beim Hover über die Skill-Bar.

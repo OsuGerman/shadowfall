@@ -1,0 +1,171 @@
+"""Post-Processing für AI-generierte Sprite-PNGs.
+
+Wandelt den schwarzen Background von Mob/Class/Item-Sprites in Alpha-
+Transparenz um. Portraits + Boss-Plates + Tiles behalten ihren BG.
+
+Algorithm:
+  1. Lade PNG via Pygame (mit Alpha-Channel).
+  2. Pixel-Loop: R+G+B < threshold → Alpha = 0.
+  3. Soft-Edge-Feathering: Pixel knapp ueber dem Threshold bekommen
+     partial Alpha (verhindert harte schwarze Outlines).
+  4. Speichere als PNG zurueck.
+
+Usage:
+  python tools/sprite_postprocess.py --all
+  python tools/sprite_postprocess.py --category mob
+  python tools/sprite_postprocess.py --file assets/sprites/mobs/salzhueter_brut.png
+  python tools/sprite_postprocess.py --threshold 40 --feather 10
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+import pygame
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SPRITES_DIR  = PROJECT_ROOT / 'assets' / 'sprites'
+
+# Kategorien die transparent BG brauchen.
+# Portrait + Boss-Plate + Tile behalten ihren BG (gewollt).
+TRANSPARENT_BG_CATEGORIES = {'mobs', 'classes', 'items'}
+
+
+def remove_black_background(png_path: Path,
+                            threshold: int = 30,
+                            feather: int = 8) -> bool:
+    """Macht alle schwarzen Pixel transparent. Soft-Edge-Feathering verhindert
+    harte Outlines. Returnt True bei Erfolg, False bei Fehler."""
+    if not png_path.is_file():
+        return False
+    # Pygame Display nicht noetig - SDL2 unterstuetzt headless image-only.
+    if not pygame.get_init():
+        os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
+        pygame.init()
+
+    try:
+        src = pygame.image.load(str(png_path))
+    except Exception as e:
+        print(f'  load fail {png_path.name}: {e}', file=sys.stderr)
+        return False
+    if src.get_size() == (0, 0):
+        return False
+    w, h = src.get_size()
+    # Headless-safe: SRCALPHA-Surface ohne convert_alpha()
+    dst = pygame.Surface((w, h), pygame.SRCALPHA)
+
+    # Versuche numpy-Backed (schnell), fallback per-pixel.
+    try:
+        import numpy as np
+        pixels = pygame.surfarray.pixels3d(src)          # (w, h, 3)
+        # Pygame surfarray ist (w, h, c) — wir bauen alpha-array
+        brightness = pixels.sum(axis=2)                  # (w, h)
+        # Voll-transparent: brightness < threshold
+        # Voll-opaque: brightness > threshold + feather*3
+        # Linear zwischen den beiden
+        if feather > 0:
+            edge_hi = threshold + feather * 3
+            alpha = np.clip(
+                (brightness - threshold) * (255.0 / (edge_hi - threshold)),
+                0, 255
+            ).astype(np.uint8)
+        else:
+            alpha = np.where(brightness < threshold, 0, 255).astype(np.uint8)
+        # Schreibe Pixel + Alpha in dst
+        dst_pixels = pygame.surfarray.pixels3d(dst)
+        dst_alpha  = pygame.surfarray.pixels_alpha(dst)
+        dst_pixels[:] = pixels
+        dst_alpha[:]  = alpha
+        del pixels, dst_pixels, dst_alpha  # locks aufheben
+    except ImportError:
+        # Slow per-pixel fallback (kein numpy)
+        src_lock = src.lock()
+        for y in range(h):
+            for x in range(w):
+                r, g, b, a = src.get_at((x, y))
+                bright = r + g + b
+                if bright < threshold:
+                    dst.set_at((x, y), (r, g, b, 0))
+                elif feather > 0 and bright < threshold + feather * 3:
+                    new_a = int((bright - threshold) * (255 / (feather * 3)))
+                    dst.set_at((x, y), (r, g, b, max(0, min(255, new_a))))
+                else:
+                    dst.set_at((x, y), (r, g, b, 255))
+        src.unlock()
+
+    try:
+        pygame.image.save(dst, str(png_path))
+        return True
+    except Exception as e:
+        print(f'  save fail {png_path.name}: {e}', file=sys.stderr)
+        return False
+
+
+def process_directory(category_dir: Path, threshold: int, feather: int) -> tuple[int, int]:
+    """Verarbeitet alle .png-Dateien in einem Kategorie-Unterordner."""
+    if not category_dir.is_dir():
+        return (0, 0)
+    pngs = sorted(category_dir.glob('*.png'))
+    ok, fail = 0, 0
+    for p in pngs:
+        before = p.stat().st_size
+        if remove_black_background(p, threshold, feather):
+            after = p.stat().st_size
+            delta = after - before
+            print(f'  {category_dir.name}/{p.name:<40} {before//1024}K -> {after//1024}K  '
+                  f'({delta:+d}B)')
+            ok += 1
+        else:
+            fail += 1
+    return (ok, fail)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--all', action='store_true',
+                    help='Alle transparent-BG-Kategorien (mob/class/item)')
+    ap.add_argument('--category', choices=['mob', 'class', 'item', 'all'],
+                    default=None)
+    ap.add_argument('--file', type=str, default=None,
+                    help='Einzelnes PNG verarbeiten')
+    ap.add_argument('--threshold', type=int, default=30,
+                    help='Pixel mit R+G+B < threshold -> alpha=0 (default 30)')
+    ap.add_argument('--feather', type=int, default=8,
+                    help='Soft-Edge-Pixelbereich gegen harte Outlines '
+                         '(default 8; 0=hart-Schnitt)')
+    args = ap.parse_args()
+
+    if args.file:
+        p = Path(args.file)
+        if not p.is_absolute():
+            p = PROJECT_ROOT / p
+        ok = remove_black_background(p, args.threshold, args.feather)
+        print(f'{"OK" if ok else "FAIL"}: {p}')
+        return
+
+    targets = []
+    if args.all or args.category == 'all' or args.category is None:
+        targets = ['mobs', 'classes', 'items']
+    elif args.category == 'mob':
+        targets = ['mobs']
+    elif args.category == 'class':
+        targets = ['classes']
+    elif args.category == 'item':
+        targets = ['items']
+
+    total_ok, total_fail = 0, 0
+    for sub in targets:
+        d = SPRITES_DIR / sub
+        if not d.is_dir():
+            continue
+        print(f'=== {sub}/ ===')
+        ok, fail = process_directory(d, args.threshold, args.feather)
+        total_ok += ok
+        total_fail += fail
+    print(f'\nFertig. {total_ok} verarbeitet, {total_fail} failed.')
+
+
+if __name__ == '__main__':
+    main()

@@ -97,9 +97,44 @@ BIOMES = {
 # ============================================================
 TILE_SIZE = 128
 _tile_cache = {}
+# ROADMAP T2.2: Cache fuer pro-Cell-skalierte AI-Tiles (biome, cell_size).
+_dungeon_cell_cache = {}
+
+
+def reload_tile_cache() -> None:
+    """Hot-Reload-Helper: Tile-Caches leeren. Beim naechsten Render werden
+    AI-Tiles + Procedural-Tiles neu aufgebaut. Praktisch wenn man via
+    tools/sprite_gen.py re-generiert waehrend das Game laeuft (F5-Debug)."""
+    _tile_cache.clear()
+    _dungeon_cell_cache.clear()
+
+
+def _get_ai_tile(biome) -> pygame.Surface | None:
+    """ROADMAP T2.2: Liefert AI-generierte Biome-Tile-Surface (skaliert auf
+    TILE_SIZE) wenn assets/sprites/tiles/<biome>.png existiert. Sonst None
+    → Procedural-Fallback in _make_tile()."""
+    try:
+        from . import sprites as _spr
+    except ImportError:
+        return None
+    src = _spr.get_tile_sprite(biome)
+    if src is None:
+        return None
+    # AI-Tile ist 512×512 Painterly-Texture. Wir skalieren auf TILE_SIZE
+    # und nutzen es als Pattern-Repeat.
+    if src.get_size() != (TILE_SIZE, TILE_SIZE):
+        try:
+            src = pygame.transform.smoothscale(src, (TILE_SIZE, TILE_SIZE))
+        except Exception:
+            return None
+    return src
 
 
 def _make_tile(biome):
+    # ROADMAP T2.2: Wenn AI-Tile verfuegbar -> direkt verwenden.
+    ai = _get_ai_tile(biome)
+    if ai is not None:
+        return ai
     bd = BIOMES[biome]
     surf = pygame.Surface((TILE_SIZE, TILE_SIZE))
     surf.fill(bd['ground'])
@@ -212,6 +247,44 @@ def draw_dungeon_floor(screen, grid, biome, w2s_xy, camera):
         accent_b = alt_col
         rune_col = (200, 180, 120)
 
+    # ROADMAP T2.2 + Tile-Variants: Wenn 4 Variants verfuegbar → per-Cell
+    # deterministische Auswahl (Hash) gegen Pattern-Repeat.
+    # Sonst Fallback auf Single-Tile.
+    ai_variants_cell: list = []
+    # 1px overlap-skalierung verhindert sichtbare schwarze Gitter-Linien
+    # zwischen benachbarten Floor-Cells (Sub-Pixel-Rendering-Artefakt).
+    tile_render_size = cell + 1
+    try:
+        from . import sprites as _spr
+        variants = _spr.get_tile_variants(biome)
+    except Exception:
+        variants = []
+    if variants:
+        for i, v in enumerate(variants):
+            cache_key = (biome, cell, 'var', i)
+            v_cell = _dungeon_cell_cache.get(cache_key)
+            if v_cell is None:
+                try:
+                    v_cell = pygame.transform.smoothscale(v, (tile_render_size, tile_render_size))
+                    _dungeon_cell_cache[cache_key] = v_cell
+                except Exception:
+                    v_cell = None
+            if v_cell is not None:
+                ai_variants_cell.append(v_cell)
+    # Fallback: Single-Tile (alter Pfad) wenn keine Variants
+    ai_tile_cell = None
+    if not ai_variants_cell:
+        ai_full = _get_ai_tile(biome)
+        if ai_full is not None:
+            cache_key = (biome, cell)
+            ai_tile_cell = _dungeon_cell_cache.get(cache_key)
+            if ai_tile_cell is None:
+                try:
+                    ai_tile_cell = pygame.transform.smoothscale(ai_full, (tile_render_size, tile_render_size))
+                    _dungeon_cell_cache[cache_key] = ai_tile_cell
+                except Exception:
+                    ai_tile_cell = None
+
     # Sichtbarer Cell-Bereich
     cam_cx, cam_cy = grid.world_to_cell(camera.x, camera.y)
     visible_w = SCREEN_W // cell + 2
@@ -222,10 +295,20 @@ def draw_dungeon_floor(screen, grid, biome, w2s_xy, camera):
             if t in (dg.FLOOR, dg.TRAP, dg.DOOR):
                 wx, wy = grid.cell_to_world_corner(cx, cy)
                 sx, sy = w2s_xy(wx, wy)
-                col = alt_col if (cx + cy) % 2 == 0 else floor_col
-                pygame.draw.rect(screen, col, (sx, sy, cell + 1, cell + 1))
-                # Mörtellinie
-                pygame.draw.rect(screen, crack_col, (sx, sy, cell + 1, cell + 1), 1)
+                if ai_variants_cell:
+                    # Deterministischer Variant-Picker per Cell-Hash
+                    # — gleiche Cell zeigt immer die gleiche Variante,
+                    # aber Nachbarn unterscheiden sich.
+                    h = (cx * 73856093 ^ cy * 19349663) & 0x7FFFFFFF
+                    v_idx = h % len(ai_variants_cell)
+                    screen.blit(ai_variants_cell[v_idx], (sx, sy))
+                elif ai_tile_cell is not None:
+                    screen.blit(ai_tile_cell, (sx, sy))
+                else:
+                    col = alt_col if (cx + cy) % 2 == 0 else floor_col
+                    pygame.draw.rect(screen, col, (sx, sy, cell + 1, cell + 1))
+                    # Mörtellinie
+                    pygame.draw.rect(screen, crack_col, (sx, sy, cell + 1, cell + 1), 1)
                 # Deterministischer Akzent: nur ~1 von 8 Cells, basierend auf
                 # Hash der Position (damit Pattern stabil bleibt).
                 h = (cx * 73856093 ^ cy * 19349663) & 0xFFFF
@@ -399,6 +482,26 @@ def draw_dungeon_walls(screen, grid, biome, w2s_xy, camera):
                 continue
             wall_blocks.append((cy, cx))
 
+    # ROADMAP T2.2: AI-Wall-Tile pro Biome ggf. einmal cachen.
+    ai_wall_cell = None
+    try:
+        from . import sprites as _spr
+        ai_wall_full = _spr.get_wall_sprite(biome)
+        if ai_wall_full is not None:
+            wkey = (biome, cell, 'wall')
+            ai_wall_cell = _dungeon_cell_cache.get(wkey)
+            if ai_wall_cell is None:
+                # +1 overlap analog Floor-Tiles
+                ai_wall_cell = pygame.transform.smoothscale(ai_wall_full, (cell + 1, cell + 1))
+                _dungeon_cell_cache[wkey] = ai_wall_cell
+    except Exception:
+        ai_wall_cell = None
+
+    # Update: Wenn AI-Wall geladen → flat-top-down-Look (height=0, keine
+    # 3D-Erhebung). Sonst Procedural-3D mit height=22 wie bisher.
+    if ai_wall_cell is not None:
+        height = 0
+
     wall_blocks.sort(key=lambda b: b[0])
     for cy, cx in wall_blocks:
         wx, wy = grid.cell_to_world_corner(cx, cy)
@@ -407,13 +510,12 @@ def draw_dungeon_walls(screen, grid, biome, w2s_xy, camera):
         below = grid.in_bounds(cx, cy + 1) and grid.tiles[cy + 1][cx] in (dg.FLOOR, dg.TRAP, dg.DOOR)
         right_floor = grid.in_bounds(cx + 1, cy) and grid.tiles[cy][cx + 1] in (dg.FLOOR, dg.TRAP, dg.DOOR)
         left_floor = grid.in_bounds(cx - 1, cy) and grid.tiles[cy][cx - 1] in (dg.FLOOR, dg.TRAP, dg.DOOR)
-        # Hartes Schatten (links und rechts von Wand)
-        if right_floor:
+        # Schatten + Side-Face NUR im Procedural-Modus (height>0)
+        if height > 0 and right_floor:
             shadow = pygame.Surface((10, cell + height), pygame.SRCALPHA)
             shadow.fill((0, 0, 0, 130))
             screen.blit(shadow, (sx + cell, sy))
-        # Side-Face (vorn unten)
-        if below:
+        if height > 0 and below:
             pygame.draw.rect(screen, wall_face,
                              (sx, sy + cell, cell + 1, height))
             # Vertikale Fugen
@@ -423,20 +525,22 @@ def draw_dungeon_walls(screen, grid, biome, w2s_xy, camera):
             # Untere Schwarzlinie
             pygame.draw.rect(screen, wall_edge,
                              (sx, sy + cell, cell + 1, height), 2)
-        # Top-Face mit Stein-Pattern
-        # Hauptfarbe alternierend für Pflaster-Muster
-        col_top = wall_top if (cx + cy) % 2 == 0 else wall_top_alt
-        pygame.draw.rect(screen, col_top, (sx, sy, cell + 1, cell + 1))
-        # Heller Highlight-Streifen oben
-        pygame.draw.line(screen, wall_top_alt,
-                         (sx + 2, sy + 2), (sx + cell - 2, sy + 2), 2)
-        # Subtile Fuge in Mitte
-        pygame.draw.line(screen, wall_face,
-                         (sx, sy + cell // 2), (sx + cell, sy + cell // 2), 1)
-        pygame.draw.line(screen, wall_face,
-                         (sx + cell // 2, sy), (sx + cell // 2, sy + cell), 1)
-        # SCHWARZER Outline (deutlich)
-        pygame.draw.rect(screen, wall_edge, (sx, sy, cell + 1, cell + 1), 3)
+        # Top-Face — ROADMAP T2.2: AI-Wall-Tile wenn verfuegbar, sonst Procedural.
+        if ai_wall_cell is not None:
+            # 1px overlap (cell+1) damit keine schwarzen Lines zwischen Cells
+            screen.blit(ai_wall_cell, (sx, sy))
+            # KEINE Outline — AI-Tile hat eigene Stein-Definition
+        else:
+            # Procedural-Top-Face mit Stein-Pattern
+            col_top = wall_top if (cx + cy) % 2 == 0 else wall_top_alt
+            pygame.draw.rect(screen, col_top, (sx, sy, cell + 1, cell + 1))
+            pygame.draw.line(screen, wall_top_alt,
+                             (sx + 2, sy + 2), (sx + cell - 2, sy + 2), 2)
+            pygame.draw.line(screen, wall_face,
+                             (sx, sy + cell // 2), (sx + cell, sy + cell // 2), 1)
+            pygame.draw.line(screen, wall_face,
+                             (sx + cell // 2, sy), (sx + cell // 2, sy + cell), 1)
+            pygame.draw.rect(screen, wall_edge, (sx, sy, cell + 1, cell + 1), 3)
 
 
 def draw_traps(screen, grid, w2s_xy, camera):
@@ -581,6 +685,19 @@ def generate_decor(biome):
 # ============================================================
 # DECOR-ZEICHNEN
 # ============================================================
+def _decor_shadow(screen, sx, sy, w=40, h=16, alpha=110):
+    """Update #153 (PLAN U-03): Generischer Drop-Shadow für Tall-Decor.
+
+    Rendert eine flache Ellipse unter dem Decor-Ground-Anker.  Größe
+    proportional zur Sprite-Breite; alpha 110 mittel-stark (sichtbar
+    aber nicht erdrückend).  Wird VOR dem Decor-Body gezeichnet, damit
+    der Schatten unter dem Sprite liegt.
+    """
+    sh = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.ellipse(sh, (0, 0, 0, alpha), (0, 0, w, h))
+    screen.blit(sh, (sx - w // 2, sy + 4))
+
+
 def draw_decor(screen, t, sp, biome):
     biome_data = BIOMES[biome]
     sx, sy = int(sp[0]), int(sp[1])
@@ -664,6 +781,7 @@ def draw_decor(screen, t, sp, biome):
         screen.blit(sh, (sx - 20, sy + 12))
 
     elif t.kind == 'frozen_pillar':
+        _decor_shadow(screen, sx, sy + 8, w=42, h=18)
         pygame.draw.circle(screen, (60, 80, 110), (sx, sy + 8), 18)
         pygame.draw.circle(screen, (40, 60, 90), (sx, sy + 8), 18, 2)
         pygame.draw.circle(screen, (130, 170, 220), (sx, sy), 14)
@@ -678,6 +796,7 @@ def draw_decor(screen, t, sp, biome):
             ])
 
     elif t.kind == 'torch':
+        _decor_shadow(screen, sx, sy + 8, w=22, h=10, alpha=130)
         # Säulenfuß
         pygame.draw.rect(screen, (60, 45, 30), (sx - 4, sy - 4, 8, 16))
         pygame.draw.rect(screen, (40, 30, 20), (sx - 4, sy - 4, 8, 16), 1)
@@ -711,6 +830,7 @@ def draw_decor(screen, t, sp, biome):
         pygame.draw.circle(screen, WHITE, (sx, sy - 8 + int(flicker)), 2)
 
     elif t.kind == 'sarcophagus':
+        _decor_shadow(screen, sx, sy + 12, w=58, h=20)
         # Steinsarg, langgezogen
         sw = pygame.Surface((48, 24), pygame.SRCALPHA)
         sw.fill((0, 0, 0, 0))
@@ -725,6 +845,7 @@ def draw_decor(screen, t, sp, biome):
         screen.blit(rot, (sx - rot.get_width() // 2, sy - rot.get_height() // 2))
 
     elif t.kind == 'broken_wall':
+        _decor_shadow(screen, sx, sy + 10, w=56, h=16)
         # Mauer-Rest, verschiedene Stein-Reihen
         sw = pygame.Surface((50, 24), pygame.SRCALPHA)
         for row in range(3):
@@ -738,6 +859,7 @@ def draw_decor(screen, t, sp, biome):
         screen.blit(rot, (sx - rot.get_width() // 2, sy - rot.get_height() // 2))
 
     elif t.kind == 'ice_spike':
+        _decor_shadow(screen, sx, sy + 6, w=30, h=10)
         # Gruppe von Eis-Spitzen
         for off, height in ((-6, 10), (0, 16), (6, 12)):
             base_pts = [
@@ -933,6 +1055,7 @@ def draw_decor(screen, t, sp, biome):
                                 (sx + 10, sy - 10), 3)
 
     elif t.kind == 'bookshelf':
+        _decor_shadow(screen, sx, sy + 12, w=36, h=12)
         pygame.draw.rect(screen, (70, 50, 30), (sx - 14, sy - 24, 28, 36))
         pygame.draw.rect(screen, BLACK, (sx - 14, sy - 24, 28, 36), 2)
         # Bücher in Reihen
@@ -943,6 +1066,7 @@ def draw_decor(screen, t, sp, biome):
                 pygame.draw.rect(screen, col, (sx + dx - 1, row_y - 4, 4, 8))
 
     elif t.kind == 'lantern':
+        _decor_shadow(screen, sx, sy, w=20, h=8, alpha=130)
         # Update #134 (User-Screenshot): Laternen-Glow war massiv
         # überdimensioniert (72×72 + BLEND_ADD) und mit ~20 Laternen pro
         # Town entstand eine gelbe Glow-Wand die die Stadt verdeckt hat.
@@ -1436,6 +1560,10 @@ def _resolve_quest_target_pos(game):
       - target['npc_name'] (Town): Position des passenden NPCs
       - target['biome']    (Town): Position des passenden Dungeon-Portals
       - target['boss_room'] (Dungeon): Boss-Room-Center via grid.rooms[-1]
+
+    Update #160 (ROADMAP T2.3-C): Wenn `quest_log.tracked_quest_id`
+    gesetzt ist, hat diese Quest Priorität — der Compass zeigt auf das
+    Pinned-Ziel statt auf die erste Quest in iteration order.
     """
     log = getattr(game, 'quest_log', None)
     if log is None:
@@ -1446,6 +1574,12 @@ def _resolve_quest_target_pos(game):
         states = list(active.values())
     else:
         states = list(active)
+    # Update #160: Pinned-Quest zuerst, falls vorhanden
+    tracked_qid = getattr(log, 'tracked_quest_id', None)
+    if tracked_qid and isinstance(active, dict) and tracked_qid in active:
+        tracked = active[tracked_qid]
+        # Move tracked to front of states list
+        states = [tracked] + [s for s in states if s is not tracked]
     for qstate in states:
         st = qstate.stage
         if st is None:

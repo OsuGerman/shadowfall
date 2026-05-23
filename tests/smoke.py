@@ -2589,7 +2589,7 @@ def test_quest_akt_gate():
     # Wenn überhaupt Eldon-Quests übrig sind, sollte jetzt Asch-Pakt
     # offerable sein
     if offered_unlocked is not None:
-        assert _q.QuestLog._quest_prerequisite_met(
+        assert log._quest_prerequisite_met(
             offered_unlocked, g.player)
     return True
 
@@ -3387,6 +3387,566 @@ def test_akt4_main_quest_offered_by_vossharil():
         'Vossharil die Dreimalige', player=g.player)
     assert offer_b is not None and offer_b['id'] == 'akt4_shulavh_faden', (
         f'erwartete akt4_shulavh_faden, bekam {offer_b}')
+    return True
+
+
+def test_akt6_wunden_quests_registered():
+    """Update #153: Akt 6 hat 3 parallel Main-Wunden-Quests + 1 Finale.
+    Alle vier von der richtigen NPC giver.  Pakt-Übersetzen verlangt
+    alle 3 Wunden completed (requires_quests).
+    """
+    from sf import quest_data as _qd
+    wound_ids = ('akt6_salzwunde_lesen', 'akt6_aschwunde_lesen',
+                 'akt6_hohlwunde_lesen')
+    for qid in wound_ids:
+        q = _qd.quest_by_id(qid)
+        assert q is not None, f'{qid} fehlt in ALL_QUESTS'
+        assert q['is_main'] is True
+        assert q['giver'] == 'Mara die Mahnerin (Akt-6-Stage)'
+        assert q['region'].startswith('Akt 6')
+    pakt = _qd.quest_by_id('akt6_pakt_uebersetzen')
+    assert pakt is not None
+    assert pakt['is_main'] is True
+    assert pakt['giver'] == 'Wunden-Lesende Tehrnal'
+    # requires_quests-Feld muss alle 3 Wunden enthalten
+    assert pakt.get('requires_quests') is not None
+    for qid in wound_ids:
+        assert qid in pakt['requires_quests'], (
+            f'{qid} fehlt als prerequisite für Pakt-Übersetzen')
+    return True
+
+
+def test_requires_quests_prerequisite():
+    """Update #153: `requires_quests`-Feld blockt Pakt-Übersetzen,
+    bis alle 3 Wunden-Quests completed sind.
+    """
+    from sf.game import Game
+    from sf import quest_data as _qd
+    g = Game()
+    g.start_game('adventure')
+    log = g.quest_log
+    # Akt 6 Akt-Gate erfüllen
+    g.player.completed_dungeons = {'crypt_lost', 'frost_palace',
+                                     'lava_pit', 'swamp_ruins',
+                                     'astral_realm'}
+    pakt = _qd.quest_by_id('akt6_pakt_uebersetzen')
+    # Ohne irgendeine Wunden-Quest: NOT met
+    assert log._quest_prerequisite_met(pakt, g.player) is False
+    # Eine Wunde completed: noch NOT met
+    log.completed.add('akt6_salzwunde_lesen')
+    assert log._quest_prerequisite_met(pakt, g.player) is False
+    # Zwei: noch NOT
+    log.completed.add('akt6_aschwunde_lesen')
+    assert log._quest_prerequisite_met(pakt, g.player) is False
+    # Drei: jetzt erlaubt
+    log.completed.add('akt6_hohlwunde_lesen')
+    assert log._quest_prerequisite_met(pakt, g.player) is True
+    return True
+
+
+def test_akt1_tribunal_sidequest():
+    """Update #153: Tribunal-Gerücht-Sidequest registriert, Akt 1,
+    Tribunal-Faction-Negative-Rep im Reward.
+    """
+    from sf import quest_data as _qd
+    q = _qd.quest_by_id('akt1_tribunal_geruecht')
+    assert q is not None
+    assert q['giver'] == 'Stadtsprecher Eldon'
+    # Tribunal-Rep im Reward negativ
+    rep = q['reward'].get('faction_rep', {})
+    assert rep.get('tribunal_asche', 0) < 0
+    assert rep.get('mahnmal_gilde', 0) > 0
+    return True
+
+
+def test_akt1_bounty_repeatable():
+    """Update #153: Bounty-Salzgekreuzte registriert, niedriger Reward
+    (bounty-typisch), Mahnmal-Gilde-Rep.
+    """
+    from sf import quest_data as _qd
+    q = _qd.quest_by_id('akt1_bounty_salzgekreuzte')
+    assert q is not None
+    assert q['giver'] == 'Stadtsprecher Eldon'
+    assert q['reward'].get('gold', 0) <= 100
+    return True
+
+
+def test_quest_item_flag_blocks_salvage():
+    """Update #154 (ROADMAP T1.4): Item mit `quest_item=True` lässt
+    sich nicht salvagen — `salvage_item` returnt None statt (gold, gem).
+    """
+    from sf.items import Item
+    from sf import crafting as _craft
+    p = type('P', (), {'gold': 0, 'gems': []})()
+    quest_item = Item(slot='weapon', rarity='unique', name='Mahnmal-Marke',
+                       affixes=[], ilvl=5, sockets=[], quest_item=True)
+    result = _craft.salvage_item(p, quest_item)
+    assert result is None, 'salvage_item returnte trotz quest_item Wert'
+    # Gold blieb 0
+    assert p.gold == 0
+    # Normales Item lässt sich salvagen
+    normal_item = Item(slot='weapon', rarity='common', name='Holz-Stab',
+                        affixes=[], ilvl=1, sockets=[])
+    result2 = _craft.salvage_item(p, normal_item)
+    assert result2 is not None
+    assert p.gold > 0
+    return True
+
+
+def test_quest_item_flag_save_load_roundtrip():
+    """Update #154: quest_item-Flag wird via save/load persistiert.
+    """
+    from sf.items import Item
+    from sf import save as _save
+    item = Item(slot='weapon', rarity='unique', name='Helst-Pakt-Stein',
+                 affixes=[], ilvl=10, sockets=[], quest_item=True)
+    d = _save._item_to_dict(item)
+    assert d['quest_item'] is True
+    restored = _save._item_from_dict(d)
+    assert restored.quest_item is True
+    # Items ohne Flag: keine quest_item-Key (Backward-Compat)
+    normal = Item(slot='weapon', rarity='common', name='X',
+                   affixes=[], ilvl=1, sockets=[])
+    d2 = _save._item_to_dict(normal)
+    assert 'quest_item' not in d2
+    return True
+
+
+def test_quest_item_tooltip_hint():
+    """Update #154: display_lines enthält Hint bei quest_item."""
+    from sf.items import Item
+    item = Item(slot='weapon', rarity='unique', name='X',
+                 affixes=[], ilvl=5, sockets=[], quest_item=True)
+    lines = item.display_lines()
+    assert any('Quest-Item' in t for t, _ in lines), (
+        'Quest-Item-Hint fehlt im Tooltip')
+    return True
+
+
+def test_hidden_quest_discovery_via_decor():
+    """Update #154 (ROADMAP T1.1-D): Hidden-Quest „Versunkenes Grab"
+    wird offered nachdem der Spieler 3 lore_tablet-Decors angefasst hat.
+    """
+    from sf.game import Game
+    from sf import quests as _q
+    g = Game()
+    g.start_game('adventure')
+    log = g.quest_log
+    qid = 'akt1_versunkenes_grab'
+    # Initial: nicht active
+    assert qid not in log.active
+    # Decor-Mock
+    class FakeDecor:
+        kind = 'lore_tablet'
+        lore_text = 'test'
+    fake = FakeDecor()
+    # 1 interaction → discovery-counter 1, noch nicht offered
+    _q.on_interact_decor(g, fake)
+    assert qid not in log.active
+    # 2 interactions → noch nicht
+    _q.on_interact_decor(g, fake)
+    assert qid not in log.active
+    # 3 interactions → JETZT offered
+    _q.on_interact_decor(g, fake)
+    assert qid in log.active, (
+        f'Quest sollte nach 3 lore_tablets offered sein, '
+        f'discovery_counts={log.discovery_counts}')
+    return True
+
+
+def test_aspekt_affixes_registered():
+    """Update #159 (WELT_AUFBAU 5.4): 7 Aspekt-Affixes in AFFIXES,
+    Fold-Mapping definiert.
+    """
+    from sf.constants import (AFFIXES, ASPEKT_AFFIX_KEYS,
+                                ASPEKT_AFFIX_FOLD, FLOAT_AFFIXES)
+    expected = ('kharns_form', 'nheyras_zeit', 'ousens_blick',
+                 'valsas_wille', 'imnesh_sprache',
+                 'shulavh_faden', 'siebter_atem')
+    for k in expected:
+        assert k in AFFIXES, f'{k} fehlt in AFFIXES'
+        assert k in ASPEKT_AFFIX_KEYS, f'{k} fehlt in ASPEKT_AFFIX_KEYS'
+        assert k in ASPEKT_AFFIX_FOLD, f'{k} fehlt im FOLD-Mapping'
+    # siebter_atem ist float
+    assert 'siebter_atem' in FLOAT_AFFIXES
+    # Fold-Targets sind valide Engine-Stats
+    valid_targets = {'dmg_pct', 'cdr', 'crit_dmg', 'fire_dmg',
+                      'cold_dmg', 'lit_dmg', 'thorns', 'mp_regen'}
+    for asp, target in ASPEKT_AFFIX_FOLD.items():
+        assert target in valid_targets, (
+            f'{asp} fold-Target {target} invalid')
+    return True
+
+
+def test_aspekt_affix_folds_into_engine_stat():
+    """Update #159: Equipped Item mit Aspekt-Affix → der Wert wird
+    in die zugehörige Engine-Stat-Spalte gefoldet.
+    """
+    from sf.items import Item, aggregate_stats
+    from sf.entities import Player
+    p = Player('warrior')
+    # Kharns Form +20 → dmg_pct sollte +20 sein
+    item = Item(slot='weapon', rarity='magic', name='Kharn-Hammer',
+                 affixes=[('kharns_form', 20)], ilvl=5, sockets=[])
+    p.equipment['weapon'] = item
+    stats = aggregate_stats(p)
+    assert stats['kharns_form'] == 20, (
+        f'kharns_form-Akkumulator: {stats["kharns_form"]}')
+    assert stats['dmg_pct'] >= 20, (
+        f'dmg_pct fold fehlt: {stats["dmg_pct"]}')
+    # Test mit allen 7 Aspekt-Affixes auf 1 Amulett
+    from sf.constants import ASPEKT_AFFIX_KEYS, ASPEKT_AFFIX_FOLD
+    p2 = Player('mage')
+    multi = Item(slot='amulet', rarity='unique', name='Aithein-Amulett',
+                  affixes=[
+                      ('kharns_form', 10),
+                      ('nheyras_zeit', 5),
+                      ('ousens_blick', 15),
+                      ('valsas_wille', 10),
+                      ('imnesh_sprache', 10),
+                      ('shulavh_faden', 5),
+                      ('siebter_atem', 1.5),
+                  ], ilvl=10, sockets=[])
+    p2.equipment['amulet'] = multi
+    stats2 = aggregate_stats(p2)
+    # Each aspekt accumulator should have the raw value
+    for asp_key in ASPEKT_AFFIX_KEYS:
+        assert stats2[asp_key] > 0, (
+            f'{asp_key}-Akkumulator leer trotz equipped Affix')
+    return True
+
+
+def test_aspekt_affix_tooltip_label():
+    """Update #159: Display-Label enthält Lore-Name (Kharns/Nheyras/...).
+    """
+    from sf.items import Item
+    item = Item(slot='weapon', rarity='magic', name='X',
+                 affixes=[('valsas_wille', 25)], ilvl=5, sockets=[])
+    lines = item.display_lines()
+    txt = ' '.join(t for t, _ in lines)
+    assert 'Valsa' in txt, f'Lore-Name nicht im Tooltip: {txt}'
+    return True
+
+
+def test_aggro_sound_throttle_state():
+    """Update #159: _enter_state-AGGRO hat eine Throttle-Variable
+    für den globalen Aggro-Sound (anti-spam bei Pack-Aggro).
+    """
+    from sf import ai as _ai
+    # Module-level throttle-state existiert
+    assert hasattr(_ai, '_AGGRO_SOUND_THROTTLE_S')
+    assert hasattr(_ai, '_last_aggro_sound_t')
+    assert _ai._AGGRO_SOUND_THROTTLE_S > 0
+    return True
+
+
+def test_discovery_counts_persists_through_save():
+    """Update #158: Hidden-Quest discovery_counts werden via Save/Load
+    persistiert.  Vorher: Counter reset auf 0 nach Re-Load → Spieler
+    der 2 von 3 lore_tablets angefasst hat, verliert seinen Fortschritt.
+    """
+    from sf.game import Game
+    from sf import save as _save
+    g = Game()
+    g.start_game('adventure')
+    # Simuliere 2 von 3 lore_tablet-Interactions für Versunkenes Grab
+    g.quest_log.discovery_counts['akt1_versunkenes_grab'] = 2
+    # Save
+    _save.save_game(g)
+    # Reload in fresh game
+    g2 = Game()
+    g2.start_game('adventure')
+    _save.load_game(g2)
+    # Counter sollte wiederhergestellt sein
+    assert g2.quest_log.discovery_counts.get(
+        'akt1_versunkenes_grab') == 2, (
+        f'discovery_counts nicht persistiert: '
+        f'{g2.quest_log.discovery_counts}')
+    # Cleanup
+    try:
+        _save.SAVE_PATH.unlink()
+    except (FileNotFoundError, OSError):
+        pass
+    return True
+
+
+def test_akt3_4_5_sidequest_buketts_complete():
+    """Update #157: Akte 3, 4 und 5 haben jetzt komplette Sidequest-
+    Buketts (mind. 5 Quests pro Akt aus WELT_AUFBAU 3.5-3.7).
+    """
+    from sf import quest_data as _qd
+    AKT3 = (
+        'akt3_erblinder_priester_trial', 'akt3_letzte_legion',
+        'akt3_tribunal_infiltration', 'akt3_bounty_asch_wolf',
+        'akt3_valsa_traene', 'akt3_inquisitions_klinge',
+    )
+    AKT4 = (
+        'akt4_knochenwitwen_aufnahme', 'akt4_hohle_sohn',
+        'akt4_drei_tode', 'akt4_wurzel_gift',
+        'akt4_bounty_fadengebundene', 'akt4_versteckter_garten',
+    )
+    AKT5 = (
+        'akt5_senator_streit', 'akt5_stunden_spiegel_meister',
+        'akt5_velharn_geschichte', 'akt5_bounty_stunden_wandler',
+        'akt5_korven_oder_helst',
+    )
+    for qid in AKT3:
+        q = _qd.quest_by_id(qid)
+        assert q is not None, f'{qid} fehlt'
+        assert q['region'].startswith('Akt 3'), q['region']
+    for qid in AKT4:
+        q = _qd.quest_by_id(qid)
+        assert q is not None, f'{qid} fehlt'
+        assert q['region'].startswith('Akt 4'), q['region']
+    for qid in AKT5:
+        q = _qd.quest_by_id(qid)
+        assert q is not None, f'{qid} fehlt'
+        assert q['region'].startswith('Akt 5'), q['region']
+    # Total mind. 40 Quests in der Registry
+    assert len(_qd.ALL_QUESTS) >= 40
+    return True
+
+
+def test_akt345_sidequests_akt_gated():
+    """Update #157: Akt-3/4/5-Sidequests blocken bei Akt-Gate.
+    Spieler nach Akt 1 (1 dungeon) sollte:
+      - Akt 3+ Quests = locked
+      - Akt 4+ Quests = locked
+      - Akt 5+ Quests = locked
+    """
+    from sf.game import Game
+    from sf import quest_data as _qd
+    g = Game()
+    g.start_game('adventure')
+    log = g.quest_log
+    g.player.completed_dungeons = {'crypt_lost'}   # nur Akt 1
+    samples = [
+        ('akt3_letzte_legion', False),
+        ('akt4_drei_tode', False),
+        ('akt5_velharn_geschichte', False),
+    ]
+    for qid, expected in samples:
+        q = _qd.quest_by_id(qid)
+        assert log._quest_prerequisite_met(q, g.player) is expected, (
+            f'{qid} prereq-check fehlerhaft')
+    # Mit 4 Dungeons: Akt 5 wird unlocked
+    g.player.completed_dungeons = {
+        'crypt_lost', 'frost_palace', 'lava_pit', 'swamp_ruins'}
+    q5 = _qd.quest_by_id('akt5_velharn_geschichte')
+    assert log._quest_prerequisite_met(q5, g.player) is True
+    return True
+
+
+def test_akt3_4_5_hidden_quests_have_discovery():
+    """Update #157: Hidden-Quests in Akt 4 + Akt 5 haben jeweils
+    `discover_via_interact` (giver=None).
+    """
+    from sf import quest_data as _qd
+    hidden_ids = ('akt4_versteckter_garten', 'akt5_korven_oder_helst')
+    for qid in hidden_ids:
+        q = _qd.quest_by_id(qid)
+        assert q is not None
+        assert q['giver'] is None
+        assert q.get('discover_via_interact') is not None, (
+            f'{qid} hat keinen discover_via_interact-Trigger')
+    return True
+
+
+def test_can_enter_akt_helper():
+    """Update #156 (ROADMAP T2.4): progression.can_enter_akt
+    erfüllt das Akt-Gate-Vertrag.
+    """
+    from sf import progression as _p
+    player = type('P', (), {})()
+    player.completed_dungeons = set()
+    # Akt 1 immer erlaubt
+    assert _p.can_enter_akt(player, 1) is True
+    assert _p.can_enter_akt(player, None) is True
+    # Akt 2 ohne Dungeons → block
+    assert _p.can_enter_akt(player, 2) is False
+    assert _p.akt_block_reason(player, 2) is not None
+    # Akt 2 mit 1 Dungeon → erlaubt
+    player.completed_dungeons = {'crypt_lost'}
+    assert _p.can_enter_akt(player, 2) is True
+    assert _p.akt_block_reason(player, 2) is None
+    # Akt 5 ohne genug → block, Reason zeigt range
+    player.completed_dungeons = {'crypt_lost'}
+    reason = _p.akt_block_reason(player, 5)
+    assert reason is not None
+    assert 'Akt 2' in reason or 'Akt 4' in reason
+    return True
+
+
+def test_quest_board_renders():
+    """Update #156 (ROADMAP T2.3): Quest-Board-Sektion im QuestLog-
+    Modal rendert ohne Crash bei verschiedenen Player-States.
+    """
+    from sf.game import Game
+    g = Game()
+    g.start_game('adventure')
+    # Open quest log
+    g.modal = 'questlog'
+    # Draw — sollte nicht crashen
+    g.draw()
+    # Mit Akt-2-Progression
+    g.player.completed_dungeons = {'crypt_lost'}
+    g.draw()
+    # Mit Akt-5-Progression
+    g.player.completed_dungeons = {
+        'crypt_lost', 'frost_palace', 'lava_pit', 'swamp_ruins'}
+    g.draw()
+    return True
+
+
+def test_quest_board_section_filters_hidden_quests():
+    """Update #156: Hidden-Quests (mit discover_via_interact) tauchen
+    NICHT im Quest-Board auf — sie sollen versteckt bleiben.
+    """
+    from sf.game import Game
+    from sf import quest_data as _qd
+    g = Game()
+    g.start_game('adventure')
+    log = g.quest_log
+    # Hidden quests existieren
+    hidden = [q for q in _qd.ALL_QUESTS
+              if q.get('discover_via_interact')]
+    assert len(hidden) >= 1
+    # Simulate quest-board iteration manually
+    visible_ids = []
+    for q in _qd.ALL_QUESTS:
+        qid = q['id']
+        if qid in log.active or qid in log.completed:
+            continue
+        if q.get('discover_via_interact') is not None:
+            continue
+        if q.get('giver') is None:
+            continue
+        visible_ids.append(qid)
+    # Hidden quests dürfen NICHT in visible_ids sein
+    for q in hidden:
+        assert q['id'] not in visible_ids, (
+            f'Hidden-Quest {q["id"]} im Quest-Board sichtbar')
+    return True
+
+
+def test_akt2_sidequest_bukett_registered():
+    """Update #155 (ROADMAP T2.1-C): Akt-2-Bukett mit 6 Quests
+    (5 NPC-given + 1 Hidden).  Alle korrekt im Quest-Registry.
+    """
+    from sf import quest_data as _qd
+    expected = (
+        'akt2_helst_pact_stones',
+        'akt2_echo_handel',
+        'akt2_otreth_glas_gravur',
+        'akt2_goldstaub_erinnerung',
+        'akt2_bounty_goldstaub_diener',
+        'akt2_velharn_vorhof',
+    )
+    for qid in expected:
+        q = _qd.quest_by_id(qid)
+        assert q is not None, f'{qid} fehlt in ALL_QUESTS'
+        assert q['region'].startswith('Akt 2'), (
+            f'{qid} hat region {q["region"]!r}, erwarte Akt 2')
+    # Velharn-Vorhof ist Hidden (no giver)
+    velharn = _qd.quest_by_id('akt2_velharn_vorhof')
+    assert velharn['giver'] is None
+    assert velharn.get('discover_via_interact') is not None
+    # Goldstaub-Erinnerung erfordert Helst-Pact-Stones
+    goldstaub = _qd.quest_by_id('akt2_goldstaub_erinnerung')
+    assert 'akt2_helst_pact_stones' in (
+        goldstaub.get('requires_quests') or ())
+    return True
+
+
+def test_akt2_sidequests_akt_gated():
+    """Update #155: Akt-2-Sidequests werden erst nach Akt 1 offerable.
+    """
+    from sf.game import Game
+    g = Game()
+    g.start_game('adventure')
+    log = g.quest_log
+    # Akt-1-Player: Helst-Pact-Stones NICHT offerable (Helst ist nicht
+    # in town, aber prereq-check)
+    g.player.completed_dungeons = set()
+    from sf import quest_data as _qd
+    helst_q = _qd.quest_by_id('akt2_helst_pact_stones')
+    assert log._quest_prerequisite_met(helst_q, g.player) is False
+    # Akt 1 done → offerable
+    g.player.completed_dungeons = {'crypt_lost'}
+    assert log._quest_prerequisite_met(helst_q, g.player) is True
+    return True
+
+
+def test_faction_vendor_discount():
+    """Update #155 (ROADMAP T1.2-F): Mahnmal-Gilde-Rep ≥50 gibt 10 %
+    Rabatt auf Korven-Vor-Käufe via `vendor_discount_small`-Unlock.
+    """
+    from sf.items import Item
+    from sf.shop import buy_price
+    from sf import faction as _fac
+    p = type('P', (), {})()
+    p.faction_rep = {}
+    item = Item(slot='weapon', rarity='magic', name='Test',
+                 affixes=[], ilvl=10, sockets=[])
+    base = buy_price(item)  # ohne player
+    # Rep 0 → unverändert
+    p.faction_rep = {'mahnmal_gilde': 0}
+    assert buy_price(item, player=p) == base
+    # Rep 49 → noch kein Discount
+    p.faction_rep = {'mahnmal_gilde': 49}
+    assert buy_price(item, player=p) == base
+    # Rep 50 → 10 % Rabatt
+    p.faction_rep = {'mahnmal_gilde': 50}
+    discounted = buy_price(item, player=p)
+    assert discounted < base
+    assert discounted == int(base * 0.9), (
+        f'erwarte {int(base*0.9)}, bekommen {discounted}')
+    # Has-unlock-Check direkt
+    assert _fac.has_unlock(p, 'mahnmal_gilde',
+                            'vendor_discount_small') is True
+    return True
+
+
+def test_versunkenes_grab_quest_registered():
+    """Update #154: Versunkenes-Grab-Quest hat PUZZLE-Stage +
+    discover_via_interact-Trigger.
+    """
+    from sf import quest_data as _qd
+    q = _qd.quest_by_id('akt1_versunkenes_grab')
+    assert q is not None
+    assert q['giver'] is None, 'Hidden-Quest sollte keinen NPC-Giver haben'
+    trig = q.get('discover_via_interact')
+    assert trig is not None
+    assert trig.get('decor_kind') == 'lore_tablet'
+    assert trig.get('count') >= 1
+    # PUZZLE-Stage existiert
+    has_puzzle = any(s.get('type') == 'puzzle' for s in q['stages'])
+    assert has_puzzle, 'Versunkenes-Grab hat keine PUZZLE-Stage'
+    return True
+
+
+def test_decor_shadow_helper_exists():
+    """Update #153 (PLAN U-03): `world._decor_shadow` Helper existiert
+    und wird beim Decor-Render mit-ausgeführt (kein Crash).
+    """
+    import os
+    os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
+    os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')
+    import pygame
+    if not pygame.get_init():
+        pygame.init()
+    if not pygame.display.get_init():
+        pygame.display.set_mode((1280, 720))
+    from sf import world as _w
+    # Helper-API
+    assert hasattr(_w, '_decor_shadow'), '_decor_shadow fehlt in world'
+    # Smoke-Render: erstelle Surface + Decor + render
+    surf = pygame.Surface((200, 200))
+    from sf.entities import Decor
+    for kind in ('sarcophagus', 'broken_wall', 'lantern',
+                 'ice_spike', 'frozen_pillar', 'bookshelf', 'torch'):
+        d = Decor(0, 0, kind, rot=0.0, size=20, shade=0.8)
+        _w.draw_decor(surf, d, (100, 100), 'crypt')
     return True
 
 
@@ -5373,6 +5933,30 @@ TESTS = [
     ('akt2_main_quest_helst',      test_akt2_main_quest_offered_by_helst),
     ('akt4_main_quest_vossharil',  test_akt4_main_quest_offered_by_vossharil),
     ('main_quest_chain_continuous', test_main_quest_chain_continuous),
+    ('akt6_wunden_quests_registered', test_akt6_wunden_quests_registered),
+    ('requires_quests_prerequisite', test_requires_quests_prerequisite),
+    ('akt1_tribunal_sidequest',    test_akt1_tribunal_sidequest),
+    ('akt1_bounty_repeatable',     test_akt1_bounty_repeatable),
+    ('decor_shadow_helper_exists', test_decor_shadow_helper_exists),
+    ('quest_item_blocks_salvage',  test_quest_item_flag_blocks_salvage),
+    ('quest_item_save_load',       test_quest_item_flag_save_load_roundtrip),
+    ('quest_item_tooltip_hint',    test_quest_item_tooltip_hint),
+    ('hidden_quest_decor_discovery', test_hidden_quest_discovery_via_decor),
+    ('versunkenes_grab_registered', test_versunkenes_grab_quest_registered),
+    ('akt2_sidequest_bukett',      test_akt2_sidequest_bukett_registered),
+    ('akt2_sidequests_akt_gated',  test_akt2_sidequests_akt_gated),
+    ('faction_vendor_discount',    test_faction_vendor_discount),
+    ('can_enter_akt_helper',       test_can_enter_akt_helper),
+    ('quest_board_renders',        test_quest_board_renders),
+    ('quest_board_hides_hidden',   test_quest_board_section_filters_hidden_quests),
+    ('akt345_sidequest_buketts',   test_akt3_4_5_sidequest_buketts_complete),
+    ('akt345_sidequests_gated',    test_akt345_sidequests_akt_gated),
+    ('akt345_hidden_discovery',    test_akt3_4_5_hidden_quests_have_discovery),
+    ('discovery_counts_persist',   test_discovery_counts_persists_through_save),
+    ('aspekt_affixes_registered',  test_aspekt_affixes_registered),
+    ('aspekt_affix_fold',          test_aspekt_affix_folds_into_engine_stat),
+    ('aspekt_affix_tooltip',       test_aspekt_affix_tooltip_label),
+    ('aggro_sound_throttle',       test_aggro_sound_throttle_state),
 ]
 
 
@@ -5390,11 +5974,17 @@ def main():
                 print(f'FAIL  {name}  (returned False)')
                 failed += 1
         except AssertionError as ex:
-            print(f'FAIL  {name}  assertion: {ex}')
+            # Encode-safe — manche Assertion-Messages enthalten Unicode
+            # (z.B. „≥") das CP1252 (Windows-Default) nicht kann.
+            msg = str(ex).encode('ascii', errors='replace').decode('ascii')
+            print(f'FAIL  {name}  assertion: {msg}')
             failed += 1
         except Exception:
             print(f'CRASH {name}')
-            traceback.print_exc()
+            try:
+                traceback.print_exc()
+            except UnicodeEncodeError:
+                pass
             failed += 1
     total = passed + failed
     print(f'\n{passed}/{total} passed, {failed} failed')

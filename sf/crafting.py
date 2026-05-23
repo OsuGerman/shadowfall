@@ -142,7 +142,13 @@ def salvage_value(item):
 def salvage_item(player, item):
     """Recycelt Item → Gold + Chance auf Gem. Entfernt aus Inventar nicht
     (Aufrufer macht das nach erfolgreichem Call).
+
+    Update #154 (ROADMAP T1.4): Quest-Items werden nicht zerlegt —
+    returnt None statt (gold, gem).  Aufrufer muss die Toast-Meldung
+    machen.
     """
+    if getattr(item, 'quest_item', False):
+        return None
     import random
     gold = salvage_value(item)
     player.gold += gold
@@ -268,6 +274,14 @@ class CraftingUI:
                 return True
             if actions['salvage'].collidepoint(mx, my):
                 result = salvage_item(p, item)
+                # Update #154 (ROADMAP T1.4): None = Quest-Item, kann nicht
+                # salvaged werden — Toast + Item bleibt erhalten.
+                if result is None:
+                    if hasattr(game, 'toast'):
+                        game.toast(
+                            'Quest-Item — kann nicht zerlegt werden.',
+                            (220, 150, 80))
+                    return True
                 # Item entfernen
                 kind, key = self.selected
                 if kind == 'inv':

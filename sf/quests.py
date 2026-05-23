@@ -123,14 +123,14 @@ class QuestState:
                     self.count = 0
                     if hasattr(game, 'toast'):
                         game.toast(
-                            f'„{self.title}": Zeit abgelaufen, '
+                            f'„{self.title}“: Zeit abgelaufen, '
                             f'von vorn.', (220, 130, 80))
                 elif fail == 'fail':
                     # Quest komplett abbrechen
                     self._mark_complete(game)
                     if hasattr(game, 'toast'):
                         game.toast(
-                            f'„{self.title}" gescheitert: Zeit '
+                            f'„{self.title}“ gescheitert: Zeit '
                             f'abgelaufen.', (220, 80, 60))
                 return False  # nicht advance_stage rufen
 
@@ -219,7 +219,7 @@ class QuestState:
             # Stage-Update-Toast + große Banner-Notification (G-12).
             if hasattr(game, 'toast'):
                 next_st = self.stage
-                game.toast(f'„{self.title}" → {next_st["text"]}',
+                game.toast(f'„{self.title}“ → {next_st["text"]}',
                            (255, 220, 80))
             if hasattr(game, 'push_event_notification'):
                 game.push_event_notification(
@@ -324,6 +324,44 @@ class QuestLog:
         self.completed = set()
         self.discovered_lore = set()  # für Codex
         self.bestiary_seen = set()    # für Codex
+        # Update #154 (ROADMAP T1.1-D): Hidden-Quest-Discovery-Counts
+        # — Mapping qid → wie oft passendes Decor angefasst wurde, bis
+        # zur `discover_via_interact.count`-Schwelle.
+        self.discovery_counts = {}
+        # Update #160 (ROADMAP T2.3-C): Quest-Pin — qid einer als
+        # „tracked" markierten aktiven Quest.  None = auto-detect
+        # (Compass nimmt die erste/wichtigste).  Wird vom Quest-Board
+        # via P-Hotkey gesetzt + von `_resolve_quest_target_pos`
+        # bevorzugt.
+        self.tracked_quest_id = None
+
+    def set_tracked(self, qid):
+        """Update #160 (T2.3-C): Setze/Toggle die getrackte Quest.
+
+        `qid=None` löscht den Track.  Ist `qid` bereits getrackt,
+        wird der Track gelöscht (toggle-Verhalten).  Nur aktive
+        Quests dürfen getrackt werden.
+        """
+        if qid is None or qid == self.tracked_quest_id:
+            self.tracked_quest_id = None
+        elif qid in self.active:
+            self.tracked_quest_id = qid
+
+    def tracked_state(self):
+        """Returnt die QuestState der getrackten Quest oder None.
+
+        Falls die tracked qid nicht mehr aktiv ist (completed/abandoned),
+        wird der Track auto-gelöscht.
+        """
+        qid = self.tracked_quest_id
+        if qid is None:
+            return None
+        st = self.active.get(qid)
+        if st is None:
+            # stale tracked qid → clear
+            self.tracked_quest_id = None
+            return None
+        return st
 
     def offer(self, qid):
         if qid in self.active or qid in self.completed:
@@ -607,7 +645,13 @@ _VOICE_NPC_KEY = {
 
 
 def on_interact_decor(game, decor):
-    """Player interagiert mit Decor (Lore-Tafel, Altar)."""
+    """Player interagiert mit Decor (Lore-Tafel, Altar).
+
+    Update #154 (ROADMAP T1.1-D): Hidden-Quest-Discovery via Decor.
+    Quests mit `discover_via_interact={'decor_kind': ..., 'count': N}`
+    werden automatisch offered nachdem der Spieler `count` passende
+    Decors angefasst hat — kein NPC-Giver nötig.
+    """
     log = _get_log(game)
     if log is None:
         return
@@ -616,6 +660,24 @@ def on_interact_decor(game, decor):
         text = getattr(decor, 'lore_text', '')
         if text:
             log.discovered_lore.add(text)
+    # Update #154: Hidden-Quest-Discovery
+    for q in _qd.ALL_QUESTS:
+        trig = q.get('discover_via_interact')
+        if not trig:
+            continue
+        if trig.get('decor_kind') != kind:
+            continue
+        qid = q['id']
+        if qid in log.active or qid in log.completed:
+            continue
+        # Pro-Quest-Discovery-Counter (interaction-count)
+        log.discovery_counts[qid] = log.discovery_counts.get(qid, 0) + 1
+        if log.discovery_counts[qid] >= trig.get('count', 1):
+            log.offer(qid)
+            if hasattr(game, 'toast'):
+                game.toast(f'Versteckte Quest entdeckt: {q["title"]}',
+                            (220, 200, 100))
+            _play_quest_sound(game, 'quest_accept')
     for st in list(log.active.values()):
         stage = st.stage
         if stage is None or stage['type'] != _qd.StageType.INTERACT:
