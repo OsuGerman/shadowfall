@@ -1,0 +1,53 @@
+{
+  "runs": [
+    {
+      "timestamp": "2026-05-23T22:40:53.087790+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "crypt",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.2,
+      "status": "failed",
+      "error": "no output files generated"
+    },
+    {
+      "timestamp": "2026-05-23T22:45:37.159353+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "crypt",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/crypt/crypt_mask_00.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_01.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_02.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_03.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_04.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_05.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_06.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_07.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_08.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_09.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_10.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_11.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_12.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_13.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_14.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.2,
+      "status": "success",
+      "error": null
+    }
+  ]
+}

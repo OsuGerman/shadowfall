@@ -156,7 +156,20 @@ Animation-Sheets sind aufwendiger — Scenario.gg hat „Animator"-Models die Mu
 
 ---
 
-**Tool-Empfehlung:** Scenario.gg Creator-Plan (29 EUR/mo) deckt Phase 1+2 bequem ab. Phase 3+4 brauchen Pro-Plan (99 EUR/mo) oder lokal Stable Diffusion.
+### 2.W Workflow-Tools *(Scenario.gg Standard-Library)*
+
+Vier orchestrierte Multi-Inference-Workflows die wir gezielt einsetzen. Vollstaendige Doku: [VELGRAD_WORKFLOWS_BIBEL.md](VELGRAD_WORKFLOWS_BIBEL.md).
+
+- [ ] **T2.W-1 Character Sheet Generator** (`tools/workflow_character_sheet.py`) — 1 Anchor-Sprite → 4-Direction-Sheet (Front/Side/Back/3Q). Foundation fuer T2.6 Animation-Pipeline. **~0.16 EUR/Charakter, 1.28 EUR fuer alle 8 Klassen**
+- [ ] **T2.W-2 Sprite Animation Frames** (`tools/workflow_animation_frames.py`) — 8-Frame Walk/Attack/Hit/Death-Cycles pro (Char, Anim, Direction). Build-on T2.W-1. **~0.32 EUR/Strip, ~30 EUR fuer alle 8 Klassen × 3 Anims × 4 Richtungen**
+- [x] **T2.W-3 Texture Tiler** (`tools/workflow_texture_tiler.py`) — ✅ #162 (16-Mask Modular-Tileset pro Biome, procedural-mode kostenlos via Engine-Edge-Overlay-Bake. AI-Hybrid-Mode optional ~3 EUR/Biome). Loest **T2.7-B**.
+- [ ] **T2.W-4 Inpaint / Outpaint** (`tools/workflow_inpaint.py`) — Spot-Fixes & Decor-Variations. Allzweck-Tool, on-demand. **~0.04 EUR/Edit**
+
+**Audit-Log:** Alle Workflow-Runs werden in `assets/workflow_runs.json` protokolliert (Reproducibility + Cost-Tracking). Anzeige: `python tools/workflow_runner.py`.
+
+---
+
+**Tool-Empfehlung:** Scenario.gg Creator-Plan (29 EUR/mo) deckt Phase 1+2+Workflows bequem ab. Phase 3+4 brauchen Pro-Plan (99 EUR/mo) oder lokal Stable Diffusion.
 
 ### 2.3 Quest-Board-Modal *(Eldon hat aktuell keinen UI)*
 - [x] **T2.3-A** Quest-Board-Sektion im QuestLog-Modal — ✅ #156 (`_draw_quest_board_section` listet AVAILABLE + LOCKED, filtert Hidden-Quests)
@@ -218,7 +231,7 @@ Animation-Sheets sind aufwendiger — Scenario.gg hat „Animator"-Models die Mu
 ### 3.6 Lighting & Shadow Engine 2.0 (TEIL U)
 - [ ] **T3.6-A** Multi-Source-Light-Buffer (U-01) — Foundation fuer alles weitere
 - [ ] **T3.6-B** Dynamic Shadow-Casting fuer Player-Halo + Boss-Light (U-02)
-- [ ] **T3.6-C** Decor-Shadows (U-03) — Drop-Shadow-Ellipsen am Ground-Anker
+- [x] **T3.6-C** Decor-Shadows (U-03) — ✅ #153 (`world._decor_shadow` Helper + Integration in sarcophagus/broken_wall/frozen_pillar/ice_spike/lantern/torch/bookshelf), verifiziert in #161
 - [ ] **T3.6-D** Lava/Glow-Cell-Tint (U-06) + Player-Casting-Hand-Light (U-07)
 - [ ] **T3.6-E** M-10 Bloom-Pass (haengt an U-01)
 
@@ -361,11 +374,11 @@ Animation-Sheets sind aufwendiger — Scenario.gg hat „Animator"-Models die Mu
 - [x] **AI-Mob-Alert/Attack-Sounds** — ✅ #159 (`_enter_state(AGGRO)` ruft `play_with_fallback(f'{bestiary_key}_alert', 'ambient_monster_growl')` mit globaler Throttle 1×/0.8s; bosse skip)
 - [ ] **Aspekt-Skill-Sounds** wired — Phase-1-SFX `aspekt_<aspekt>_cast/impact/tick` existieren, aber `skills.py` ruft noch `cast_lightning`/`cast_frost`/`cast_fire`. Mapping aufbauen.
 - [ ] **Music-Stem-Swap pro Akt** — N-09 ist als Volume-Duck implementiert; echter Stem-Crossfade braucht Suno-Tracks pro Akt (T5.10-A).
-- [ ] **Quest-Compass durchgaengig** — Portal-Highlight ist da (#151), aber INTERACT/COLLECT-Stages haben noch keinen Welt-Marker.
+- [x] **Quest-Compass durchgaengig** — ✅ #161 (`_resolve_quest_target_pos` resolvet INTERACT decor_kind, KILL bestiary_key, COLLECT item_kind=gem, ESCORT destination; npc_name funktioniert in beiden Areas)
 - [x] **Aspekt-Affixes (7 Stueck, Lore-getreu)** aus WELT_AUFBAU 5.4 — ✅ #159 (alle 7 in AFFIXES + Fold-Mapping zu Engine-Stats; Aspekt-Akkumulatoren separat für späteres Mahnmal-Pakt-Tag-Buff)
 - [ ] **4 zusaetzliche Item-Slots erwaegen** — boots/gloves/belt/flask_modifier (WELT_AUFBAU 5.1)
 - [ ] **Unique-Drop-Pool pro Boss** — aktuell nur generischer Affix-Roll, kein Lore-Mapping (WELT_AUFBAU 5.3 + QUEST_BIBEL Item-Drop-Crossref)
-- [ ] **Set-Linking** (Shulavhs Faden) — 2 Items verbinden, Set-Bonus bei beiden equipped
+- [x] **Set-Linking** (Shulavhs Faden) — ✅ #161 (`Item.link_id` Foundation + `link_items`/`unlink_item`/`linked_partner` API + Bonus in `aggregate_stats`: +15% dmg_pct +10% cdr pro Paar; Save-Persistenz)
 
 ---
 
