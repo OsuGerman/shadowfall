@@ -1,0 +1,49 @@
+# ============================================================
+# SECRETS — niemals committen
+# ============================================================
+ElevenLabs.txt
+.elevenlabs_key
+.env
+*.key
+secrets/
+
+# ============================================================
+# AI-GENERIERTE AUDIO-ARTEFAKTE (groß, regenerierbar)
+# ============================================================
+sounds/voice/**/*.mp3
+sounds/voice/**/*.wav
+sounds/sfx/generated/**/*.mp3
+sounds/sfx/generated/**/*.wav
+
+# Voice-Manifest behalten wir (Plain-Text, klein, Status-Tracking)
+!sounds/voice/voice_manifest.json
+!sounds/voice/README.md
+
+# ============================================================
+# PYTHON
+# ============================================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# ============================================================
+# IDE / OS
+# ============================================================
+.vscode/settings.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# SAVE-GAMES & USER-DATA (nur Templates committen)
+# ============================================================
+saves/*.json
+saves/*.dat
+!saves/.gitkeep

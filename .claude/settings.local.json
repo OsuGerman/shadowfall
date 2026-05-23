@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python tools/voice_manifest_builder.py --force)",
+      "Bash(python tools/voice_gen.py --dry-run)",
+      "Bash(python tools/voice_gen.py --npc korven --limit 3)",
+      "Bash(python tools/sfx_gen.py)",
+      "Bash(python tools/sfx_gen.py --dry-run --redo-failed)",
+      "Bash(python tools/sfx_gen.py --redo-failed)",
+      "Bash(python tools/sfx_gen.py --dry-run --force-rebuild-manifest)",
+      "Bash(python -c ' *)",
+      "Bash(python tools/sfx_gen.py --dry-run)",
+      "Bash(git config *)"
+    ]
+  }
+}

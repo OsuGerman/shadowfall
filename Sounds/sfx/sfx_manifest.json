@@ -1,0 +1,3631 @@
+{
+  "version": 1,
+  "total_sfx": 453,
+  "total_seconds": 1139.45,
+  "entries": [
+    {
+      "sfx_id": "ui_click",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "soft stone-on-stone click, subtle reverb, 0.2 sec",
+      "duration_seconds": 0.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_hover",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "very soft breath sigh, almost inaudible, 0.15 sec",
+      "duration_seconds": 0.15,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_modal_open",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "ancient parchment unfurling, soft, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_modal_close",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "parchment folding back, soft, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_inventory_open",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "leather satchel unbuckling, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_item_pickup_common",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "cloth bag rustling, brief, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_item_pickup_rare",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "crystalline ring, soft chime, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_item_pickup_unique",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "deep resonant chime with reverb tail, like a memory-stone awakening, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_item_pickup_mythic",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "low temple bell with echo trail, 1.8 sec",
+      "duration_seconds": 1.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_coin_drop",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "single gold coin hitting stone, clear ring, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_skillpoint",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "warm pulse of breath inwards, then a soft exhale, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_quest_advance",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "ink scratching on parchment, brief, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_skill_unlocked",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "memory-stone humming awake, ascending tone, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_save_game",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "stone tablet being set down on stone, hollow, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_death_screen",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "long slow exhale that fades into silence, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_map_open",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "parchment map unfolding, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_portal_open",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "deep resonant tone with shimmer, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_portal_close",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "reverse shimmer fade out, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_mahnmal_activate",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "ancient stone stele humming awake, deep resonance, 1.8 sec",
+      "duration_seconds": 1.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_pakt_stone_equip",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "memory crystal locking into place, soft click + resonance, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_aspekt_choice",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "seven-toned chord, ethereal, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_currency_marken",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "metal tag clinking on chain, brief, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_currency_shard",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "shard of memory glass tapping, soft chime, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_low_hp_warning",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "ragged shallow breathing, loop 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_critical_hp",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "rapid heartbeat with breath, loop 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_vergessens_welle",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "world inhaling — the sound of a memory being forgotten, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ui_choice_made",
+      "section": "ui",
+      "akt": 0,
+      "prompt": "single deep gong with subtle reverb, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "dagger_whisper_stab",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "cold dagger stabbing through cloth and flesh, very brief whisper, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "spear_pierce_through",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "spear punching through armor and flesh, single impact, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "quarterstaff_whirl",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "wooden staff whirling through air, ending in solid hit on bone, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "bow_release_creak",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "longbow arrow release with wood creak, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "crossbow_click_bolt",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "crossbow mechanism click followed by bolt fire, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "wand_spark_snap",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "single magical spark snapping with crackle, 0.3 sec",
+      "duration_seconds": 0.3,
+      "status": "done"
+    },
+    {
+      "sfx_id": "sceptre_charge",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "resonant energy gathering, slight tremor, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "talisman_bear_roar",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "low animal roar through magical filter, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "talisman_wolf_howl",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "wolf howl through magical reverb, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "talisman_wyvern_screech",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "wyvern screech through magical filter, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "mace_bone_crush",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "heavy iron mace crushing bone, deep impact, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "sword_flesh_cut",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "sword slicing through cloth and flesh, wet, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "axe_cleave_thru",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "heavy two-handed axe cleaving through bone, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "crit_universal",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "high-tension impact with metal ring and deep thud, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "crit_blood",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "crit hit with brief blood splatter, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "block_metal_metal",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "two metal blades clashing and locking, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "block_shield_wood",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "weapon hitting wooden shield, dull thud, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "parry_ring",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "metallic ring of parry, sharp, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "miss_air",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "weapon cutting air, no impact, 0.3 sec",
+      "duration_seconds": 0.3,
+      "status": "done"
+    },
+    {
+      "sfx_id": "dodge_cloth",
+      "section": "combat",
+      "akt": -1,
+      "prompt": "cloth rustling as character dodges, 0.3 sec",
+      "duration_seconds": 0.3,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_kharn_cast",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "iron forge ringing with rising power, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_kharn_impact",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "iron crashing into iron, heavy and final, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_nheyra_cast",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "clock ticking accelerating into reverse, ethereal, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_nheyra_impact",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "time freezing — glass shattering in reverse, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_nheyra_tick",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "single time-distorted tone, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_ousen_cast",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "deep telepathic hum rising in pitch, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_ousen_impact",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "psychic blast — like a thought breaking, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_valsa_impact",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "fire explosion with ash debris, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_valsa_tick",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "single ember crackle, 0.3 sec",
+      "duration_seconds": 0.3,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_imnesh_cast",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "whispered alien syllables overlapping, unsettling, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_imnesh_impact",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "concept-bending shockwave, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_imnesh_tick",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "single whispered syllable, 0.3 sec",
+      "duration_seconds": 0.3,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_shulavh_cast",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "organic roots growing rapidly, wet and tearing, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_shulavh_impact",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "thick roots binding flesh, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_shulavh_tick",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "single rope-creak tightening, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_vergessen_cast",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "world unmaking itself — reverse of sound, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_vergessen_impact",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "silence-implosion, brief moment of zero-audio with subtle inhale, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "warrior_slam",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "two-handed weapon slamming ground with shockwave, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "monk_three_breath",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "three rapid breaths of focus, ascending power, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "monk_pagoda_step",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "single bare footstep on wooden floor, soft, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "sorceress_brand",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "fire branding into skin with sizzle, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "witch_skeleton_summon",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "bones clacking together as skeleton assembles, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "witch_thread_pull",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "rope of fate snapping into existence, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ranger_seed_fly",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "seed-pod flying through air with whistle, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ranger_growl_bind",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "vines growing rapidly with rustle, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "mercenary_reload",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "crossbow reload with chain clinks, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "mercenary_signature",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "single low whistle of mercenary signal, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "huntress_throw_spear",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "spear spinning through air with whoosh, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "huntress_moon_bind",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "lunar resonance — high silver chime, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "druid_shapeshift_bear",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "human-to-bear transformation crunch, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "druid_shapeshift_wolf",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "human-to-wolf transformation crunch, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "druid_shapeshift_wyvern",
+      "section": "skills",
+      "akt": -1,
+      "prompt": "human-to-wyvern transformation crunch with screech, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzgekreuzter_idle",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "wet drowned breathing, gurgling, loop 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzgekreuzter_alert",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "drowned-throat groan rising, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzgekreuzter_attack",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "wet flesh-grab, brief gurgle, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzgekreuzter_hurt",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "drowned scream short, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzgekreuzter_death",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "long underwater gurgle fading, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "krustenkrabbe_idle",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "shell clicking on wet stone, brief, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "krustenkrabbe_alert",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "high-pitched crab screech, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "krustenkrabbe_attack",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "pincer snap with hard click, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "krustenkrabbe_hurt",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "shell crack with crab pain-shriek, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "krustenkrabbe_death",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "shell breaking with wet collapse, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ertrunkenes_echo_idle",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "ghostly underwater moan, ethereal, 3 sec loop",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ertrunkenes_echo_attack",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "ghost wail with water sound, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ertrunkenes_echo_death",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "ghost dissolving into water mist, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "moewen_schwarm_attack",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "multiple seagulls screeching dive-bomb, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "moewen_schwarm_death",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "single dying seagull, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzhueter_brut_roar",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "ancient drowned statue roar with deep reverb and water, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzhueter_brut_attack",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "stone arm hitting wet ground heavily, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzhueter_brut_hurt",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "stone cracking with drowned voice underneath, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzhueter_brut_death",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "stone statue collapsing into salt water, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzhueter_brut_phase",
+      "section": "monster",
+      "akt": 1,
+      "prompt": "phase-transition — water rushing inward, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "echo_senator_idle",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "echoing aristocratic muttering in ancient tongue, 4 sec loop",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "echo_senator_attack",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "magical gold dust burst with old-language word, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "echo_senator_death",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "voice fading into golden silence, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "goldstaub_diener_idle",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "golden particles rustling, soft, 3 sec loop",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "goldstaub_diener_attack",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "gold dust binding form, sharp constrictor, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "goldstaub_diener_death",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "particles dissipating with sigh, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "glasgolden_waechter_idle",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "stone construct heavy breathing, mechanical, 4 sec loop",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "glasgolden_waechter_attack",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "massive stone fist crashing down, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "glasgolden_waechter_death",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "construct collapsing into golden shards, 2.5 sec",
+      "duration_seconds": 2.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "spiegel_stalker_idle",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "glass surface humming, subtle, 4 sec loop",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "spiegel_stalker_attack",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "mirror shard slicing through air, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "spiegel_stalker_death",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "mirror shattering with thousand reflections, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "verfallener_magister_cast",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "decayed magical incantation with crystal ringing, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "verfallener_magister_death",
+      "section": "monster",
+      "akt": 2,
+      "prompt": "old magic dissipating with sigh, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "asch_soldat_alert",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "skeletal soldier rattling armor, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "asch_soldat_attack",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "rusted sword swing through ash, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "asch_soldat_death",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "armor collapsing into ash pile, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "predigtsprecher_cast",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "fanatical preacher chanting in burning voice, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "predigtsprecher_death",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "preacher choking on smoke, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "inquisitions_klinge_attack",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "stealth blade strike, very brief, 0.3 sec",
+      "duration_seconds": 0.3,
+      "status": "done"
+    },
+    {
+      "sfx_id": "inquisitions_klinge_death",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "single death-gasp, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "asch_wolf_idle",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "wolf growl with ash-rasp, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "asch_wolf_attack",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "wolf bite with ember crackle, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "asch_wolf_death",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "wolf yelp dissolving into ash-wind, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "tribunal_konstrukt_step",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "heavy stone-tribunal footstep, deep thud, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "tribunal_konstrukt_attack",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "massive holy hammer impact, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "tribunal_konstrukt_death",
+      "section": "monster",
+      "akt": 3,
+      "prompt": "construct breaking with stone tumble, 2.5 sec",
+      "duration_seconds": 2.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "knochenhexe_cast",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "bone-witch chanting with bone-clack rhythm, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "knochenhexe_death",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "old witch crumbling, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "wurzel_spinne_idle",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "wooden creaking with chitin click, 3 sec loop",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "wurzel_spinne_attack",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "wood-spider striking with snap, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "wurzel_spinne_death",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "spider collapsing into roots, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "fadengebundene_idle",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "puppet strings creaking taut, 3 sec loop",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "fadengebundene_attack",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "marionette jerk-strike, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "fadengebundene_death",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "strings snapping with body collapse, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "hohler_sohn_alert",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "child crying from deep underground, distorted, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "hohler_sohn_attack",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "small hands grabbing flesh, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "hohler_sohn_death",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "child sigh of relief, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "mark_krieger_idle",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "tree-bark armor creaking, 3 sec loop",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "mark_krieger_attack",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "wooden war club impact, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "mark_krieger_death",
+      "section": "monster",
+      "akt": 4,
+      "prompt": "tree-warrior cracking apart like log, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "stunden_wandler_idle",
+      "section": "monster",
+      "akt": 5,
+      "prompt": "time-distorted ambient hum, eerie, 4 sec loop",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "senator_phantom_attack",
+      "section": "monster",
+      "akt": 5,
+      "prompt": "ghostly senatorial accusation, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "glasscherben_taenzerin",
+      "section": "monster",
+      "akt": 5,
+      "prompt": "ballet movement with glass-shard ring, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "sich_selbst_spielende",
+      "section": "monster",
+      "akt": 5,
+      "prompt": "player's own attack sounds in reverse, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "spiegel_hueter_attack",
+      "section": "monster",
+      "akt": 5,
+      "prompt": "mirror-guardian massive strike, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "nicht_gott_attack",
+      "section": "monster",
+      "akt": 6,
+      "prompt": "wrongness manifest — sound that should not exist, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "nicht_mann_attack",
+      "section": "monster",
+      "akt": 6,
+      "prompt": "anomaly attack — sound bending, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_echo_attack",
+      "section": "monster",
+      "akt": 99,
+      "prompt": "corrupted aspect attack — modulated divine voice, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzhueter_spawn",
+      "section": "boss",
+      "akt": 1,
+      "prompt": "ancient salt statue awakening with grinding stone and water surge, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzhueter_phase",
+      "section": "boss",
+      "akt": 1,
+      "prompt": "stone cracking with water-pressure increase, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salzhueter_kill",
+      "section": "boss",
+      "akt": 1,
+      "prompt": "statue collapsing into salt mist, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "senator_geist_spawn",
+      "section": "boss",
+      "akt": 2,
+      "prompt": "ghostly gold-dust gathering with senatorial gavel-strike, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "senator_geist_phase",
+      "section": "boss",
+      "akt": 2,
+      "prompt": "gold-dust storm intensifying, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "senator_geist_kill",
+      "section": "boss",
+      "akt": 2,
+      "prompt": "voice echoing into eternity then silence, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "vehren_spawn",
+      "section": "boss",
+      "akt": 3,
+      "prompt": "inquisitor's gavel slamming, then deep horn, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "vehren_phase",
+      "section": "boss",
+      "akt": 3,
+      "prompt": "valsa-fire bursting through armor, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "vehren_kill",
+      "section": "boss",
+      "akt": 3,
+      "prompt": "armor falling with last gasp, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shulavh_spawn",
+      "section": "boss",
+      "akt": 4,
+      "prompt": "mother's lullaby distorted into wail with root-creak, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shulavh_phase_madness",
+      "section": "boss",
+      "akt": 4,
+      "prompt": "lullaby breaking into laughter, unsettling, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shulavh_phase_forget",
+      "section": "boss",
+      "akt": 4,
+      "prompt": "lullaby fading into silence-with-inhale, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shulavh_kill",
+      "section": "boss",
+      "akt": 4,
+      "prompt": "thread snapping, then a sigh of relief, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "velharn_trio_spawn",
+      "section": "boss",
+      "akt": 5,
+      "prompt": "three voices speaking at once across time, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "velharn_phase_1to2",
+      "section": "boss",
+      "akt": -1,
+      "prompt": "time-shift — golden age to war age, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "velharn_phase_2to3",
+      "section": "boss",
+      "akt": -1,
+      "prompt": "time-shift — war age to present, hollow, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "velharn_kill",
+      "section": "boss",
+      "akt": -1,
+      "prompt": "three voices silenced one by one, 5 sec",
+      "duration_seconds": 5.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ertrunkene_koenigin_spawn",
+      "section": "boss",
+      "akt": 6,
+      "prompt": "queen rising from salt-wound with crown clinking underwater, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ertrunkene_koenigin_phase",
+      "section": "boss",
+      "akt": 6,
+      "prompt": "salt water flooding cavern, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ertrunkene_koenigin_kill",
+      "section": "boss",
+      "akt": 6,
+      "prompt": "drowning lament fading, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "echo_drache_spawn",
+      "section": "boss",
+      "akt": 6,
+      "prompt": "massive dragon roar through ash-storm, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "echo_drache_phase",
+      "section": "boss",
+      "akt": 6,
+      "prompt": "dragon-fire intensifying, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "echo_drache_kill",
+      "section": "boss",
+      "akt": 6,
+      "prompt": "dragon falling into ash with final breath, 5 sec",
+      "duration_seconds": 5.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "nicht_gott_spawn",
+      "section": "boss",
+      "akt": 6,
+      "prompt": "wrongness — sound that shouldn't exist, reality bending, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "nicht_gott_phase",
+      "section": "boss",
+      "akt": 6,
+      "prompt": "concept of phase-transition itself glitching, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "nicht_gott_kill",
+      "section": "boss",
+      "akt": 6,
+      "prompt": "anomaly collapsing into nothing, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "im_nesh_spawn",
+      "section": "boss",
+      "akt": 7,
+      "prompt": "calm friendly voice fading into hundred voices, layered, 5 sec",
+      "duration_seconds": 5.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "im_nesh_phase_1to2",
+      "section": "boss",
+      "akt": 7,
+      "prompt": "voice becoming desperate, faster, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "im_nesh_phase_2to3",
+      "section": "boss",
+      "akt": 7,
+      "prompt": "voice splitting into hundred languages, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "im_nesh_kill",
+      "section": "boss",
+      "akt": 7,
+      "prompt": "all voices speaking different last words at once, 5 sec",
+      "duration_seconds": 5.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_echo_kharn",
+      "section": "boss",
+      "akt": 99,
+      "prompt": "distorted Kharn-iron roar, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_echo_nheyra",
+      "section": "boss",
+      "akt": 99,
+      "prompt": "distorted Nheyra-time-shatter, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_echo_ousen",
+      "section": "boss",
+      "akt": 99,
+      "prompt": "distorted Ousen-mind-blast, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_echo_valsa",
+      "section": "boss",
+      "akt": 99,
+      "prompt": "distorted Valsa-fire-rage, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_echo_shulavh",
+      "section": "boss",
+      "akt": 99,
+      "prompt": "distorted Shulavh-mother-bind, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aithein_echo",
+      "section": "boss",
+      "akt": 99,
+      "prompt": "the sound of god dreaming — vast, slow, indescribable, 6 sec",
+      "duration_seconds": 6.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "der_achte",
+      "section": "boss",
+      "akt": 99,
+      "prompt": "the missing eighth — sound from a god that shouldn't exist, 5 sec",
+      "duration_seconds": 5.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt1_intro_shipwreck",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "shipwreck — wood splintering, water roaring, gull cries, 5 sec",
+      "duration_seconds": 5.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt1_intro_reveal",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "narrator-voice tone (memory-stone awakening hum), 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt1_intro_close",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "calm beach with distant church bell, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt2_helst_open",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "blind priest's first words spoken in ancient hall, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt2_helst_reveal",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "name 'Im-Nesh' spoken — world flinching, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt2_helst_close",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "soft echo fade, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt3_vehren_open",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "inquisition horn echoing across ash field, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt3_vehren_reveal",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "valsa-fire taking over vehren's body, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt3_vehren_close",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "ash settling silently, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt4_shulavh_open",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "mother's hum heard for the first time deep underground, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt4_shulavh_reveal",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "shulavh's true name spoken (whispered by player), 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt4_shulavh_close",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "thread tightening or loosening (choice-dependent), 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt5_ousen_open",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "the voice in player's head finally speaking out loud, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt5_ousen_reveal",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "ousen's name revealed — name as cosmic event, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt5_ousen_close",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "two clearer thoughts in player's head, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt6_disguise_open",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "trusted ally turning slowly to reveal Im-Nesh-mask, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt6_disguise_reveal",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "voice unchanging but words completely different — betrayal stinger, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt6_disguise_close",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "mask falls, real face revealed (silence), 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt7_imnesh_open",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "imnesh greeting player like an old friend, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt7_imnesh_reveal",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "argument starting — civilized debate of cosmic ending, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "akt7_imnesh_close",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "hundred voices interrupting at once, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ending_a_sacrifice",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "player fading into hollow geweihte — long sigh, 6 sec",
+      "duration_seconds": 6.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ending_b_betrayer",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "player taking up im-nesh's pen — single dark stroke, 5 sec",
+      "duration_seconds": 5.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ending_c_dreamer",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "aithein inhaling — the breath that wakes the world, 7 sec",
+      "duration_seconds": 7.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "reveal_universal",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "single deep gong with reverb tail — Velgrad's signature reveal sound, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "silence_universal",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "absence of sound made audible — for vergessens-welle, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "chord_seven_aspects",
+      "section": "cinematic",
+      "akt": -1,
+      "prompt": "seven-tone chord of all aspects together, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ambient_brassweir_day",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "harbor town with seagulls, distant ship bells, salt wind, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_brassweir_night",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "harbor town at night, lapping water, distant lantern creak, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_salzkueste",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "salt-cursed coast — wet wind, distant drowned voices, salt-crystals tinkling, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_salzwunde",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "salt-wound pulsing — wet rhythmic breathing of the world, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_echo_markt",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "glasgolden ruins market with echo-vendor mutterings, gold-dust falling, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_glasgold_ruins",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "ancient glass-towers swaying impossibly, golden wind, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_aschenfeld",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "ash falling silently, distant inquisitor patrol bells, embers, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_aschwunde",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "ash-wound burning without fuel, pain-undertone, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_knoten_markt",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "root-market with bone-clack and old-woman-mumbling, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_wurzelgrab",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "underground root cavern — wood creaking, dripping water, distant lullaby, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_spiegelhof",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "court of mirrors — three time-layers overlapping audibly, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_velharn",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "mirror city — voices from past speaking present words, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_hohlwunde",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "hollow-wound — paradox of audible silence, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_hohlwort",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "hollow-word — language being unmade, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_drei_muetter",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "three mothers humming three different lullabies at once, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_stille_zone",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "complete absence of sound with subtle inhale every 10 sec, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_vergessens_welle",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "world inhaling — a single 8-sec loop of forgetting, loop 8 sec",
+      "duration_seconds": 8.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_zhar_eth",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "wandering caravan — bells, hooves on sand, spear-clinks, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_saeulen_helst",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "burning pillars of helst — fanatical chants in distance, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "ambient_atlas_general",
+      "section": "ambience",
+      "akt": -1,
+      "prompt": "atlas hub — between-worlds humming, loop 60 sec",
+      "duration_seconds": 22.0,
+      "status": "pending"
+    },
+    {
+      "sfx_id": "mahnmal_stele_pulse",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "stone stele pulsing softly with memory, loop 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "mahnmal_stele_save",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "stele acknowledging save with single tone, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "mahnmal_travel_arrive",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "memory-stone teleport arrival, soft chime + breath, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "mahnmal_travel_depart",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "memory-stone teleport departure, reverse chime, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pakt_stone_glow",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "pact-stone humming in ambient resonance, loop 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pakt_stone_activate",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "pact-stone surging with power, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "vergessens_welle_warn",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "world inhaling — warning of upcoming forgetting wave, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "vergessens_welle_hit",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "object/enemy being unmade from existence, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "hohle_gewordene_step",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "person without shadow walking — almost-no-sound, eerie, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "hohle_gewordene_voice",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "voice that should be there but isn't quite, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "drei_zeiten_shift",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "time-layer shifting in Velharn, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_pakt_choice",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "choosing an aspect — that aspect's signature chord, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "aspekt_pakt_activate",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "passive pact buff activating per aspect, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "stille_zone_enter",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "stepping into silence-zone — sudden audio absence, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "stille_zone_exit",
+      "section": "lore",
+      "akt": -1,
+      "prompt": "stepping out — audio returning with relief, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "footstep_stone",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "single boot on dry stone, brief tap, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "footstep_wood",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "single boot on wooden plank, hollow tap, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "footstep_wet",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "single boot on wet stone with shallow water, splash, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "footstep_sand",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "single boot on dry sand, soft crunch, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "footstep_ash",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "single boot on ash with ember crackle, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "footstep_roots",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "single boot on living roots, organic creak, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "footstep_marble",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "single boot on polished marble, clear ring, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "footstep_glass",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "single boot on broken glass shards, tinkle, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "footstep_void",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "single muffled step in unreality, almost silent, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "footstep_grass",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "single boot on damp grass, soft, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "footstep_metal",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "single armored boot on metal grate, ring, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "move_jump_off",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "player jumping off ground with cloth rustle, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "move_land_soft",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "player landing softly on stone, brief impact, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "move_land_heavy",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "player landing heavily with armor clatter, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "move_water_splash",
+      "section": "movement",
+      "akt": -1,
+      "prompt": "player stepping into ankle-deep water, splash, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "damage_light_cloth",
+      "section": "player_combat",
+      "akt": -1,
+      "prompt": "weapon hitting cloth armor, brief slap, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "damage_med_leather",
+      "section": "player_combat",
+      "akt": -1,
+      "prompt": "weapon hitting leather armor, dull thud, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "damage_heavy_plate",
+      "section": "player_combat",
+      "akt": -1,
+      "prompt": "weapon ringing on plate armor, metallic, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "block_shield_metal",
+      "section": "player_combat",
+      "akt": -1,
+      "prompt": "metal shield deflecting weapon, sharp ring, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shield_break",
+      "section": "player_combat",
+      "akt": -1,
+      "prompt": "shield cracking and shattering, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "armor_break",
+      "section": "player_combat",
+      "akt": -1,
+      "prompt": "armor piece breaking off body, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "crit_universal_v2",
+      "section": "player_combat",
+      "akt": -1,
+      "prompt": "crit hit with metal ring and deep thud, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "player_death",
+      "section": "player_combat",
+      "akt": -1,
+      "prompt": "human death-gasp ending in long exhale, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "poison_tick",
+      "section": "status",
+      "akt": -1,
+      "prompt": "single drop of poison hissing into flesh, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "burning_loop",
+      "section": "status",
+      "akt": -1,
+      "prompt": "low fire crackle on skin, loop 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "frozen_apply",
+      "section": "status",
+      "akt": -1,
+      "prompt": "flesh freezing solid with crystal crack, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "frozen_break",
+      "section": "status",
+      "akt": -1,
+      "prompt": "frozen flesh shattering, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shock_tick",
+      "section": "status",
+      "akt": -1,
+      "prompt": "single electrical zap on skin, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "bleed_tick",
+      "section": "status",
+      "akt": -1,
+      "prompt": "single drop of blood hitting stone, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "heal_tick",
+      "section": "status",
+      "akt": -1,
+      "prompt": "single warm healing pulse, soft, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "stun_apply",
+      "section": "status",
+      "akt": -1,
+      "prompt": "head-impact with brief disorientation ring, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "silence_apply",
+      "section": "status",
+      "akt": -1,
+      "prompt": "voice cutting out abruptly with reverse-reverb, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "door_open_wood",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "wooden door creaking open slowly, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "door_open_metal",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "heavy metal door grinding open, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "door_close",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "door slamming shut with bolt-click, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "door_locked",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "doorhandle rattling against locked bolt, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "chest_open",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "wooden chest unlatching and lid opening, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "chest_locked",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "chest lock rattling, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "chest_unique",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "chest opening with magical chime — unique item inside, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "lever_pull",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "iron lever clunking down with mechanical clack, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "button_press",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "stone button being pressed with click, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "trap_trigger",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "mechanical trap snapping with rapid click and whoosh, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "trap_disarm",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "trap mechanism being neutralized with soft click, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "portal_enter",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "stepping through portal with whoosh and reverb, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "portal_exit",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "emerging from portal with breath-out, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "secret_wall_reveal",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "stone wall sliding aside slowly, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "treasure_jingle",
+      "section": "interact",
+      "akt": -1,
+      "prompt": "treasure room entered — soft golden chime, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "craft_hammer",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "blacksmith hammer striking metal once, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "craft_anvil",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "hammer-on-anvil ringing strike, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "gem_engrave",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "gemcutter etching memory-stone with soft scrape, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "gem_socket",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "gem clicking into item socket with magical hum, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "gem_unsocket",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "gem releasing from socket with reverse hum, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "reroll_orb",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "orb shattering with magical reroll energy, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "upgrade_success",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "magical upgrade success with ascending chime, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "upgrade_fail",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "magical upgrade failing with descending dissonance, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "salvage_breakdown",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "item being broken apart for materials, brief crunch, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "equip_weapon",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "weapon being drawn from sheath, brief metal slide, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "equip_armor",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "armor piece being strapped on body, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "unequip",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "armor or weapon being removed, leather rustle, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "drop_item",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "item being dropped on stone floor, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "sell_item",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "coin pouch receiving payment, brief jingle, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "buy_item",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "single gold coin tapping on counter, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "stash_open",
+      "section": "crafting",
+      "akt": -1,
+      "prompt": "wooden stash chest unlatching, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "menu_back",
+      "section": "menu",
+      "akt": -1,
+      "prompt": "soft reverse-tone, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "menu_select",
+      "section": "menu",
+      "akt": -1,
+      "prompt": "subtle selection chime, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "menu_confirm",
+      "section": "menu",
+      "akt": -1,
+      "prompt": "warm confirmation tone, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "menu_cancel",
+      "section": "menu",
+      "akt": -1,
+      "prompt": "soft cancellation tone, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "menu_error",
+      "section": "menu",
+      "akt": -1,
+      "prompt": "low buzz indicating invalid action, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "settings_apply",
+      "section": "menu",
+      "akt": -1,
+      "prompt": "settings being saved with brief positive tone, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "save_overwrite_warn",
+      "section": "menu",
+      "akt": -1,
+      "prompt": "warning chime — soft alarm, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "character_select",
+      "section": "menu",
+      "akt": -1,
+      "prompt": "character portrait highlight with soft hum, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pause_resume",
+      "section": "menu",
+      "akt": -1,
+      "prompt": "gameplay resuming with brief whoosh, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "game_over",
+      "section": "menu",
+      "akt": -1,
+      "prompt": "low slow descending tone of failure, 2.5 sec",
+      "duration_seconds": 2.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "quest_failed",
+      "section": "quest",
+      "akt": -1,
+      "prompt": "low somber tone of quest failure, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "quest_marker_reach",
+      "section": "quest",
+      "akt": -1,
+      "prompt": "soft positive chime as marker reached, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "quest_choice_hover",
+      "section": "quest",
+      "akt": -1,
+      "prompt": "very subtle hover-tone on choice button, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "quest_choice_select",
+      "section": "quest",
+      "akt": -1,
+      "prompt": "warm choice-locked-in tone, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "quest_lore_unlock",
+      "section": "quest",
+      "akt": -1,
+      "prompt": "codex entry unlocked — magical page turn, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "chest_decor_open",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "ornate dungeon chest creaking open with metal hinge, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "fountain_drink",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "drinking from stone fountain with soft splash and revitalizing chime, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "cursed_altar_touch",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "ancient cursed altar humming dangerously, ominous, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "cursed_altar_blessing",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "altar grants blessing — ascending warm tone, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "cursed_altar_curse",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "altar punishes — descending dark tone, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "rune_anchor_activate",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "magical rune circle lighting up with arcane hum, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "lore_tablet_read",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "ancient stone tablet whispering forgotten words, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "underworld_rift_enter",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "stepping into reality-tear with reverse-time whoosh, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "bookshelf_search",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "leather-bound book pages flipping rapidly, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "rune_inscribe",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "carving rune into stone with chisel, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "crystal_resonance",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "crystal cluster humming with magical resonance, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "sarcophagus_open",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "stone sarcophagus lid grinding open, deep, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "barrel_break",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "wooden barrel breaking apart, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pier_post_creak",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "wet pier wooden post creaking under weight, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "fishing_net_lift",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "fishing net being lifted from water with drips, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "anvil_touch",
+      "section": "decor",
+      "akt": -1,
+      "prompt": "blacksmith anvil ringing once when touched, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "trap_spike_shoot",
+      "section": "trap",
+      "akt": -1,
+      "prompt": "metal spikes shooting up from floor with sharp clang, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "trap_spike_retract",
+      "section": "trap",
+      "akt": -1,
+      "prompt": "spikes retracting back into floor, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "trap_fire_burst",
+      "section": "trap",
+      "akt": -1,
+      "prompt": "flame jet bursting from floor tile with whoosh, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "trap_arrow_volley",
+      "section": "trap",
+      "akt": -1,
+      "prompt": "multiple arrows firing from wall with whistle, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "trap_plate_click",
+      "section": "trap",
+      "akt": -1,
+      "prompt": "pressure plate clicking under weight, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "trap_pendulum_swing",
+      "section": "trap",
+      "akt": -1,
+      "prompt": "large pendulum blade swinging through air, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "trap_dart",
+      "section": "trap",
+      "akt": -1,
+      "prompt": "single dart firing from wall with thwip, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "trap_acid_spray",
+      "section": "trap",
+      "akt": -1,
+      "prompt": "acid being sprayed from ceiling with hiss, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "weather_crypt_dust",
+      "section": "weather",
+      "akt": -1,
+      "prompt": "stone dust falling and settling in old crypt, very quiet loop 8 sec",
+      "duration_seconds": 8.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "weather_frost_snow",
+      "section": "weather",
+      "akt": -1,
+      "prompt": "soft snowfall on ancient ruins, loop 8 sec",
+      "duration_seconds": 8.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "weather_lava_ash",
+      "section": "weather",
+      "akt": -1,
+      "prompt": "ash falling like snow with distant ember crackle, loop 8 sec",
+      "duration_seconds": 8.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "weather_town_pollen",
+      "section": "weather",
+      "akt": -1,
+      "prompt": "warm village ambient with pollen drift, loop 8 sec",
+      "duration_seconds": 8.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "weather_desert_sand",
+      "section": "weather",
+      "akt": -1,
+      "prompt": "wind whipping fine sand across stone, loop 8 sec",
+      "duration_seconds": 8.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "weather_swamp_spore",
+      "section": "weather",
+      "akt": -1,
+      "prompt": "wet swamp with bubbling spores and distant frog, loop 8 sec",
+      "duration_seconds": 8.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "weather_astral_dust",
+      "section": "weather",
+      "akt": -1,
+      "prompt": "ethereal cosmic dust with subtle chimes, loop 8 sec",
+      "duration_seconds": 8.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "druid_return_human",
+      "section": "class_special",
+      "akt": -1,
+      "prompt": "shapeshifting back to human with sigh, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "witch_skeleton_dismiss",
+      "section": "class_special",
+      "akt": -1,
+      "prompt": "skeleton collapsing back to bones, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "sorceress_funken_cackle",
+      "section": "class_special",
+      "akt": -1,
+      "prompt": "manic laugh with electric crackles, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "monk_atem_disziplin",
+      "section": "class_special",
+      "akt": -1,
+      "prompt": "three deep controlled breaths of focus, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "mercenary_reload_click",
+      "section": "class_special",
+      "akt": -1,
+      "prompt": "crossbow reload with chain clinks and lock-click, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ranger_seed_pod_burst",
+      "section": "class_special",
+      "akt": -1,
+      "prompt": "seed pod exploding with leafy debris, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "warrior_battle_cry",
+      "section": "class_special",
+      "akt": -1,
+      "prompt": "deep battle cry — disciplined warrior shout, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pickup_marke_low",
+      "section": "currency",
+      "akt": -1,
+      "prompt": "small Mahnmal-tag tinkling on chain, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pickup_marke_high",
+      "section": "currency",
+      "akt": -1,
+      "prompt": "heavier Mahnmal-medallion with deep ring, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pickup_uncut_shard",
+      "section": "currency",
+      "akt": -1,
+      "prompt": "raw memory-crystal humming softly, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pickup_orb_regret",
+      "section": "currency",
+      "akt": -1,
+      "prompt": "orb of regret pulsing with magical energy, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pickup_atlas_stone",
+      "section": "currency",
+      "akt": -1,
+      "prompt": "atlas-stone crackling with multi-world resonance, 0.9 sec",
+      "duration_seconds": 0.9,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pickup_potion",
+      "section": "currency",
+      "akt": -1,
+      "prompt": "glass potion bottle being picked up, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pickup_scroll",
+      "section": "currency",
+      "akt": -1,
+      "prompt": "rolled parchment being grabbed, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pickup_key",
+      "section": "currency",
+      "akt": -1,
+      "prompt": "iron key clinking, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pickup_quest_item",
+      "section": "currency",
+      "akt": -1,
+      "prompt": "quest item glowing with significance, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pickup_aithein_frag",
+      "section": "currency",
+      "akt": -1,
+      "prompt": "fragment of Aithein's breath — ethereal, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "event_rift_warning",
+      "section": "event",
+      "akt": -1,
+      "prompt": "reality cracking with cosmic groan, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "event_ambush_warning",
+      "section": "event",
+      "akt": -1,
+      "prompt": "shadowy figures rising from darkness with rustle, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "event_lore_echo",
+      "section": "event",
+      "akt": -1,
+      "prompt": "ghostly voice fragment from the past, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "event_treasure_discover",
+      "section": "event",
+      "akt": -1,
+      "prompt": "discovery chime — soft golden tone, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "event_secret_room",
+      "section": "event",
+      "akt": -1,
+      "prompt": "hidden passage discovered — subtle revelation, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "event_dungeon_clear",
+      "section": "event",
+      "akt": -1,
+      "prompt": "last enemy down — dungeon-clear ambient swell, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "event_new_area",
+      "section": "event",
+      "akt": -1,
+      "prompt": "new area entered — atmospheric transition, 2.5 sec",
+      "duration_seconds": 2.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "event_quest_giver_appear",
+      "section": "event",
+      "akt": -1,
+      "prompt": "ethereal arrival chime — quest NPC appearing, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "boss_special_charge",
+      "section": "boss_special",
+      "akt": -1,
+      "prompt": "boss charging massive attack with rising tension, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "boss_special_release",
+      "section": "boss_special",
+      "akt": -1,
+      "prompt": "boss releasing channeled attack with shockwave, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "boss_stomp",
+      "section": "boss_special",
+      "akt": -1,
+      "prompt": "boss stomping ground with massive impact and shake, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "boss_beam",
+      "section": "boss_special",
+      "akt": -1,
+      "prompt": "boss firing concentrated beam attack, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "boss_aoe_telegraph",
+      "section": "boss_special",
+      "akt": -1,
+      "prompt": "boss AoE warning indicator pulse, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "boss_summon_adds",
+      "section": "boss_special",
+      "akt": -1,
+      "prompt": "boss summoning minions with arcane gesture, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "boss_teleport",
+      "section": "boss_special",
+      "akt": -1,
+      "prompt": "boss teleporting away with whoosh, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "boss_rage_trigger",
+      "section": "boss_special",
+      "akt": -1,
+      "prompt": "boss entering rage state with roar, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "boss_heal_self",
+      "section": "boss_special",
+      "akt": -1,
+      "prompt": "boss restoring health with dark hum, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "boss_shield_break",
+      "section": "boss_special",
+      "akt": -1,
+      "prompt": "boss shield finally breaking with crack, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "flask_use",
+      "section": "flask",
+      "akt": -1,
+      "prompt": "glass flask uncorked and contents gulped, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "flask_health_glow",
+      "section": "flask",
+      "akt": -1,
+      "prompt": "healing potion taking effect with warm pulse, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "flask_mana_glow",
+      "section": "flask",
+      "akt": -1,
+      "prompt": "mana potion taking effect with blue shimmer, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "flask_dud",
+      "section": "flask",
+      "akt": -1,
+      "prompt": "flask is empty — disappointed click, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "food_eat",
+      "section": "flask",
+      "akt": -1,
+      "prompt": "eating bread/cheese with chew sounds, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "scroll_read",
+      "section": "flask",
+      "akt": -1,
+      "prompt": "reading magical scroll with arcane whisper, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "player_grunt_light",
+      "section": "player_voice",
+      "akt": -1,
+      "prompt": "soft male/female grunt of effort, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "player_grunt_heavy",
+      "section": "player_voice",
+      "akt": -1,
+      "prompt": "heavy strained grunt from big swing, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "player_hurt_low_hp",
+      "section": "player_voice",
+      "akt": -1,
+      "prompt": "pained gasp at low HP, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "player_dodge_breath",
+      "section": "player_voice",
+      "akt": -1,
+      "prompt": "sharp inhale during dodge, 0.3 sec",
+      "duration_seconds": 0.3,
+      "status": "done"
+    },
+    {
+      "sfx_id": "player_dash_breath",
+      "section": "player_voice",
+      "akt": -1,
+      "prompt": "rapid exhale during dash, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "player_revive",
+      "section": "player_voice",
+      "akt": -1,
+      "prompt": "gasping breath of revival, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "achievement_unlock",
+      "section": "achievement",
+      "akt": -1,
+      "prompt": "ceremonial chime of achievement unlock, 1.2 sec",
+      "duration_seconds": 1.2,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ascendancy_unlock",
+      "section": "achievement",
+      "akt": -1,
+      "prompt": "deep gong of ascendancy class unlock, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "codex_entry_unlocked",
+      "section": "achievement",
+      "akt": -1,
+      "prompt": "magical page-turn with reveal chime, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "faction_rep_milestone",
+      "section": "achievement",
+      "akt": -1,
+      "prompt": "faction reputation milestone — warm acknowledgement, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "title_earned",
+      "section": "achievement",
+      "akt": -1,
+      "prompt": "honorific title earned — single deep gong, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "mastery_node_unlock",
+      "section": "achievement",
+      "akt": -1,
+      "prompt": "skill-tree mastery node activating with shimmer, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "engrave_kharn",
+      "section": "engrave",
+      "akt": -1,
+      "prompt": "iron resonance — Form-Aspekt being inscribed, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "engrave_nheyra",
+      "section": "engrave",
+      "akt": -1,
+      "prompt": "ticking-reversing — Zeit-Aspekt being inscribed, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "engrave_ousen",
+      "section": "engrave",
+      "akt": -1,
+      "prompt": "mental hum — Geist-Aspekt being inscribed, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "engrave_valsa",
+      "section": "engrave",
+      "akt": -1,
+      "prompt": "fire crackle — Wille-Aspekt being inscribed, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "engrave_imnesh",
+      "section": "engrave",
+      "akt": -1,
+      "prompt": "whispered foreign syllable — Sprache-Aspekt being inscribed, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "engrave_shulavh",
+      "section": "engrave",
+      "akt": -1,
+      "prompt": "organic creak — Bindung-Aspekt being inscribed, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "engrave_vergessen",
+      "section": "engrave",
+      "akt": -1,
+      "prompt": "world-inhale — Vergessens-Aspekt being inscribed, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pakt_kharn_active",
+      "section": "pakt",
+      "akt": -1,
+      "prompt": "Kharn-pact buff activating — iron-form pulse, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pakt_nheyra_active",
+      "section": "pakt",
+      "akt": -1,
+      "prompt": "Nheyra-pact buff activating — time-distorted pulse, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pakt_ousen_active",
+      "section": "pakt",
+      "akt": -1,
+      "prompt": "Ousen-pact buff activating — mental clarity wave, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pakt_valsa_active",
+      "section": "pakt",
+      "akt": -1,
+      "prompt": "Valsa-pact buff activating — fire-aura pulse, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pakt_imnesh_active",
+      "section": "pakt",
+      "akt": -1,
+      "prompt": "Im-Nesh-pact buff activating — chaotic syllable pulse, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pakt_shulavh_active",
+      "section": "pakt",
+      "akt": -1,
+      "prompt": "Shulavh-pact buff activating — root-bind pulse, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "pakt_vergessen_active",
+      "section": "pakt",
+      "akt": -1,
+      "prompt": "Vergessens-pact buff activating — silence-implosion pulse, 1 sec",
+      "duration_seconds": 1.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "dawn_chime",
+      "section": "daynight",
+      "akt": -1,
+      "prompt": "morning chime — birds and warm light fading in, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "dusk_chime",
+      "section": "daynight",
+      "akt": -1,
+      "prompt": "evening chime — distant bell and cool light, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "midnight_bell",
+      "section": "daynight",
+      "akt": -1,
+      "prompt": "ancient tower bell tolling midnight 12 times, 8 sec",
+      "duration_seconds": 8.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "noon_silence",
+      "section": "daynight",
+      "akt": -1,
+      "prompt": "high noon — sudden silence of midday sun, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shop_open",
+      "section": "shop",
+      "akt": -1,
+      "prompt": "vendor stall opening with cloth rustle, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shop_close",
+      "section": "shop",
+      "akt": -1,
+      "prompt": "vendor stall closing, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shop_buy_confirm",
+      "section": "shop",
+      "akt": -1,
+      "prompt": "purchase confirmed — coin counter click, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shop_sell_confirm",
+      "section": "shop",
+      "akt": -1,
+      "prompt": "sale confirmed — coin into pouch, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shop_no_gold",
+      "section": "shop",
+      "akt": -1,
+      "prompt": "vendor scoffing — insufficient funds, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "shop_restock_notify",
+      "section": "shop",
+      "akt": -1,
+      "prompt": "vendor inventory refreshed — gentle chime, 0.8 sec",
+      "duration_seconds": 0.8,
+      "status": "done"
+    },
+    {
+      "sfx_id": "inv_drag_pickup",
+      "section": "shop",
+      "akt": -1,
+      "prompt": "item being lifted from inventory slot, 0.3 sec",
+      "duration_seconds": 0.3,
+      "status": "done"
+    },
+    {
+      "sfx_id": "inv_drag_drop_valid",
+      "section": "shop",
+      "akt": -1,
+      "prompt": "item dropping into valid slot with click, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "inv_drag_drop_invalid",
+      "section": "shop",
+      "akt": -1,
+      "prompt": "item refused — soft buzz, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "inv_sort",
+      "section": "shop",
+      "akt": -1,
+      "prompt": "inventory sorting — multiple items shuffling briefly, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "tutorial_arrow_appear",
+      "section": "tutorial",
+      "akt": -1,
+      "prompt": "tutorial hint appearing — soft attention chime, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "tutorial_arrow_dismiss",
+      "section": "tutorial",
+      "akt": -1,
+      "prompt": "tutorial hint dismissed — subtle fade, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "tutorial_step_done",
+      "section": "tutorial",
+      "akt": -1,
+      "prompt": "tutorial step completed — positive chime, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "hint_popup",
+      "section": "tutorial",
+      "akt": -1,
+      "prompt": "in-game hint appearing — soft notification, 0.5 sec",
+      "duration_seconds": 0.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "ping_objective",
+      "section": "tutorial",
+      "akt": -1,
+      "prompt": "player marked objective — pulsing ping, 0.7 sec",
+      "duration_seconds": 0.7,
+      "status": "done"
+    },
+    {
+      "sfx_id": "save_quick",
+      "section": "saveload",
+      "akt": -1,
+      "prompt": "quick save chime — brief positive tone, 0.6 sec",
+      "duration_seconds": 0.6,
+      "status": "done"
+    },
+    {
+      "sfx_id": "load_game",
+      "section": "saveload",
+      "akt": -1,
+      "prompt": "save game loading — magical refresh, 1.5 sec",
+      "duration_seconds": 1.5,
+      "status": "done"
+    },
+    {
+      "sfx_id": "autosave_subtle",
+      "section": "saveload",
+      "akt": -1,
+      "prompt": "very quiet autosave acknowledgement, 0.4 sec",
+      "duration_seconds": 0.4,
+      "status": "done"
+    },
+    {
+      "sfx_id": "hardcore_death",
+      "section": "saveload",
+      "akt": -1,
+      "prompt": "dramatic hardcore character death — single tragic gong, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "memorial_inscribe",
+      "section": "saveload",
+      "akt": -1,
+      "prompt": "name being chiseled into memorial stone, 2 sec",
+      "duration_seconds": 2.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "atmos_revelation",
+      "section": "atmos",
+      "akt": -1,
+      "prompt": "moment of revelation — slow rising tone with deep gong, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "atmos_dread",
+      "section": "atmos",
+      "akt": -1,
+      "prompt": "creeping dread — slow descent into low rumble, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "atmos_hope",
+      "section": "atmos",
+      "akt": -1,
+      "prompt": "hope rising — slow ascending warm chord, 4 sec",
+      "duration_seconds": 4.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "atmos_loss",
+      "section": "atmos",
+      "akt": -1,
+      "prompt": "loss & melancholy — single sustained low note, 5 sec",
+      "duration_seconds": 5.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "atmos_wonder",
+      "section": "atmos",
+      "akt": -1,
+      "prompt": "moment of wonder — ethereal harp glissando, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    },
+    {
+      "sfx_id": "atmos_silence_break",
+      "section": "atmos",
+      "akt": -1,
+      "prompt": "long silence breaking with single dramatic note, 3 sec",
+      "duration_seconds": 3.0,
+      "status": "done"
+    }
+  ]
+}

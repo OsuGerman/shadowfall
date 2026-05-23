@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Shadowfall starten",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/shadowfall2.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
+}
