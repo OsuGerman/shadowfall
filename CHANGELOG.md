@@ -4,6 +4,68 @@
 
 ---
 
+## [2026-05-23] — Update #152 — Main-Quest-Spine für Akt 2 + Akt 4 (Quest-Lücken geschlossen)
+
+**Plan/Welt-Audit:** Vor diesem Update hatten nur Akt 1, 3 und 5 eine Hauptquest. Akt 2 (Echo-Markt → Senator-Geist) und Akt 4 (Knoten-Markt → Shulavh) waren in der Quest-Datenbank Lücken — der Spieler verlor nach Akt 1 die narrative Führung, weil die `_get_quest_target_portal`-Logik aus #151 ohne aktive Main-Quest zurück auf den Tutorial-Fallback fiel.
+
+WELT_AUFBAU 3.4 und 3.6 listet beide Quests bisher als `[ ]`. Mit diesem Update sind Akt 1-5 alle Main-Quest-gedeckt.
+
+### Neue Main-Quests in [sf/quest_data.py](sf/quest_data.py)
+
+**1. `akt2_asch_prophezeiung` — „Die Asch-Prophezeiung"**
+- **Giver:** Bruder Helst der Hundertjährige (Echo-Markt-Outpost)
+- **Stages (5):**
+  1. TALK Helst — „Bring mir den Pakt-Stein"
+  2. REACH biome=`frost` (Glasgoldene Ruinen / Echo-Palast)
+  3. KILL 5× `goldstaub_diener` (Bestiarium #6) — sammelt Erinnerungen
+  4. KILL `senator_geist` (Boss, Bestiarium #7) — Akt-2-Endboss
+  5. RETURN Helst
+- **Reward:** 400 Gold, 300 XP, Item „Helst-Pakt-Stein", Erblinde Kirche +35, Mahnmal-Gilde +15
+- **Lore-Anker:** Helst-Pool aus VOICE_LINES_POOL.md („Ich sah Velharn fallen. Dann band ich mir die Augen.")
+
+**2. `akt4_shulavh_faden` — „Shulavhs Faden"**
+- **Giver:** Vossharil die Dreimalige (Knoten-Markt-Outpost)
+- **Stages (7):** TALK Vossharil → REACH `swamp` → KILL 4× `faden_gebundener` → KILL `shulavh`-Boss → **CHOICE `shulavh_choice`** (`heilen`/`bezwingen`) → **CONDITIONAL** (Heilen-Pfad: extra Vossharil-Dialog mit Faden-Splitter) → RETURN Vossharil
+- **Reward:** 600 Gold, 500 XP, Item „Vossharils Bruder" (Unique aus ITEMS_BIBEL), Knochenwitwen +40
+- **CHOICE-Flag** `shulavh_choice` wird für Akt 6 zur Verfügung gestellt (siehe Akt-6-Quest-Block in WELT_AUFBAU 3.8 — folgt in späterem Update)
+
+### Akt-Gating
+
+Beide Quests nutzen die existierende `_quest_prerequisite_met`-Logik (aus #145):
+- `region='Akt 2 — Glasgoldene Ruinen'` → required_akt=2 → braucht `completed_dungeons >= 1`
+- `region='Akt 4 — Wurzelgrab'` → required_akt=4 → braucht `completed_dungeons >= 3`
+
+So sieht ein Akt-1-Spieler kein „!"-Marker über Helst, ein Akt-3-Spieler kein „!" über Vossharil. NPC-Marker und Quest-Offer-Pipeline sind bereits Akt-Gate-fähig.
+
+### Quest-driven Portal-Highlight wirkt jetzt ohne Lücken
+
+[sf/game.py](sf/game.py) `_get_quest_target_portal` (#151) mappt:
+- `akt2_asch_prophezeiung` REACH biome=frost → highlight `echo_markt`-Outpost-Portal mit „HAUPTQUEST"
+- `akt4_shulavh_faden` REACH biome=swamp → highlight `knoten_markt`-Outpost-Portal
+
+Der Spieler hat damit **durchgehend** vom Game-Start bis zum Akt-5-Boss eine sichtbare Quest-Spine in der Welt.
+
+### Tests (3 neu)
+
+- `test_akt2_main_quest_offered_by_helst` — Quest registriert, Helst-Giver, Akt-Gate (offerable erst nach Akt 1)
+- `test_akt4_main_quest_offered_by_vossharil` — Vossharil-Giver, CHOICE-Stage existiert (`shulavh_choice` Flag), Akt-Gate (offerable erst nach Akt 3 + Vossharil-Ritual)
+- `test_main_quest_chain_continuous` — Akt 1, 2, 3, 4, 5 haben jeweils ≥1 Main-Quest in ALL_QUESTS
+- **163/163 PASS**
+
+### Files
+
+- [sf/quest_data.py](sf/quest_data.py), [tests/smoke.py](tests/smoke.py)
+
+### Noch offen (Quest-Pipeline, separat priorisiert)
+
+Aus WELT_AUFBAU 3:
+- **Akt 1b** (`tameris_trial`-Boss-Encounter): braucht erst BOSS_ENCOUNTERS-Eintrag
+- **Akt 6** (`akt6_salzwunde/aschwunde/hohlwunde_lesen`): 3 parallel-laufende Mains + Choice-Konsequenz aus `shulavh_choice`
+- **Akt 7** (`akt7_im_nesh_dialog/_boss/_finale_wahl`): 3-Endings-Pipeline
+- **Sidequests Akt 2-5** (Tribunal-Faction, Bounty, Crafting, Hidden): jeweils ~5 Quests pro Akt
+
+---
+
 ## [2026-05-23] — Update #151 — Quest-driven Progression, Settings-Persistence, Sharpness, Class-VFX
 
 **User:** „Arbeite weiter an Quest und spielbaren Fortschritt — die Gebiete, nicht jede klasse sollte gleich aussehen genauso wenig wie die attacken. Es soll klar sein bei den Quest was mann wo machen sollte — aktuell geht man planlos in 2 verfügbare portale wobei gefühlt 20 auf einer stelle stehen und kommt dann nicht weiter !!! Einstellungen wie Vollbild diese Seekrankheits einstellung und FPs sollten gespeichert werden. Auch die Auflösung könnte schärfer sein."

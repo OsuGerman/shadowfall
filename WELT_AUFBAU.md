@@ -2,6 +2,8 @@
 
 > **Zweck dieses Dokuments.** Eine einzige zentrale Arbeitsdatei, an der alles entlangläuft: Welt-Topologie, NPC-Roster, Quests, Items, Currencies, Bosse, Funktionen. Reihenfolge in Phasen 1–4. Jeder Block hat `[ ]` Checkboxen + Lore-Quelle + Code-Anker.
 >
+> 📍 **Naechste konkrete Schritte:** Siehe [ROADMAP.md](ROADMAP.md) — 5-Tier-Sprint-Plan synthetisiert aus diesem Doc + [PLAN.md](PLAN.md) + [QUEST_BIBEL.md](QUEST_BIBEL.md). WELT_AUFBAU.md hier ist die Welt-Daten-Bibel, ROADMAP.md ist „Was zuerst, was danach".
+>
 > **Quellen-Hierarchie (von PLAN.md übernommen):**
 > 1. [VELGRAD_LORE_BIBEL.md](VELGRAD_LORE_BIBEL.md)
 > 2. [VELGRAD_BESTIARIUM.md](VELGRAD_BESTIARIUM.md) + [VELGRAD_ITEMS_UNIQUE_BIBEL.md](VELGRAD_ITEMS_UNIQUE_BIBEL.md)
@@ -174,7 +176,7 @@ Aktuell in [sf/quest_data.py](sf/quest_data.py): TALK, KILL, REACH, COLLECT, INT
 
 ### 3.4 Akt 2 — Glasgoldene Ruinen (Echo-Markt-Hub)
 
-- [ ] `akt2_asch_prophezeiung` — Main (Helst gibt — Senator-Geist-Boss)
+- [x] `akt2_asch_prophezeiung` — Main (Helst gibt — Senator-Geist-Boss) ✅ #152
 - [ ] `akt2_helst_pact_stones` — Faction (Erblinde Kirche)
 - [ ] `akt2_echo_handel` — Side (Senator-Geist-Vendor freischalten)
 - [ ] `akt2_otreth_glas_gravur` — Crafting (Glas-Gem schleifen)
@@ -194,7 +196,7 @@ Aktuell in [sf/quest_data.py](sf/quest_data.py): TALK, KILL, REACH, COLLECT, INT
 
 ### 3.6 Akt 4 — Wurzelgrab (Knoten-Markt-Hub)
 
-- [ ] `akt4_shulavh_faden` — Main (Choice: Heilen oder Bezwingen)
+- [x] `akt4_shulavh_faden` — Main (Choice: Heilen oder Bezwingen) ✅ #152
 - [ ] `akt4_knochenwitwen_aufnahme` — Faction (Vossharil-Trial)
 - [ ] `akt4_hohle_sohn` — Side (Hohlen Sohn folgen, Lore-Reveal)
 - [ ] `akt4_drei_tode` — Lore (Vossharils Drei-Tode-Geschichte zusammensetzen)
@@ -230,7 +232,7 @@ Aktuell in [sf/quest_data.py](sf/quest_data.py): TALK, KILL, REACH, COLLECT, INT
   - **Pakt umschreiben** — Im-Nesh-Path, Spieler regiert
   - **Aithein wecken** — Letzter-Träumer-Reveal, leere weiße Welt
 
-**Gesamt-Quests: 4 ✅ + 47 [ ] = 51 Quests im Voll-Ausbau.**
+**Gesamt-Quests: 6 ✅ + 45 [ ] = 51 Quests im Voll-Ausbau.** *(Update #152: +akt2_asch_prophezeiung, +akt4_shulavh_faden — Akt 1-5 Main-Spine vollständig)*
 
 ---
 

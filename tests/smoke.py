@@ -2566,10 +2566,10 @@ def test_quest_akt_gate():
         f'Asch-Pakt sollte gelockt sein für Akt-1-Player: {offer}')
     # 2. Prerequisite-Logic
     pkt = _qd.QUEST_ASCH_PAKT
-    assert _q.QuestLog._quest_prerequisite_met(pkt, g.player) is False
+    assert log._quest_prerequisite_met(pkt, g.player) is False
     # Mit 2 Dungeons → Asch-Pakt unlocked
     g.player.completed_dungeons = {'crypt_lost', 'frost_palace'}
-    assert _q.QuestLog._quest_prerequisite_met(pkt, g.player) is True
+    assert log._quest_prerequisite_met(pkt, g.player) is True
     # 3. npc_marker
     g.player.completed_dungeons = set()
     # Salzwunde ist Initial-Quest → schon active.  Eldon hat keine
@@ -3318,6 +3318,90 @@ def test_quest_target_portal_from_main_quest_biome():
     assert kind == 'dungeon'
     assert key == 'crypt_lost'
     assert label == 'HAUPTQUEST'
+    return True
+
+
+def test_akt2_main_quest_offered_by_helst():
+    """Update #152 (Quest-Spine durchziehen): Akt 2 Main-Quest
+    `akt2_asch_prophezeiung` wird von Bruder Helst angeboten — aber
+    NUR nachdem der Player Akt 1 abgeschlossen hat (akt-gate).
+    """
+    from sf.game import Game
+    from sf import quest_data as _qd
+    g = Game()
+    g.start_game('adventure')
+    # Quest existiert in der Registry
+    quest = _qd.quest_by_id('akt2_asch_prophezeiung')
+    assert quest is not None
+    assert quest['is_main'] is True
+    assert quest['giver'] == 'Bruder Helst der Hundertjährige'
+    # Akt-1-Player: noch nicht offerable
+    g.player.completed_dungeons = set()
+    offerable_a = _qd.quests_offered_by_npc('Bruder Helst der Hundertjährige')
+    assert any(q['id'] == 'akt2_asch_prophezeiung' for q in offerable_a)
+    # Aber NPC-Marker zeigt es noch nicht (akt-gate)
+    offer_a = g.quest_log.npc_has_offer(
+        'Bruder Helst der Hundertjährige', player=g.player)
+    if offer_a is not None:
+        assert offer_a['id'] != 'akt2_asch_prophezeiung', (
+            'Akt-2-Quest fälschlich offerable vor Akt 1')
+    # Akt 1 abgeschlossen → offerable
+    g.player.completed_dungeons = {'crypt_lost'}
+    offer_b = g.quest_log.npc_has_offer(
+        'Bruder Helst der Hundertjährige', player=g.player)
+    assert offer_b is not None and offer_b['id'] == 'akt2_asch_prophezeiung'
+    return True
+
+
+def test_akt4_main_quest_offered_by_vossharil():
+    """Update #152: Akt 4 Main-Quest `akt4_shulavh_faden` wird von
+    Vossharil angeboten — erst nach Akt 3.
+    """
+    from sf.game import Game
+    from sf import quest_data as _qd
+    g = Game()
+    g.start_game('adventure')
+    quest = _qd.quest_by_id('akt4_shulavh_faden')
+    assert quest is not None
+    assert quest['is_main'] is True
+    assert quest['giver'] == 'Vossharil die Dreimalige'
+    # CHOICE-Stage existiert (mit shulavh_choice-Flag)
+    has_choice = any(
+        s.get('type') == 'choice'
+        and s.get('target', {}).get('flag') == 'shulavh_choice'
+        for s in quest['stages'])
+    assert has_choice, 'Shulavh-Quest hat keine CHOICE-Stage'
+    # Akt 3 noch nicht erreicht → nicht offerable
+    g.player.completed_dungeons = {'crypt_lost'}
+    offer_a = g.quest_log.npc_has_offer(
+        'Vossharil die Dreimalige', player=g.player)
+    if offer_a is not None:
+        assert offer_a['id'] != 'akt4_shulavh_faden'
+    # 3 Dungeons abgeschlossen → akt_progress=3 → Akt 4 unlocked.
+    # Vossharil hat 2 Quests (Faden-Bindung + Shulavh-Faden); akt4_vossharil_ritual
+    # wird zuerst angeboten (Ritual ist die niedrigere Akt-Level-Quest).
+    # Sobald completed → akt4_shulavh_faden wird offerable.
+    g.player.completed_dungeons = {'crypt_lost', 'frost_palace', 'lava_pit'}
+    g.quest_log.completed.add('akt4_vossharil_ritual')
+    offer_b = g.quest_log.npc_has_offer(
+        'Vossharil die Dreimalige', player=g.player)
+    assert offer_b is not None and offer_b['id'] == 'akt4_shulavh_faden', (
+        f'erwartete akt4_shulavh_faden, bekam {offer_b}')
+    return True
+
+
+def test_main_quest_chain_continuous():
+    """Update #152: Jeder Akt 1-5 (außer Akt 1b) hat eine Main-Quest.
+    Stellt sicher, dass der Quest-Pfad nicht abreißt.
+    """
+    from sf import quest_data as _qd
+    mains = [q for q in _qd.ALL_QUESTS if q.get('is_main')]
+    # Pro Akt 1, 2, 3, 4, 5 sollte mind. eine Main existieren
+    expected_akts = (1, 2, 3, 4, 5)
+    for akt in expected_akts:
+        prefix = f'Akt {akt}'
+        has = any(q.get('region', '').startswith(prefix) for q in mains)
+        assert has, f'Akt {akt} hat keine Main-Quest!'
     return True
 
 
@@ -5286,6 +5370,9 @@ TESTS = [
     ('quest_target_tutorial',      test_quest_target_portal_tutorial_fallback),
     ('quest_target_main_biome',    test_quest_target_portal_from_main_quest_biome),
     ('class_specific_attack_vfx',  test_class_specific_basic_attack_vfx),
+    ('akt2_main_quest_helst',      test_akt2_main_quest_offered_by_helst),
+    ('akt4_main_quest_vossharil',  test_akt4_main_quest_offered_by_vossharil),
+    ('main_quest_chain_continuous', test_main_quest_chain_continuous),
 ]
 
 

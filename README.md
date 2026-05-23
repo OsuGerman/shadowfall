@@ -270,7 +270,7 @@ Smoke-Tests in [`tests/smoke.py`](tests/smoke.py) decken Engine-Importe, Save/Lo
 - ⏳ Endgame-Atlas (Welkende Welten)
 - ⏳ KI-generierte Sprites via Scenario.gg / Stable Diffusion (geplant)
 
-Detail-Roadmap in [WELT_AUFBAU.md](WELT_AUFBAU.md) (Sektion 13: Phasen-Plan).
+Detail-Roadmap in [ROADMAP.md](ROADMAP.md) (5-Tier-Sprint-Plan, 149 priorisierte Tasks aus PLAN.md + WELT_AUFBAU.md + QUEST_BIBEL.md synthetisiert).
 
 ---
 

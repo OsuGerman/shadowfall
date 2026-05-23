@@ -370,16 +370,26 @@ class QuestLog:
             return q
         return None
 
-    @staticmethod
-    def _quest_prerequisite_met(quest, player):
+    def _quest_prerequisite_met(self, quest, player):
         """Update #145: Returnt True wenn die Quest jetzt akzeptiert
         werden kann (Akt-Gate erfüllt).
 
         Logik: parse `region`-Feld der Quest („Akt N — ...") → erforderlicher
         akt_progress = N - 1.  Player muss `completed_dungeons` mit
         mind. N-1 Einträgen haben.
+
+        Update #153: Zusätzlicher `requires_quests`-Check.  Wenn die Quest
+        das Feld `requires_quests=['qid1', 'qid2', ...]` hat, müssen ALLE
+        diese Quests bereits in `self.completed` sein.  Verwendet für
+        Akt-6-Finale „Pakt übersetzen" das die 3 Wunden-Reads voraussetzt.
         """
         import re as _re
+        # Update #153: requires_quests-Check
+        required_quests = quest.get('requires_quests')
+        if required_quests:
+            for req_qid in required_quests:
+                if req_qid not in self.completed:
+                    return False
         region = quest.get('region', '')
         m = _re.search(r'Akt (\d+)', region)
         if m is None:

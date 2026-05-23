@@ -3,6 +3,8 @@
 > **Source-of-Truth für den Fortschritt.** Reihenfolge folgt **Teil I.1** des Erweiterungs-Briefings.
 > Tasks erledigt? `- [x]` setzen + Eintrag in [CHANGELOG.md](CHANGELOG.md).
 > Codebase: Python/Pygame in [sf/](sf/), Einstiegspunkte [shadowfall.py](shadowfall.py) und [shadowfall2.py](shadowfall2.py).
+>
+> 📍 **Naechste Schritte mit echter Prio:** Siehe [ROADMAP.md](ROADMAP.md) — 5-Tier-Sprint-Plan (Akt-1-Sealing → Akt-2 → Akt-3-5 → Akt-6-7-Endgame → Polish). Synthese aus diesem PLAN + [WELT_AUFBAU.md](WELT_AUFBAU.md) + [QUEST_BIBEL.md](QUEST_BIBEL.md). Dieses PLAN.md bleibt die Update-Historie (#1–#151+).
 
 ## GLOBALE REGELN (gelten für JEDE Task — NICHT VERHANDELBAR)
 

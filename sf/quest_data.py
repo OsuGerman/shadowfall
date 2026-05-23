@@ -198,6 +198,139 @@ QUEST_MARAS_SPUR = dict(
 
 
 # ============================================================
+# AKT 2 — GLASGOLDENE RUINEN (Update #152, WELT_AUFBAU 3.4)
+# ============================================================
+# Main-Quest „Asch-Prophezeiung" — Bruder Helst gibt sie im Echo-Markt-
+# Outpost.  Player wird zu den Glasgoldenen Ruinen (frost-Biome /
+# glass_palace) geschickt um den Senator-Geist-Boss zu bezwingen.
+# Lore: Helst sah Velharn fallen vor 100 Jahren, band sich danach die
+# Augen ab.  Er weiß, dass die Senatoren noch in den Ruinen reden — und
+# einer von ihnen, der Senator-Geist, hält den Pakt-Stein versteckt.
+# Voice-Lines aus VELGRAD_VOICE_LINES_POOL.md (Helst-Pool).
+
+QUEST_ASCH_PROPHEZEIUNG = dict(
+    id='akt2_asch_prophezeiung',
+    title='Die Asch-Prophezeiung',
+    giver='Bruder Helst der Hundertjährige',
+    giver_kind='quest',
+    region='Akt 2 — Glasgoldene Ruinen',
+    is_main=True,
+    stages=[
+        dict(text='Sprich mit Bruder Helst im Echo-Markt.',
+             type=StageType.TALK,
+             target={'npc_name': 'Bruder Helst der Hundertjährige'},
+             on_complete='Helst: „Geh in die Ruinen. Hör auf das, was '
+                         'noch redet. Bring mir den Pakt-Stein zurück."'),
+        dict(text='Erreiche die Glasgoldenen Ruinen (Echo-Palast).',
+             type=StageType.REACH,
+             target={'biome': 'frost'},
+             on_complete='Goldstaub legt sich auf deine Sohlen. Niemand '
+                         'wischt ihn fort.'),
+        dict(text='Sammle 5 Goldstaub-Erinnerungen.',
+             type=StageType.KILL,
+             target={'bestiary_key': 'goldstaub_diener'}, count=5,
+             on_complete='Die Erinnerungen flüstern Namen, die niemand '
+                         'mehr ausspricht.'),
+        dict(text='Stelle den Senator-Geist im Pakt-Saal.',
+             type=StageType.KILL,
+             target={'bestiary_key': 'senator_geist'}, count=1,
+             on_complete='Senator-Geist: „Ich war hier vor dir. Ich '
+                         'werde hier nach dir sein."'),
+        dict(text='Kehre zu Bruder Helst zurück.',
+             type=StageType.RETURN,
+             target={'npc_name': 'Bruder Helst der Hundertjährige'},
+             on_complete='Helst nimmt den Pakt-Stein und nickt. '
+                         'Seine Augenbinde ist nass.'),
+    ],
+    reward=dict(gold=400, xp=300, item='Helst-Pakt-Stein',
+                # WELT_AUFBAU 6.1: Erblinde Kirche +35 (Hauptauftrag
+                # erfüllt) — Tribunal-Konflikt via Konflikt-Matrix
+                # -10.  Mahnmal-Gilde +15 (Brassweir's Helst-Verbindung).
+                faction_rep={'erblinde_kirche': 35,
+                              'mahnmal_gilde': 15}),
+    on_complete_quote=(
+        "„Du hast einen Toten gehört. Das ist mehr, als die meisten "
+        "können. Behalte das. Es wird gegen dich gehalten werden, "
+        "aber es ist trotzdem wahr."  # Bruder Helst
+    ),
+)
+
+
+# ============================================================
+# AKT 4 — WURZELGRAB (Update #152, WELT_AUFBAU 3.6)
+# ============================================================
+# Main-Quest „Shulavhs Faden" — Vossharil die Dreimalige gibt sie im
+# Knoten-Markt-Outpost.  Player wird zum Wurzelgrab (swamp_ruins)
+# geschickt um Shulavh, die Faden-Mutter zu konfrontieren.
+# Lore: Shulavh ist Vossharils Patin und Knochenwitwen-Aspekt.  Sie
+# wickelt Fäden um die Lebenden um sie zu binden.  CHOICE-Stage: heilen
+# (sanfter Schluss) oder bezwingen (kämpferisches Ende).  Flag wird
+# später für Akt 6 ausgelesen (welche Wahl beeinflusst Akt-6-Pfad).
+# Voice-Lines aus VELGRAD_VOICE_LINES_POOL.md (Vossharil/Shulavh-Pool).
+
+QUEST_SHULAVH_FADEN = dict(
+    id='akt4_shulavh_faden',
+    title='Shulavhs Faden',
+    giver='Vossharil die Dreimalige',
+    giver_kind='quest',
+    region='Akt 4 — Wurzelgrab',
+    is_main=True,
+    stages=[
+        dict(text='Sprich mit Vossharil im Knoten-Markt.',
+             type=StageType.TALK,
+             target={'npc_name': 'Vossharil die Dreimalige'},
+             on_complete='Vossharil: „Shulavh wickelt noch. Geh zu ihr. '
+                         'Du wirst wissen, was zu tun ist — oder du '
+                         'wirst sterben. Beides ist Antwort genug."'),
+        dict(text='Erreiche das Wurzelgrab.',
+             type=StageType.REACH,
+             target={'biome': 'swamp'},
+             on_complete='Der Boden atmet hier. Es atmet zurück, '
+                         'wenn du atmest.'),
+        dict(text='Erschlage 4 Faden-Gebundene.',
+             type=StageType.KILL,
+             target={'bestiary_key': 'faden_gebundener'}, count=4,
+             on_complete='Die Fäden lösen sich, wenn der Träger fällt. '
+                         'Manche fliegen heim.'),
+        dict(text='Konfrontiere Shulavh die Faden-Mutter.',
+             type=StageType.KILL,
+             target={'bestiary_key': 'shulavh'}, count=1,
+             on_complete='Shulavh: „Du hast meinen Faden zerschnitten. '
+                         'Ich wickle ihn neu — aber nicht mehr um dich."'),
+        # CHOICE: Heilen (Faden behalten) ODER Bezwingen (zerstören).
+        # Flag steuert spätere Akt-6-Stages (siehe Akt 6 wenn implementiert).
+        dict(text='Wähle: Shulavhs Faden heilen ODER endgültig bezwingen.',
+             type=StageType.CHOICE,
+             target={'flag': 'shulavh_choice',
+                      'options': ['heilen', 'bezwingen']},
+             on_complete='Die Wahl wiegt mehr als der Kampf.'),
+        # CONDITIONAL: Heilen-Pfad — Vossharils Zusatz-Dialog
+        dict(text='(Wenn geheilt:) Bringe einen Faden-Splitter zurück.',
+             type=StageType.CONDITIONAL,
+             target={'requires_flag': 'shulavh_choice=heilen',
+                      'npc_name': 'Vossharil die Dreimalige'},
+             on_complete='Vossharil hält den Splitter still. '
+                         'Sehr still.'),
+        dict(text='Kehre zu Vossharil zurück.',
+             type=StageType.RETURN,
+             target={'npc_name': 'Vossharil die Dreimalige'},
+             on_complete=('Vossharil: „Du hast gewählt. Ich auch. '
+                          'Manchmal wählt man, indem man nicht kämpft."')),
+    ],
+    reward=dict(gold=600, xp=500, item='Vossharils Bruder',
+                # WELT_AUFBAU 6.1: Knochenwitwen +40 (Hauptauftrag).
+                # Saatträger-Konflikt via Matrix -5 (Knochenwitwen
+                # halten den Tod fest, Saatträger pflanzen neu).
+                faction_rep={'knochenwitwen': 40}),
+    on_complete_quote=(
+        "„Du bist nicht meine Schwester. Du bist nicht meine Mutter. "
+        "Du bist meine Patin? Vielleicht. Ich brauche eine neue."
+        # Vossharil
+    ),
+)
+
+
+# ============================================================
 # AKT 3 — DIE ASCHENFELDER (Vehren-Quest-Hook)
 # ============================================================
 
@@ -414,6 +547,236 @@ QUEST_VERGESSENS_WELLE = dict(
 
 
 # ============================================================
+# AKT 6 — DREI WUNDEN (Update #153, WELT_AUFBAU 3.8)
+# ============================================================
+# Im Drei-Wunden-Lager (Akt-6-Hub) führt Mara die Mahnerin (Akt-6-Stage)
+# den Spieler durch drei parallel-laufende Main-Quests, eine pro Wunde:
+#   - Salzwunde  → Ertrunkene Königin  (Bestiarium #26)
+#   - Aschwunde  → Echo-Drache         (Bestiarium #27)
+#   - Hohlwunde  → Nicht-Gott          (Bestiarium #28)
+# Reihenfolge frei.  Nach Abschluss aller drei wird die Finale-Quest
+# „Pakt übersetzen" (Tehrnal) freigeschaltet — der Spieler erfährt dort,
+# wer im Verborgenen Im-Nesh ist (Korven oder Helst — abhängig von
+# `flags['korven_helst_reveal']`).  Die Quests verwenden das neue
+# `requires_quests`-Prerequisite-Feld (Update #153) für saubere Gating.
+# Lore-Quellen:
+#   - VELGRAD_LORE_BIBEL.md Teil 6 (Drei Wunden Theologie)
+#   - VELGRAD_VOICE_LINES_POOL.md (Mara-Akt-6-Pool, Tehrnal-Pool)
+
+QUEST_SALZWUNDE_LESEN = dict(
+    id='akt6_salzwunde_lesen',
+    title='Salzwunde lesen',
+    giver='Mara die Mahnerin (Akt-6-Stage)',
+    giver_kind='quest',
+    region='Akt 6 — Drei-Wunden',
+    is_main=True,
+    stages=[
+        dict(text='Sprich mit Mara im Drei-Wunden-Lager.',
+             type=StageType.TALK,
+             target={'npc_name': 'Mara die Mahnerin (Akt-6-Stage)'},
+             on_complete='Mara: „Die Salzwunde ruft. Geh hinunter zu '
+                         'ihr — sie wird dich kennen, bevor du sie kennst."'),
+        dict(text='Stelle dich der Ertrunkenen Königin.',
+             type=StageType.KILL,
+             target={'bestiary_key': 'ertrunkene_koenigin'}, count=1,
+             on_complete='Ertrunkene Königin: „Ich war ihre Königin. '
+                         'Sie haben mich ertränkt. Ich erinnere mich '
+                         'an euren Vater."'),
+        dict(text='Kehre zu Mara zurück.',
+             type=StageType.RETURN,
+             target={'npc_name': 'Mara die Mahnerin (Akt-6-Stage)'},
+             on_complete='Mara schreibt etwas in ihr Bündel. '
+                         'Sie zittert nicht.'),
+    ],
+    reward=dict(gold=700, xp=600, item=None,
+                faction_rep={'mahnmal_gilde': 25}),
+    on_complete_quote=(
+        "„Sie kannte deinen Namen. Manche Wunden geben dir einen Namen "
+        "zurück. Du wirst lernen, ihn nicht zu sagen."  # Mara Akt 6
+    ),
+)
+
+
+QUEST_ASCHWUNDE_LESEN = dict(
+    id='akt6_aschwunde_lesen',
+    title='Aschwunde lesen',
+    giver='Mara die Mahnerin (Akt-6-Stage)',
+    giver_kind='quest',
+    region='Akt 6 — Drei-Wunden',
+    is_main=True,
+    stages=[
+        dict(text='Sprich mit Mara — sie weist zur Aschwunde.',
+             type=StageType.TALK,
+             target={'npc_name': 'Mara die Mahnerin (Akt-6-Stage)'},
+             on_complete='Mara: „Der Echo-Drache schläft im '
+                         'Aschen-Schlund. Geh — er träumt Valsa."'),
+        dict(text='Stelle dich dem Echo-Drachen.',
+             type=StageType.KILL,
+             target={'bestiary_key': 'echo_drache'}, count=1,
+             on_complete='Echo-Drache: „Asche kennt eure Namen. '
+                         'Eine schmeckt nach mir."'),
+        dict(text='Kehre zu Mara zurück.',
+             type=StageType.RETURN,
+             target={'npc_name': 'Mara die Mahnerin (Akt-6-Stage)'},
+             on_complete='Mara: „Du hast einen Aspekt geatmet. '
+                         'Behalte das."'),
+    ],
+    reward=dict(gold=700, xp=600, item=None,
+                faction_rep={'erblinde_kirche': 20}),
+    on_complete_quote=(
+        '„Asche bleibt. Asche erinnert. Das ist alles, was Valsa '
+        'jemals gesagt hat."'   # Mara Akt 6
+    ),
+)
+
+
+QUEST_HOHLWUNDE_LESEN = dict(
+    id='akt6_hohlwunde_lesen',
+    title='Hohlwunde lesen',
+    giver='Mara die Mahnerin (Akt-6-Stage)',
+    giver_kind='quest',
+    region='Akt 6 — Drei-Wunden',
+    is_main=True,
+    stages=[
+        dict(text='Sprich mit Mara — sie weist zur Hohlwunde.',
+             type=StageType.TALK,
+             target={'npc_name': 'Mara die Mahnerin (Akt-6-Stage)'},
+             on_complete='Mara: „Die Hohlwunde antwortet nicht. Aber '
+                         'sie hört. Geh — und sei leise."'),
+        dict(text='Stelle dich dem Nicht-Gott.',
+             type=StageType.KILL,
+             target={'bestiary_key': 'nicht_gott'}, count=1,
+             on_complete='Nicht-Gott: ( — keine Worte — )'),
+        dict(text='Kehre zu Mara zurück.',
+             type=StageType.RETURN,
+             target={'npc_name': 'Mara die Mahnerin (Akt-6-Stage)'},
+             on_complete='Mara schweigt lange. Dann nickt sie nur.'),
+    ],
+    reward=dict(gold=700, xp=600, item=None,
+                faction_rep={'mahnmal_gilde': 25}),
+    on_complete_quote=(
+        "„Du hast eine Stille gehört. Das ist mehr als die meisten. "
+        "Behalte sie. Sie wird dich fragen, ob du noch da bist."
+        # Mara Akt 6
+    ),
+)
+
+
+# Akt 6 Finale — Pakt übersetzen.  Erfordert alle 3 Wunden-Reads.
+# CHOICE: korven_helst_reveal — der Spieler wählt, wessen Stimme er
+# in Akt 7 als Im-Nesh-Maske trifft.  Tehrnal moderiert.
+QUEST_PAKT_UEBERSETZEN = dict(
+    id='akt6_pakt_uebersetzen',
+    title='Pakt übersetzen',
+    giver='Wunden-Lesende Tehrnal',
+    giver_kind='quest',
+    region='Akt 6 — Drei-Wunden',
+    is_main=True,
+    # Update #153: requires_quests — Tehrnal redet erst wenn alle drei
+    # Wunden gelesen sind.  Akt-Gate (Akt 6 → completed_dungeons>=5)
+    # bleibt zusätzlich aktiv.
+    requires_quests=['akt6_salzwunde_lesen',
+                      'akt6_aschwunde_lesen',
+                      'akt6_hohlwunde_lesen'],
+    stages=[
+        dict(text='Sprich mit Tehrnal, der Wunden-Lesenden.',
+             type=StageType.TALK,
+             target={'npc_name': 'Wunden-Lesende Tehrnal'},
+             on_complete='Tehrnal: „Du hast drei Wunden gelesen. Eine '
+                         'davon hat dich gelesen. Das ist die, die '
+                         'jetzt zählt."'),
+        # CHOICE: Korven oder Helst als Im-Nesh-Maske (Akt 7 Setup)
+        dict(text='Wähle: Wer ist Im-Nesh — Korven Vor ODER Bruder Helst?',
+             type=StageType.CHOICE,
+             target={'flag': 'korven_helst_reveal',
+                      'options': ['korven', 'helst']},
+             on_complete='Die Wahl wickelt einen Faden, der dich nach '
+                         'Hohlwort führt.'),
+        # CONDITIONAL: Korven-Pfad — Tehrnal-Zusatz-Lore
+        dict(text='(Wenn Korven:) Höre Tehrnals Korven-Lesung.',
+             type=StageType.CONDITIONAL,
+             target={'requires_flag': 'korven_helst_reveal=korven',
+                      'npc_name': 'Wunden-Lesende Tehrnal'},
+             on_complete='Tehrnal: „Korven war immer leiser als seine '
+                         'Stimme. Das verriet ihn."'),
+        # CONDITIONAL: Helst-Pfad — Tehrnal-Zusatz-Lore
+        dict(text='(Wenn Helst:) Höre Tehrnals Helst-Lesung.',
+             type=StageType.CONDITIONAL,
+             target={'requires_flag': 'korven_helst_reveal=helst',
+                      'npc_name': 'Wunden-Lesende Tehrnal'},
+             on_complete='Tehrnal: „Helsts Augenbinde war eine '
+                         'Maske auf einer Maske. Du hast es '
+                         'gerochen."'),
+        dict(text='Bereite dich auf Hohlwort vor — kehre zu Tehrnal.',
+             type=StageType.RETURN,
+             target={'npc_name': 'Wunden-Lesende Tehrnal'},
+             on_complete='Tehrnal: „Wenn du Hohlwort betrittst — '
+                         'sei nicht ganz da. Das ist die einzige '
+                         'Regel."'),
+    ],
+    reward=dict(gold=1200, xp=1000, item='Sieben-Atem-Stab',
+                faction_rep={'mahnmal_gilde': 50,
+                              'erblinde_kirche': 30}),
+    on_complete_quote=(
+        "„Du gehst nicht mit Wissen nach Hohlwort. Du gehst mit Echo. "
+        "Echo schützt nicht. Aber es hallt zurück, wenn du fällst."
+        # Tehrnal
+    ),
+)
+
+
+# ============================================================
+# AKT 1 — Tribunal-Faction-Sidequest (Update #153, WELT_AUFBAU 3.2)
+# ============================================================
+# Stadtsprecher Eldon gibt Akt-1-Bounty: 5 Tribunal-Konstrukt-Späher
+# bei den Stadtmauern erschlagen.  Wirkt auf Tribunal-Faction-Rep
+# (−Faction-Rep zu Tribunal, +Faction-Rep zu Mahnmal-Gilde via
+# Konflikt-Matrix).  Lore-Anker: Eldon ist Stadtsprecher, das Tribunal
+# stellt Brassweir unter Verdacht — erste Reibung mit dem Inquisitions-
+# System, bevor der Akt-3-Vehren-Boss kommt.
+
+QUEST_TRIBUNAL_GERUECHT = dict(
+    id='akt1_tribunal_geruecht',
+    title='Das Tribunal-Gerücht',
+    giver='Stadtsprecher Eldon',
+    giver_kind='quest',
+    region='Akt 1 — Brassweir',
+    is_main=False,
+    stages=[
+        dict(text='Sprich mit Stadtsprecher Eldon am Quest-Board.',
+             type=StageType.TALK,
+             target={'npc_name': 'Stadtsprecher Eldon'},
+             on_complete='Eldon: „Tribunal-Konstrukte schleichen an '
+                         'unseren Mauern. Mach ihnen klar, dass '
+                         'Brassweir keine Asche-Stadt ist."'),
+        dict(text='Erschlage 5 Tribunal-Konstrukt-Späher.',
+             type=StageType.KILL,
+             target={'bestiary_key': 'tribunal_konstrukt'}, count=5,
+             on_complete='Die Konstrukte fallen still. Asche bleibt '
+                         'auf deinen Sohlen.'),
+        dict(text='Kehre zu Eldon zurück.',
+             type=StageType.RETURN,
+             target={'npc_name': 'Stadtsprecher Eldon'},
+             on_complete='Eldon: „Das hat man im Helst-Lager gehört. '
+                         'Sie werden sich erinnern."'),
+    ],
+    reward=dict(gold=150, xp=110, item=None,
+                # WELT_AUFBAU 6.1: Tribunal -15 (Spieler hat ihre
+                # Späher getötet).  Mahnmal-Gilde +20 (Eldon dankt).
+                # Erblinde Kirche +5 (Konflikt-Matrix-Bonus — sie
+                # hasst das Tribunal auch).
+                faction_rep={'tribunal_asche': -15,
+                              'mahnmal_gilde': 20,
+                              'erblinde_kirche': 5}),
+    on_complete_quote=(
+        "„Du hast Asche an deinen Sohlen. Das wirst du nicht "
+        "abschütteln. Aber du wirst lernen, sie anders zu tragen."
+        # Eldon
+    ),
+)
+
+
+# ============================================================
 # REGISTRY
 # ============================================================
 ALL_QUESTS = [
@@ -426,6 +789,15 @@ ALL_QUESTS = [
     QUEST_VOSSHARIL_RITUAL,
     QUEST_VELHARN_DREI_ZEITEN,
     QUEST_VERGESSENS_WELLE,
+    # Update #152 — Akt 2 + Akt 4 Main-Quests (Quest-Spine durchziehen):
+    QUEST_ASCH_PROPHEZEIUNG,
+    QUEST_SHULAVH_FADEN,
+    # Update #153 — Akt 6 Drei-Wunden + Akt 1 Tribunal-Faction:
+    QUEST_SALZWUNDE_LESEN,
+    QUEST_ASCHWUNDE_LESEN,
+    QUEST_HOHLWUNDE_LESEN,
+    QUEST_PAKT_UEBERSETZEN,
+    QUEST_TRIBUNAL_GERUECHT,
 ]
 
 
