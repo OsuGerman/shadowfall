@@ -1,0 +1,23 @@
+{
+  "biome": "frost",
+  "cell_size": 128,
+  "masks": {
+    "00": "masks/frost/frost_mask_00.png",
+    "01": "masks/frost/frost_mask_01.png",
+    "02": "masks/frost/frost_mask_02.png",
+    "03": "masks/frost/frost_mask_03.png",
+    "04": "masks/frost/frost_mask_04.png",
+    "05": "masks/frost/frost_mask_05.png",
+    "06": "masks/frost/frost_mask_06.png",
+    "07": "masks/frost/frost_mask_07.png",
+    "08": "masks/frost/frost_mask_08.png",
+    "09": "masks/frost/frost_mask_09.png",
+    "10": "masks/frost/frost_mask_10.png",
+    "11": "masks/frost/frost_mask_11.png",
+    "12": "masks/frost/frost_mask_12.png",
+    "13": "masks/frost/frost_mask_13.png",
+    "14": "masks/frost/frost_mask_14.png",
+    "15": "masks/frost/frost_mask_15.png"
+  },
+  "mode": "procedural"
+}

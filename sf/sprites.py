@@ -28,6 +28,28 @@ from .constants import (
 _SPRITE_CACHE: dict[str, pygame.Surface | None] = {}
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Update #168: Globaler Master-Switch fuer ALLE AI-Sprites.
+# Wenn False, returnen ALLE Loader (_load_ai_sprite UND _load_anim_strip)
+# sofort None -> Engine zeichnet komplett procedural (Pre-T2.2-Look).
+# Default True (AI-Sprites an). Wird von Game.__init__ aus settings['ai_sprites']
+# gespiegelt und vom Settings-Modal-Click live umgeschaltet.
+# Setting-Toggle ruft set_ai_sprites_enabled() + reload_sprite_cache().
+_AI_SPRITES_ENABLED = True
+
+
+def set_ai_sprites_enabled(enabled: bool) -> None:
+    """Setzt den globalen AI-Sprite-Master-Switch.
+    Bei Wechsel sollte reload_sprite_cache() folgen damit Caches
+    in einen konsistenten Zustand kommen."""
+    global _AI_SPRITES_ENABLED
+    _AI_SPRITES_ENABLED = bool(enabled)
+
+
+def ai_sprites_enabled() -> bool:
+    """Returnt True wenn AI-Sprites geladen werden, False = pure procedural."""
+    return _AI_SPRITES_ENABLED
+
+
 # Klassen-Aliases (Engine-cls -> Sprite-ID)
 CLASS_SPRITE_ALIAS = {
     'mage':  'sorceress',     # Lore: Sorceress ist die Caster-Klasse
@@ -67,6 +89,11 @@ TILE_SPRITE_ALIAS = {
 
 def _load_ai_sprite(target_id: str) -> pygame.Surface | None:
     """Lazy-load PNG via sf.sprite_registry.sprite_path(). Cached."""
+    # Update #168: Master-Switch — wenn aus, alle Loader returnen None.
+    # Cache wird nicht angefasst damit beim Wiedereinschalten + reload
+    # alles sauber neu geladen wird.
+    if not _AI_SPRITES_ENABLED:
+        return None
     if target_id in _SPRITE_CACHE:
         return _SPRITE_CACHE[target_id]
     try:
@@ -204,6 +231,9 @@ def _load_anim_strip(cls: str, anim: str,
     Anzahl Frames bestimmt sich aus sprite_animation.ANIM_CONFIG[anim]['frames'].
     Wenn nicht verfuegbar, fallback auf WALK_FRAMES_PER_STRIP (8).
     """
+    # Update #168: Master-Switch respektieren (s. _load_ai_sprite).
+    if not _AI_SPRITES_ENABLED:
+        return None
     direction = WALK_DIR_ALIAS.get(direction, direction)
     if direction not in WALK_DIRECTIONS:
         return None
@@ -381,8 +411,23 @@ TILE_VARIANT_MAP = {
 }
 
 TILE_WALL_MAP = {
-    'crypt': 'crypt_wall_w',
-    # Andere Biomes ebenfalls mit Phase 2
+    # Update #170: All-Biome Crypt-Style Rollout. Per-Biom unique Walls
+    # via tools/wall_from_floor.py mit biom-spezifischen Algorithmen
+    # (joint-pattern fuer crypt/town, crystal-spikes fuer frost/wound_salt,
+    # crack-glow fuer lava/wound_ash, diagonal-veins fuer swamp/wound_hollow,
+    # star-specks fuer astral, horizontal-strata fuer desert, rune-glyphs
+    # fuer hollow_word).
+    'crypt':        'crypt_wall_w',
+    'frost':        'frost_wall_w',
+    'lava':         'lava_wall_w',
+    'swamp':        'swamp_wall_w',
+    'astral':       'astral_wall_w',
+    'desert':       'desert_wall_w',
+    'town':         'town_wall_w',
+    'wound_salt':   'wound_salt_wall_w',
+    'wound_ash':    'wound_ash_wall_w',
+    'wound_hollow': 'wound_hollow_wall_w',
+    'hollow_word':  'hollow_word_wall_w',
 }
 
 
