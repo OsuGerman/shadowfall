@@ -32,21 +32,61 @@ from .ui import TitleUI, SkillTreeUI, RuneChoiceUI
 # GAME
 # ============================================================
 class Game:
-    def __init__(self):
+    def __init__(self, *, use_gl_post: bool = False):
         snd.init()  # Mixer früh initialisieren
         pygame.init()
-        # Update #151 (User-Report „Auflösung könnte schärfer sein"):
-        # `pygame.SCALED` aktivieren — SDL2 nutzt hardware-accelerated
-        # Integer-Scaling.  Auf High-DPI-Monitoren rendert das Spiel
-        # jetzt scharf statt bilinear-gestretched vom Windows-DWM.
-        # Logische Welt-Größe bleibt SCREEN_W × SCREEN_H (1600×900) —
-        # nur die Ausgabe ist crisp.
+        # Update #171: Opt-in PyOpenGL-Post-Process-Mode. Wenn use_gl_post=True
+        # initialisieren wir das Display mit OPENGL-Flag + ein separates
+        # Off-Screen-Render-Surface, in das alle Pygame-Draws gehen. Die
+        # Off-Screen wird per Shader (Bloom + Color-Grade + Vignette) ueber
+        # PyOpenGL praesentiert. Default OFF damit klassischer Pygame-Pfad
+        # untouched bleibt + 197 Tests gruen bleiben.
+        self.use_gl_post = bool(use_gl_post)
+        self._render_surface = None     # off-screen wenn gl_post aktiv
+        self.gl_post = None             # GLPostProcessor wenn aktiv
+        if self.use_gl_post:
+            try:
+                from . import gl_post as _glp
+                if _glp.is_available():
+                    self.screen = pygame.display.set_mode(
+                        (SCREEN_W, SCREEN_H),
+                        pygame.OPENGL | pygame.DOUBLEBUF, vsync=1)
+                    if _glp.install(SCREEN_W, SCREEN_H):
+                        self.gl_post = _glp.get_active()
+                        # Off-Screen-Render-Surface fuer alle Game-Draws
+                        self._render_surface = pygame.Surface(
+                            (SCREEN_W, SCREEN_H))
+                    else:
+                        # GL-Init schlug fehl → fallback auf SCALED
+                        self.use_gl_post = False
+                else:
+                    self.use_gl_post = False
+            except Exception:
+                self.use_gl_post = False
+
+        if not self.use_gl_post:
+            # Update #151 (User-Report „Auflösung könnte schärfer sein"):
+            # `pygame.SCALED` aktivieren — SDL2 nutzt hardware-accelerated
+            # Integer-Scaling.  Auf High-DPI-Monitoren rendert das Spiel
+            # jetzt scharf statt bilinear-gestretched vom Windows-DWM.
+            # Logische Welt-Größe bleibt SCREEN_W × SCREEN_H (1600×900) —
+            # nur die Ausgabe ist crisp.
+            try:
+                self.screen = pygame.display.set_mode(
+                    (SCREEN_W, SCREEN_H), pygame.SCALED, vsync=1)
+            except (pygame.error, TypeError):
+                # Fallback wenn SCALED nicht supported (sehr alte SDL)
+                self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+
+        # Update #171: Pymunk-Physics-World (optional, no-op wenn pymunk
+        # nicht installiert). Used by spawn_splitter_burst() / throwables.
+        # Eigenes Movement-System bleibt UNANGETASTET — physics nur fuer
+        # specific Decor-/Throwable-Effekte.
         try:
-            self.screen = pygame.display.set_mode(
-                (SCREEN_W, SCREEN_H), pygame.SCALED, vsync=1)
-        except (pygame.error, TypeError):
-            # Fallback wenn SCALED nicht supported (sehr alte SDL)
-            self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+            from . import physics as _phys
+            self.physics = _phys.PhysicsWorld()
+        except Exception:
+            self.physics = None
         pygame.display.set_caption('Shadowfall — Erweitert')
         self.clock = pygame.time.Clock()
         self.fullscreen = False
@@ -105,6 +145,42 @@ class Game:
         self.shrine_ui = ui_mod.ShrineUI(self.font_med, self.font_small)
         # Update #114: Outpost-Mahnmal-Fast-Travel
         self.travel_ui = ui_mod.TravelUI(self.font_med, self.font_small)
+        # ROADMAP T1.3 (Update #167+): NPC-Dialog-Modal mit Portrait
+        from . import dialog as _dialog_mod
+        self._dialog_mod = _dialog_mod
+        self.dialog_ui = _dialog_mod.DialogUI(
+            self.font_med, self.font_small, self.font_big)
+        # PLAN X-09 / ROADMAP T3.5 (Update #168): Cutscene-Player
+        from . import cutscene as _cutscene_mod
+        self._cutscene_mod = _cutscene_mod
+        self.cutscene_player = _cutscene_mod.CutscenePlayer(
+            self.font_med, self.font_small, self.font_big)
+        # X-09 Cutscene-Cam-Offset (vom Cutscene-Player gesetzt, verbraucht
+        # in _update_camera).
+        self._cam_cutscene_x = 0.0
+        self._cam_cutscene_y = 0.0
+        # AA-02 (Update #168): Debug-Console (~-Taste)
+        from . import console as _console_mod
+        self.console = _console_mod.DebugConsole(
+            self.font_med, self.font_small)
+        # AA-05 (Update #168): Mod-Hook-API
+        try:
+            from . import modloader as _modloader
+            self.mod_loader = _modloader.ModLoader()
+        except Exception:
+            self.mod_loader = None
+        # AA-06 (Update #168): Replay-Recorder (default inactive)
+        try:
+            from . import replay as _replay
+            self.replay_recorder = _replay.ReplayRecorder()
+        except Exception:
+            self.replay_recorder = None
+        # AA-08 (Update #168): Asset-Validator beim Startup
+        try:
+            from . import asset_validator as _av
+            _av.run_startup_validation()
+        except Exception:
+            pass
         self._vignette = ui_mod.make_vignette()
         self.lighting = lighting.LightingSystem(ambient_alpha=130)
 
@@ -203,6 +279,21 @@ class Game:
         self._footprint_side = 0   # 0=L, 1=R, alterniert pro Step
         # E-05 (Update #60): Arena-Features-Catalog initialisieren.
         self.arena_features = []  # list of dicts mit kind/pos/timers/state
+        # V-01..V-08 (Update #168): Material-Surface-Effects.
+        from . import surface_fx as _sfx
+        self.surface_fx = _sfx.SurfaceFXSystem()
+        self._surface_fx_mod = _sfx
+        # Banner-Cloths (V-08) — Liste von VerletCloth-Instanzen.  Werden
+        # in `enter_town`/`enter_outpost` populiert.
+        self.cloth_banners = []
+        self._wind_t = 0.0
+        # U-09 Lightning-Flash-Timer (Frame-skalar).
+        self._lightning_flash_t = 0.0
+        # U-07 Casting-Timer (vom Skill-Cast-Pfad gesetzt).
+        self._casting_t = 0.0
+        # X-03 Combat-Zoom-State (zoom 0.92x bei Combat, 1.0 sonst).
+        self._combat_zoom_t = 0.0
+        self._combat_active_left = 0.0
         # J-13 (Update #64): Particle-Object-Pool zur Allocation-Vermeidung.
         # Cap 800 — über dem Limit werden ältere Particles recycelt.
         self._particle_pool = []
@@ -278,6 +369,11 @@ class Game:
             # B-12 (Update #50): Minimap-Rotation. Default Norden-fix-oben;
             # Toggle dreht Minimap mit Spieler-Facing.
             'minimap_rotate': False,
+            # Update #168: Master-Switch fuer AI-Sprites (Decor / Items /
+            # Status / Klassen / Mobs / Bosse / Tiles / Portraits).
+            # False = komplett-procedural Look. True = Hybrid (AI wo
+            # vorhanden, sonst procedural Fallback wie immer).
+            'ai_sprites': True,
             # P-05 (Update #52): Frame-Cap (30/60/120/144/0=unlimited).
             # 60 ist der Lore-/Briefing-Default; 0 = uncapped für Speedrunner.
             'frame_cap': 60,
@@ -301,6 +397,18 @@ class Game:
             # weil player-driven (geringes Motion-Sickness-Risiko), aber
             # toggelbar für sehr empfindliche Spieler.
             'camera_lookahead': True,
+            # Update #168 (M-10): Bloom-Pass — off/low/high.
+            # Performance: low = 4-6 ms/frame, high = 8-12 ms/frame.
+            'bloom': 'low',
+            # Update #168 (M-12): Heat-Distortion über Lava/Fire-AoE.
+            # Toggle für CPU-budgetierte Player.
+            'heat_distortion': True,
+            # Update #168 (M-13): Optional CRT-Filter (off/scanlines/dither).
+            'crt_filter': 'off',
+            # Update #168 (X-03): Camera-Zoom-Out im Combat.
+            'camera_combat_zoom': True,
+            # Update #168 (T1.3): Dialog-Modal beim NPC-Talk.
+            'dialog_modal': True,
         }
         # Update #151 (User-Report „Vollbild/Seekrankheits/FPS müssen
         # gespeichert werden"): Persistente Settings aus Disk überlagern
@@ -323,6 +431,15 @@ class Game:
         try:
             snd.set_music_volume(self.settings['music_vol'])
             snd.set_sfx_volume(self.settings['sfx_vol'])
+        except Exception:
+            pass
+        # Update #168: AI-Sprite-Master-Switch beim Init spiegeln.
+        # Wenn settings['ai_sprites']=False, schaltet sf.sprites alle
+        # Loader auf None-Return -> komplett procedural Look.
+        try:
+            from . import sprites as _sp_mod
+            _sp_mod.set_ai_sprites_enabled(
+                bool(self.settings.get('ai_sprites', True)))
         except Exception:
             pass
         # Update #151: Apply persisted fullscreen NACH Display-Init
@@ -472,6 +589,20 @@ class Game:
         self.pending_aftershocks.clear()
         self.pending_comets.clear()
         self.decals.clear()
+        # V-08 (Update #168): 3 Banner-Cloths bei Brassweir-Stadt-Tor.
+        try:
+            sfx_mod = self._surface_fx_mod
+            self.cloth_banners = [
+                sfx_mod.VerletCloth(-180, -440, length=80, segments=5,
+                                     color=(190, 150,  90)),
+                sfx_mod.VerletCloth(0,    -440, length=80, segments=5,
+                                     color=(160, 110,  60)),
+                sfx_mod.VerletCloth(180,  -440, length=80, segments=5,
+                                     color=(150, 130,  80)),
+            ]
+            self.surface_fx.clear()
+        except Exception:
+            self.cloth_banners = []
         # B-07: Trail beim Map-Wechsel löschen
         self.breadcrumbs.clear()
         self._breadcrumb_drop_t = 0.0
@@ -747,6 +878,12 @@ class Game:
         self.active_dungeon_id = dungeon_id
         # Update #37: alte Stadt-Toasts beim Dungeon-Entry clearen
         self.toast_queue.clear()
+        # Update #168: Surface-FX + Cloth-Banner sind town-spezifisch — clear.
+        self.cloth_banners = []
+        try:
+            self.surface_fx.clear()
+        except Exception:
+            pass
         # Zufällige Welt-Events
         self.shadow_invasion = (random.random() < 0.15)
         self.roaming_boss_pending = (random.random() < 0.12)
@@ -1204,6 +1341,18 @@ class Game:
                 if ev.key == pygame.K_ESCAPE:
                     _tut.skip(self)
                     return
+        # ROADMAP T1.3: Dialog-Modal fängt Keys VOR globalem ESC ab
+        if self.modal == 'dialog' and self.state == 'playing':
+            if self.dialog_ui.handle_key(ev.key, self):
+                return
+        # AA-02 (Update #168): Debug-Console ~-Toggle.  Wenn offen,
+        # alle Keys werden konsumiert.
+        if ev.key == pygame.K_BACKQUOTE:
+            self.console.toggle()
+            return
+        if self.console.open:
+            if self.console.handle_key(ev, self):
+                return
         if ev.key == pygame.K_ESCAPE:
             # Update #133: Slot-Picker abbrechen (Title-Screen).
             if (self.state == 'title'
@@ -1566,6 +1715,10 @@ class Game:
             return
         if self.modal == 'skill_menu':
             self._handle_skill_menu_click(sx, sy)
+            return
+        if self.modal == 'dialog':
+            # ROADMAP T1.3: NPC-Dialog-Modal — Click steuert Skip/Choice.
+            self.dialog_ui.handle_click(sx, sy, self)
             return
         if self._click_grace > 0:
             return
@@ -3406,6 +3559,50 @@ class Game:
     def update(self, dt):
         self._click_grace -= dt
         self._tick_toasts(dt)
+        # ROADMAP T1.3: Dialog-Modal Word-Reveal Timer
+        if self.modal == 'dialog':
+            try:
+                self.dialog_ui.update(dt)
+            except Exception:
+                pass
+        # V-01..V-08 (Update #168): Surface-FX + Cloth-Sim Banner.
+        try:
+            self.surface_fx.update(dt)
+        except Exception:
+            pass
+        # Wind-Phase fuer Cloth global driften
+        self._wind_t += dt
+        wind_strength = 25.0 + 15.0 * math.sin(self._wind_t * 0.4)
+        for cloth in self.cloth_banners:
+            try:
+                cloth.update(dt, wind_x=wind_strength)
+            except Exception:
+                pass
+        # U-09 Lightning-Flash Decay (frame-rate-unabhaengig)
+        if self._lightning_flash_t > 0:
+            self._lightning_flash_t = max(0.0, self._lightning_flash_t - dt * 4.0)
+        if self._casting_t > 0:
+            self._casting_t = max(0.0, self._casting_t - dt)
+        # X-03 Combat-Zoom-Tick
+        if self.state == 'playing':
+            aggro = any(getattr(e, 'aggro', False)
+                        and not getattr(e, 'dying', False)
+                        and (e.pos - self.player.pos).length() < 400
+                        for e in getattr(self, 'enemies', ()))
+            if aggro:
+                self._combat_active_left = 4.0
+            else:
+                self._combat_active_left = max(0.0, self._combat_active_left - dt)
+            target_zoom = 0.92 if (self._combat_active_left > 0
+                                    and self.settings.get('camera_combat_zoom', True)) else 1.0
+            # smooth-lerp
+            self._combat_zoom_t += (target_zoom - self._combat_zoom_t) * min(1.0, dt * 2.5)
+        # X-09 Cutscene-Player update
+        if self.cutscene_player.is_playing:
+            try:
+                self.cutscene_player.update(dt, self)
+            except Exception:
+                pass
         # Update #32: Spielzeit-Tracker für Memorial-Panel
         if self.state == 'playing':
             self.player.prog_play_time_s = (
@@ -3438,6 +3635,9 @@ class Game:
                     _enc.request_skip(self, dt)
                 except Exception:
                     pass
+                # X-09 (Update #168): SPACE skipt Cutscene
+                if self.cutscene_player.is_playing:
+                    self.cutscene_player.request_skip(self)
         # Spielzeit (echtes dt für Tag/Nacht)
         if self.state == 'playing':
             ach_mod.init_stats(self)
@@ -3789,10 +3989,19 @@ class Game:
                 crit_y = (cdiff_y / cd) * pull_factor
         elif self.slow_mo_left <= 0:
             self._cam_crit_pull = None
+        # X-09 (Update #168): Cutscene-Cam-Offset (vom CutscenePlayer
+        # gesetzt waehrend camera_move-Steps).  Hat hoechste Prio nach
+        # Boss-Pan.
+        cut_x = getattr(self, '_cam_cutscene_x', 0.0)
+        cut_y = getattr(self, '_cam_cutscene_y', 0.0)
+        if not self.cutscene_player.is_playing:
+            # Decay zurueck wenn Cutscene endete
+            self._cam_cutscene_x *= 0.85
+            self._cam_cutscene_y *= 0.85
         # Summe der Offsets, smooth-lerp zur Target-Position für
         # weiche Übergänge (kein abruptes Snap).
-        target_ox = look_x + lean_x + crit_x
-        target_oy = look_y + lean_y + crit_y
+        target_ox = look_x + lean_x + crit_x + cut_x
+        target_oy = look_y + lean_y + crit_y + cut_y
         lerp_t = min(1.0, dt * 8.0)
         self._cam_offset_x += (target_ox - self._cam_offset_x) * lerp_t
         self._cam_offset_y += (target_oy - self._cam_offset_y) * lerp_t
@@ -3821,6 +4030,11 @@ class Game:
 
     def _update_player(self, dt):
         p = self.player
+        # Update #171: Physics-Step (no-op wenn pymunk fehlt oder disabled).
+        # Macht Splitter + Throwables advance. Affektiert NICHT Player/Enemy-
+        # Movement.
+        if self.physics is not None:
+            self.physics.step(dt)
         # Update #43: Auto-Unstuck — Spieler kann durch Decor-Spawn oder
         # Map-Transition in einem blockenden Decor landen (User-Feedback
         # „Spieler bleiben manchmal an Gegenständen hängen weil sie entweder
@@ -4671,6 +4885,21 @@ class Game:
                         (170, 200, 230), 0.8,
                         random.uniform(2, 4), gravity=240,
                         layer=fx.ParticleLayer.AMBIENT)
+            # V-01 (Update #168): Wet-Patches alle ~1.5 s am Player-Umkreis.
+            # Pfuetzen-Decals persistieren 8 s — auch nach Regen-Ende.
+            if not hasattr(self, '_rain_puddle_t'):
+                self._rain_puddle_t = 0.0
+            self._rain_puddle_t -= dt
+            if self._rain_puddle_t <= 0 and self.rain_intensity > 0.3:
+                self._rain_puddle_t = 1.5
+                for _ in range(2):
+                    rx = self.player.pos.x + random.uniform(-300, 300)
+                    ry = self.player.pos.y + random.uniform(-200, 200)
+                    try:
+                        self.surface_fx.spawn_wet_patch(
+                            rx, ry, radius=random.randint(50, 90))
+                    except Exception:
+                        pass
         else:
             # Rain expired → intensity dekayed
             if self.rain_intensity > 0:
@@ -5002,6 +5231,9 @@ class Game:
             elif self.modal == 'quest_turnin':
                 # Update #135: Quest-Turn-In-Modal beim Quest-Abgeben.
                 self._draw_quest_turnin_modal()
+            elif self.modal == 'dialog':
+                # ROADMAP T1.3: NPC-Dialog-Modal mit Portrait + Choices.
+                self.dialog_ui.draw(self.screen, self)
         elif self.state == 'title':
             self.title_ui.save_exists = save_mod.save_exists()
             self.title_ui.draw(self.screen)
@@ -5042,7 +5274,104 @@ class Game:
             self.screen.blit(ring, (cx - r - 2, cy - r - 2))
         # Update #139 (AA-01): Debug-Overlay als letzter Pass über allem
         self._draw_debug_overlay()
-        pygame.display.flip()
+        # X-09 (Update #168): Cutscene-Player als allerletzter Render-Pass
+        # (oberhalb Modal-/HUD-/Cursor-Layern).
+        if self.cutscene_player.is_playing:
+            try:
+                self.cutscene_player.draw(self.screen)
+            except Exception:
+                pass
+        # AA-02 (Update #168): Console immer als letzter Pass.
+        try:
+            self.console.draw(self.screen)
+        except Exception:
+            pass
+        # Update #171: Physics-Splitter/Throwable-Render (no-op wenn pymunk
+        # disabled). Wird hier oben gezeichnet damit Splitter ueber dem
+        # Floor aber unter HUD/Modal liegen.
+        if self.physics is not None and self.physics.enabled:
+            self._draw_physics_bodies()
+        # Update #171: PyOpenGL-Post-Process-Pass (Bloom + Color-Grade +
+        # Vignette). Wenn use_gl_post=False, klassischer Pygame-Flip.
+        if self.gl_post is not None and self._render_surface is not None:
+            # NOTE: alle Draws gingen bisher direkt auf self.screen statt
+            # _render_surface. Fuer einen echten gl_post-Pfad muesste die
+            # ganze Engine umgestellt werden — das ist die naechste Phase.
+            # Aktueller Stand: gl_post ist initialisiert + Module verfuegbar,
+            # wird aber im Default-Pfad nicht aktiv genutzt.
+            self.gl_post.present(
+                self.screen,
+                biome=getattr(self, 'biome', 'town'),
+                shake_amount=getattr(self, 'shake', 0.0),
+                time_sec=pygame.time.get_ticks() * 0.001,
+            )
+        else:
+            pygame.display.flip()
+
+    # ============================================================
+    # Update #171: Physics-Helpers (opt-in, pymunk-based)
+    # ============================================================
+    def spawn_splitter_burst(self, x: float, y: float, *,
+                              count: int = 8,
+                              color: tuple = (180, 140, 100),
+                              speed_range: tuple = (80, 240),
+                              life_sec: float = 1.5) -> None:
+        """Spawn N Splitter-Partikel mit Pymunk-Trajectory am (x,y).
+
+        Wird typischerweise aufgerufen wenn ein breakable-Decor zerstoert
+        wird (Fass zerbricht, Vase explodiert, Glas-Saeule kollabiert).
+        Wenn pymunk fehlt, no-op.
+        """
+        if self.physics is None or not self.physics.enabled:
+            return
+        self.physics.add_splitter_burst(
+            (x, y), count=count, color=color,
+            speed_min=speed_range[0], speed_max=speed_range[1],
+            life_sec=life_sec,
+        )
+
+    def spawn_throwable(self, start_xy: tuple, target_xy: tuple, *,
+                         speed: float = 300.0, color: tuple = (220, 180, 100),
+                         kind_id: str = 'throwable',
+                         payload: dict | None = None) -> None:
+        """Spawn ein Boss-Throwable von start in Richtung target."""
+        if self.physics is None or not self.physics.enabled:
+            return
+        sx, sy = start_xy
+        tx, ty = target_xy
+        dx = tx - sx
+        dy = ty - sy
+        d = max(0.001, (dx * dx + dy * dy) ** 0.5)
+        vx = dx / d * speed
+        vy = dy / d * speed
+        self.physics.add_throwable(
+            (sx, sy), (vx, vy), color=color, kind_id=kind_id, payload=payload,
+        )
+
+    def _draw_physics_bodies(self) -> None:
+        """Render alle aktiven pymunk-bodies (Splitter, Throwables) als
+        kleine Kreise mit Drop-Shadow. Camera-aware via w2s_xy."""
+        if self.physics is None or not self.physics.enabled:
+            return
+        for entry in self.physics.iter_bodies():
+            try:
+                pos = entry['body'].position
+                sx, sy = self.w2s_xy(pos.x, pos.y)
+                sx, sy = int(sx), int(sy)
+                r = max(1, int(entry.get('radius', 4)))
+                col = entry.get('color', (180, 140, 100))
+                # Shadow
+                shadow = pygame.Surface((r * 2 + 6, r + 2), pygame.SRCALPHA)
+                pygame.draw.ellipse(shadow, (0, 0, 0, 130),
+                                     (0, 0, r * 2 + 6, r + 2))
+                self.screen.blit(shadow, (sx - r - 3, sy + r // 2))
+                # Body
+                pygame.draw.circle(self.screen, col, (sx, sy), r)
+                pygame.draw.circle(self.screen,
+                                    tuple(max(0, c - 50) for c in col),
+                                    (sx, sy), r, 1)
+            except Exception:
+                continue
 
     # Kinds, die als "stehende" Objekte (Y-sortiert) gerendert werden.
     _TALL_DECOR = {'pillar', 'torch', 'sarcophagus', 'broken_wall',
@@ -5202,6 +5531,17 @@ class Game:
                 self.screen.blit(tint, (0, 0),
                                   special_flags=pygame.BLEND_RGB_MULT)
 
+        # U-09 (Update #168): Globaler Lightning-Flash über Light-Pass.
+        # Wird durch cast_lightning / Boss-Storm / Rain-Lightning aktiviert.
+        # Photosensitive via request_flash bereits gefiltert.
+        if getattr(self, '_lightning_flash_t', 0.0) > 0.0:
+            self._lightning_flash_t -= 0.016
+            try:
+                self.lighting.render_lightning_flash(
+                    self.screen,
+                    intensity=max(0.0, self._lightning_flash_t) * 0.35)
+            except Exception:
+                pass
         # M-05 (Update #67): Volumetric-Fog pro Biome + Rain-Bonus.
         # Crypt = blaugrauer Nebel, Swamp = gelb-grüner Sumpf-Dunst, Frost =
         # weiß-blauer Whiteout, etc.  Rain steigert die Fog-Dichte temporär.
@@ -5221,6 +5561,22 @@ class Game:
             t_s = pygame.time.get_ticks() / 1000.0
             self.lighting.render_fog(
                 self.screen, fog_col, base_alpha + rain_boost, t_s)
+
+        # V-01..V-04 (Update #168): Surface-FX-Decals (Wet/Ice/Scorched/Glass)
+        # AUF dem Boden aber UNTER Entities — gerendert nach Lighting damit
+        # sie spuerbar sind (sonst durchs Dunkel-Overlay verschluckt).
+        try:
+            self.surface_fx.draw(self, self.screen)
+        except Exception:
+            pass
+
+        # V-08 Cloth-Sim Banner — gerendert spaet damit sie ueber dem Boden
+        # liegen aber unter Entities/Particles.
+        for cloth in self.cloth_banners:
+            try:
+                cloth.draw(self, self.screen)
+            except Exception:
+                pass
 
         # 7) Helle Effekte ÜBER der Beleuchtung
         # C-09: Partikel nach Layer-Priority sortiert rendern, damit
@@ -5488,6 +5844,119 @@ class Game:
             tint = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
             tint.fill((180, 100, 240, 50))
             self.screen.blit(tint, (0, 0))
+
+        # M-10 (Update #168): Bloom-Pass als letzter Render-Schritt von
+        # _draw_world.  Settings-Toggle: bloom = off|low|high.
+        bloom_mode = self.settings.get('bloom', 'off') if hasattr(self, 'settings') else 'off'
+        if bloom_mode == 'low':
+            try:
+                self.lighting.render_bloom(
+                    self.screen, threshold=205, strength=0.32)
+            except Exception:
+                pass
+        elif bloom_mode == 'high':
+            try:
+                self.lighting.render_bloom(
+                    self.screen, threshold=180, strength=0.55)
+            except Exception:
+                pass
+
+        # M-12 (Update #168): Heat-Distortion ueber Lava-Cells + Fire-AoE.
+        # Performance: Per-Cell render kostet ~22 subsurface.copy + 22 blit
+        # in lighting.render_heat_distortion -> bei 24 Cells = ~528
+        # subsurface-Ops/Frame, leichte Hauptursache fuer Frame-Drops.
+        # Drei Sicherungen gegen Ruckeln:
+        #   1. Biome-Early-Exit: nur 'lava' / 'wound_ash' haben Lava-Tiles
+        #   2. Cell-Cap 24 -> 8 + Iteration mit early-break
+        #   3. Frame-Interleave (jeden 2. Frame skippen): halbiert Cost
+        #      bei kaum sichtbarer Aenderung des Heat-Wave-Tempos
+        if (self.settings.get('heat_distortion', True)
+                and self.area == 'dungeon'
+                and getattr(self, 'biome', '') in ('lava', 'wound_ash')):
+            self._heat_frame_phase = (
+                getattr(self, '_heat_frame_phase', 0) + 1) % 2
+            if self._heat_frame_phase == 0:
+                heat_cells = []
+                for t in self.tiles:
+                    if t.kind == 'lava_pool' or t.kind == 'ember':
+                        sx, sy = self.w2s_xy(t.x, t.y)
+                        if -48 <= sx <= SCREEN_W + 48 and -48 <= sy <= SCREEN_H + 48:
+                            heat_cells.append((sx - 22, sy - 22, 44, 44))
+                            if len(heat_cells) >= 8:
+                                break
+                # Active Fire-Decals — Decal ist eine Klasse (sf/entities.py),
+                # nicht ein Dict.  Attribute statt .get().  DECAL_KIND.DOT
+                # ('dot') deckt fire/poison/bleed ab.
+                if len(heat_cells) < 8:
+                    for d in self.decals:
+                        kind = getattr(d, 'kind', None)
+                        dmg_type = getattr(d, 'dmg_type', None)
+                        if dmg_type == 'fire' or kind == 'dot':
+                            pos = getattr(d, 'pos', None)
+                            if pos is None:
+                                continue
+                            sx, sy = self.w2s(pos)
+                            r = int(getattr(d, 'radius', 40))
+                            heat_cells.append((sx - r, sy - r, r * 2, r * 2))
+                            if len(heat_cells) >= 8:
+                                break
+                if heat_cells:
+                    try:
+                        t_s = pygame.time.get_ticks() / 1000.0
+                        self.lighting.render_heat_distortion(
+                            self.screen, heat_cells, t_s, amplitude=3)
+                    except Exception:
+                        pass
+
+        # M-13 (Update #168): Optional CRT/Dither-Filter.
+        crt_mode = self.settings.get('crt_filter', 'off')
+        if crt_mode == 'scanlines':
+            try:
+                self._draw_crt_scanlines()
+            except Exception:
+                pass
+        elif crt_mode == 'dither':
+            try:
+                self._draw_dither_overlay()
+            except Exception:
+                pass
+
+    def _draw_crt_scanlines(self):
+        """M-13 (Update #168): Horizontaler Scanline-Overlay (CRT-Look).
+
+        Statisch gecachte 1-Pixel-Stripe-Surface mit α20.  Sehr cheap.
+        """
+        if not hasattr(self, '_crt_overlay'):
+            o = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            for y in range(0, SCREEN_H, 2):
+                pygame.draw.line(o, (0, 0, 0, 28), (0, y), (SCREEN_W, y))
+            self._crt_overlay = o
+        self.screen.blit(self._crt_overlay, (0, 0))
+
+    def _draw_dither_overlay(self):
+        """M-13 (Update #168): Bayer-4x4-Dither auf einer 1x-Surface.
+
+        Visualisierte Pixel-Art-Aesthetik.  Sehr leicht — Cache als 4x4-
+        Tile + Tile-Fill ueber den ganzen Screen.
+        """
+        if not hasattr(self, '_dither_overlay'):
+            bayer = [
+                [0,  8,  2, 10],
+                [12, 4, 14,  6],
+                [3, 11,  1,  9],
+                [15, 7, 13,  5],
+            ]
+            tile = pygame.Surface((4, 4), pygame.SRCALPHA)
+            for y in range(4):
+                for x in range(4):
+                    a = int(bayer[y][x] * 6)
+                    tile.set_at((x, y), (0, 0, 0, a))
+            full = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            for ty in range(0, SCREEN_H, 4):
+                for tx in range(0, SCREEN_W, 4):
+                    full.blit(tile, (tx, ty))
+            self._dither_overlay = full
+        self.screen.blit(self._dither_overlay, (0, 0))
 
     def _draw_interact_prompts(self):
         """Zeigt 'F: ...' wenn nahe an etwas Interaktivem."""
@@ -6066,6 +6535,8 @@ class Game:
         # Update #141 (Motion-Sickness-Fix): Camera-Toggles als
         # Accessibility-Options.  Cursor-Lean ist Default OFF.
         'camera_lookahead', 'camera_cursor_lean',
+        # Update #168: AI-Sprite-Master-Switch (alle Assets aus -> procedural).
+        'ai_sprites',
         'frame_cap', 'fullscreen',
     ]
     _FRAME_CAP_OPTIONS = [30, 60, 120, 144, 0]  # 0 = unlimited
@@ -6152,6 +6623,19 @@ class Game:
                     changed = True
                 elif key == 'minimap_rotate':
                     self.settings['minimap_rotate'] = not self.settings.get('minimap_rotate', False)
+                    changed = True
+                elif key == 'ai_sprites':
+                    # Update #168: Master-Switch — toggelt + spiegelt sofort
+                    # an sf.sprites + leert Caches damit Wechsel ohne Restart
+                    # sichtbar wird.
+                    new_val = not self.settings.get('ai_sprites', True)
+                    self.settings['ai_sprites'] = new_val
+                    try:
+                        from . import sprites as _sp_mod
+                        _sp_mod.set_ai_sprites_enabled(new_val)
+                        _sp_mod.reload_sprite_cache()
+                    except Exception:
+                        pass
                     changed = True
                 elif key == 'frame_cap':
                     cur = int(self.settings.get('frame_cap', 60))
@@ -6256,6 +6740,8 @@ class Game:
             # Accessibility-Options.
             ('camera_lookahead', f'Camera: Lookahead',  'toggle', self.settings.get('camera_lookahead', True)),
             ('camera_cursor_lean', f'Camera: Cursor-Lean (kann Übelkeit)', 'toggle', self.settings.get('camera_cursor_lean', False)),
+            # Update #168: Master-Switch
+            ('ai_sprites',       f'AI-Sprites (alle Assets)', 'toggle', self.settings.get('ai_sprites', True)),
             ('frame_cap',        f'Frame-Cap',          'cycle',  self._frame_cap_label()),
             ('fullscreen',       f'Vollbild',           'toggle', self.fullscreen),
         ]
@@ -8848,6 +9334,16 @@ class Game:
         wird der Save gelöscht und der Spieler ins Title-Menü zurück-
         geschickt.  Memorial-Eintrag bleibt.
         """
+        # AA-04 (Update #168): Telemetrie-Death-Event
+        try:
+            from . import telemetry as _tel
+            cause = '?'
+            lds = getattr(self, 'last_damage_source', None)
+            if lds:
+                cause = lds.get('type', '?')
+            _tel.record_death(self, cause=cause)
+        except Exception:
+            pass
         if getattr(self, 'hardcore', False):
             # Permadeath: Save löschen, kein Wake-Up.
             try:
@@ -9115,6 +9611,25 @@ class Game:
         self.modal = None
         self._quest_turnin_state = None
         self._quest_turnin_npc = None
+
+    def open_dialog_for_npc(self, npc):
+        """ROADMAP T1.3: Oeffne DialogUI fuer einen NPC.
+
+        Baut einen Default-Tree aus den `voice_lines` (Roster oder
+        Brassweir-Pool) und rendert das Portrait-Modal.  Wenn der NPC
+        kein eigenes Modal (vendor/stash/mystic/smith/quest/innkeeper)
+        triggern wuerde, ist Dialog der natuerliche Fallback.
+
+        Wird optional von `_show_npc_greeting` und vom NPC-Click-Handler
+        genutzt (Setting `dialog_modal`).
+        """
+        try:
+            roster_key = getattr(npc, 'roster_key', None)
+            npc_key = roster_key or getattr(npc, 'name', 'npc').lower().split()[0]
+            tree = self._dialog_mod.build_default_tree_for_npc(npc_key, npc)
+            self.dialog_ui.open(self, tree, 'start', npc_obj=npc)
+        except Exception:
+            pass
 
     def _show_npc_greeting(self, npc):
         """NPC-Greeting aus VELGRAD_VOICE_LINES_POOL.md — Toast vor Modal.
@@ -10770,4 +11285,37 @@ def main():
     _crash.install()
     g = Game()
     _crash.install(g)   # game-ref jetzt verfügbar
+    # AA-05 (Update #168): Mod-Discovery
+    if g.mod_loader is not None:
+        try:
+            g.mod_loader.discover_and_register(g)
+            if g.mod_loader.loaded:
+                for m in g.mod_loader.loaded:
+                    print(f"Mod loaded: {m['name']} v{m['version']}")
+        except Exception:
+            pass
+    # AA-07 (Update #168): Profiler-Start wenn dev_profiler-Flag
+    try:
+        from . import profiler as _prof
+        _prof.maybe_start(g)
+    except Exception:
+        pass
+    # AA-04 (Update #168): Telemetrie-Session-Start
+    try:
+        from . import telemetry as _tel
+        _tel.record_session_start(g)
+    except Exception:
+        pass
     g.run()
+    # AA-04: Telemetrie-Session-End
+    try:
+        from . import telemetry as _tel
+        _tel.record_session_end(g)
+    except Exception:
+        pass
+    # AA-07: Profiler-Dump
+    try:
+        from . import profiler as _prof
+        _prof.maybe_stop_and_dump(g)
+    except Exception:
+        pass
