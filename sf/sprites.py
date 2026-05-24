@@ -408,6 +408,12 @@ TILE_VARIANT_MAP = {
     # Re-Generation mit harmonisierten Prompts oder Asset-Pack-Switch
     # offen — siehe ROADMAP T2.5.
     'crypt':  ['crypt_floor_a'],
+    # Update #172 (Town-Tile-Refresh): Brassweir-Hafenstein-Floor mit
+    # 4 generierten Variants (a/b/c/d via rotation + tint-shifts).
+    # Wie crypt: nur Variant-a aktiv damit kein Patchwork-Look entsteht.
+    # Andere Variants in sprite_registry.py registriert fuer spaetere
+    # Hash-Picker-Aktivierung wenn Variants harmonisch zusammenpassen.
+    'town':   ['town_floor_a'],
 }
 
 TILE_WALL_MAP = {
@@ -918,7 +924,8 @@ class SpriteRig:
                  'last_hit_dir',
                  'root_vx', 'root_vy', 'root_motion_left',
                  'inertia_x', 'inertia_y',
-                 'wind_phase')
+                 'wind_phase',
+                 'squash_y', 'stretch_left')
 
     def __init__(self):
         self.hit_offset_x = 0.0
@@ -936,6 +943,11 @@ class SpriteRig:
         self.inertia_x = 0.0
         self.inertia_y = 0.0
         self.wind_phase = 0.0
+        # M-22 (Update #168): Sprite-Squash-and-Stretch on Movement.
+        # squash_y = vertical-scale-Multiplier (1.0 = normal, 0.85 = squashed)
+        # stretch_left = Restzeit fuer den Squash-Effekt nach Landung.
+        self.squash_y = 1.0
+        self.stretch_left = 0.0
 
     def tick(self, dt):
         # Decay aller Modifikatoren auf 0
@@ -953,6 +965,19 @@ class SpriteRig:
         self.inertia_x *= max(0.0, 1.0 - dt * 4.0)
         self.inertia_y *= max(0.0, 1.0 - dt * 4.0)
         self.wind_phase = (self.wind_phase + dt * 1.5) % math.tau
+        # M-22 Squash decay
+        if self.stretch_left > 0:
+            self.stretch_left = max(0.0, self.stretch_left - dt)
+            if self.stretch_left <= 0:
+                self.squash_y = 1.0
+
+    def trigger_squash(self, intensity=0.85, duration=0.08):
+        """M-22 (Update #168): Trigger sprite-squash (z.B. Landung nach
+        Dodge oder Jump-Land).  Intensity 1.0 = no squash, 0.85 = 15%
+        vertical-squash.
+        """
+        self.squash_y = max(0.7, min(1.0, intensity))
+        self.stretch_left = duration
 
     def push_root_motion(self, vx, vy, duration):
         """O-02: Initiiert Root-Motion. Spawnt einen Velocity-Vector der
