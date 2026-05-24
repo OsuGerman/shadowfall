@@ -2163,6 +2163,175 @@ class TitleUI:
         screen.blit(qsurf, (qx + 16, qy + 6))
 
     # ---------- Class Cards ----------
+    # Update #166: Portrait-Scale-Cache fuer Title-Screen Class-Cards.
+    # Skalierte Klassen-Sprites werden 1× geladen und gecached — vermeidet
+    # smoothscale-Cost pro Frame fuer 8 Klassen × 2 Sizes (card + detail).
+    _portrait_cache: dict = {}
+
+    def _draw_hero_portrait(self, screen, hero_surf, x, y, w, h,
+                              accent, t):
+        """Grosses Klassen-Portrait im Detail-Panel.
+
+        Layout:
+          - Sprite aspect-preserve scaled in das (w, h) Frame
+          - Klassen-Akzent-Doppel-Border + Eck-Ornamente
+          - Aspekt-Aura hinter dem Sprite (gepulst)
+          - Vertikaler Vignette-Fade unten → blendet in Panel-BG
+        """
+        sw, sh = hero_surf.get_size()
+        if sh <= 0:
+            return
+        # Aspect-fit
+        scale = min(w / sw, h / sh)
+        new_w = max(1, int(sw * scale))
+        new_h = max(1, int(sh * scale))
+        cache_key = ('hero', self.selected, new_w, new_h)
+        scaled = self._portrait_cache.get(cache_key)
+        if scaled is None:
+            scaled = pygame.transform.smoothscale(hero_surf, (new_w, new_h))
+            self._portrait_cache[cache_key] = scaled
+
+        # Aura hinter dem Sprite (gepulst, klassen-Farbe)
+        pulse = 0.55 + 0.45 * math.sin(t * 1.6)
+        aura_radius = int(min(new_w, new_h) * 0.55)
+        aura_surf = pygame.Surface(
+            (aura_radius * 2, aura_radius * 2), pygame.SRCALPHA)
+        # Outer soft glow
+        pygame.draw.circle(aura_surf, (*accent, int(40 * pulse)),
+                            (aura_radius, aura_radius), aura_radius)
+        pygame.draw.circle(aura_surf, (*accent, int(80 * pulse)),
+                            (aura_radius, aura_radius), int(aura_radius * 0.7))
+        aura_cx = x + w // 2
+        aura_cy = y + h // 2
+        screen.blit(aura_surf, (aura_cx - aura_radius, aura_cy - aura_radius))
+
+        # Sprite zentriert
+        blit_x = x + (w - new_w) // 2
+        blit_y = y + (h - new_h) // 2
+        screen.blit(scaled, (blit_x, blit_y))
+
+        # Vignette-Fade unten (versteckt Sprite-BG-Reste)
+        vign = pygame.Surface((w, h), pygame.SRCALPHA)
+        for vy in range(h):
+            t_v = vy / max(1, h)
+            if t_v > 0.78:
+                a = int(220 * ((t_v - 0.78) / 0.22))
+                pygame.draw.line(vign, (16, 12, 8, a),
+                                  (0, vy), (w, vy))
+        # Side-Edges
+        for ex in range(20):
+            a = int(80 * (1.0 - ex / 20))
+            pygame.draw.line(vign, (16, 12, 8, a), (ex, 0), (ex, h))
+            pygame.draw.line(vign, (16, 12, 8, a),
+                              (w - 1 - ex, 0), (w - 1 - ex, h))
+        screen.blit(vign, (x, y))
+
+        # Doppel-Rahmen + Eck-Ornamente
+        outer = (220, 180, 110)
+        pygame.draw.rect(screen, accent, (x, y, w, h), 2)
+        pygame.draw.rect(screen, outer, (x - 1, y - 1, w + 2, h + 2), 1)
+        corner = 14
+        for cx_, cy_, dx, dy in [
+            (x, y, 1, 1),
+            (x + w - 1, y, -1, 1),
+            (x, y + h - 1, 1, -1),
+            (x + w - 1, y + h - 1, -1, -1),
+        ]:
+            pygame.draw.line(screen, outer, (cx_, cy_),
+                              (cx_ + corner * dx, cy_), 2)
+            pygame.draw.line(screen, outer, (cx_, cy_),
+                              (cx_, cy_ + corner * dy), 2)
+
+    def _draw_class_portrait_on_card(self, screen, key, card_rect, accent,
+                                       is_sel, t) -> bool:
+        """Zeichnet das AI-Klassen-Sprite als Portrait in den oberen Card-Bereich.
+
+        Layout:
+          - Portrait-Frame nimmt ~60% der Card-Hoehe oben ein
+          - Vertikaler Verlauf von dunkel oben nach transparent unten →
+            blendet den Sprite-BG sanft in die Card aus (egal ob Sprite
+            transparent oder dark-BG ist)
+          - Klassen-Akzent-Ring um den Sprite (gepulst bei is_sel)
+
+        Returnt True wenn AI-Sprite geladen wurde, False fuer Fallback.
+        """
+        try:
+            from . import sprites as _spr
+        except ImportError:
+            return False
+        surf = _spr.get_class_sprite(key)
+        if surf is None:
+            return False
+
+        # Portrait-Area auf der Card (zentral oben, 50% Card-Hoehe)
+        pad_x = 12
+        pad_y = 8
+        port_w = card_rect.w - 2 * pad_x
+        port_h = int(card_rect.h * 0.50) - pad_y
+        port_x = card_rect.x + pad_x
+        port_y = card_rect.y + pad_y
+
+        # Sprite-aspect-preserving scale ins Portrait-Frame
+        sw, sh = surf.get_size()
+        if sh <= 0:
+            return False
+        scale = min(port_w / sw, port_h / sh)
+        new_w = max(1, int(sw * scale))
+        new_h = max(1, int(sh * scale))
+        cache_key = (key, new_w, new_h)
+        scaled = self._portrait_cache.get(cache_key)
+        if scaled is None:
+            scaled = pygame.transform.smoothscale(surf, (new_w, new_h))
+            self._portrait_cache[cache_key] = scaled
+
+        # Aura/Akzent-Pulse hinter dem Sprite (klassen-Farbe)
+        if is_sel:
+            pulse = 0.6 + 0.4 * math.sin(t * 2.4)
+            aura_r = 56
+            aura = pygame.Surface((aura_r * 2, aura_r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(aura, (*accent, int(70 * pulse)),
+                                (aura_r, aura_r), aura_r)
+            pygame.draw.circle(aura, (*accent, int(100 * pulse)),
+                                (aura_r, aura_r), aura_r - 14)
+            aura_cx = port_x + port_w // 2
+            aura_cy = port_y + port_h // 2
+            screen.blit(aura, (aura_cx - aura_r, aura_cy - aura_r))
+
+        # Sprite zentriert ins Portrait-Frame blitten
+        blit_x = port_x + (port_w - new_w) // 2
+        blit_y = port_y + (port_h - new_h) // 2
+        screen.blit(scaled, (blit_x, blit_y))
+
+        # Vignette-Overlay — fade-out unten und an den Raendern zur Card-Farbe.
+        # Versteckt unbeabsichtigte Sprite-Backgrounds (z.B. witch/sorceress
+        # mit Rest-Dunkelheit) elegant in die Card hinein.
+        vign = pygame.Surface((port_w, port_h), pygame.SRCALPHA)
+        # Unten-Fade (transparent-zu-dunkel) — soft-blend in stats-Bereich
+        for vy in range(port_h):
+            t_v = vy / max(1, port_h)
+            # Nur die untersten 25% sind sichtbar dunkler
+            if t_v > 0.75:
+                alpha = int(220 * ((t_v - 0.75) / 0.25))
+                pygame.draw.line(vign, (16, 12, 8, alpha),
+                                  (0, vy), (port_w, vy))
+        # Rand-Vignette (vertikal) — leichtes Darkening an l/r Edges
+        edge_w = 16
+        for ex in range(edge_w):
+            a = int(60 * (1.0 - ex / edge_w))
+            pygame.draw.line(vign, (16, 12, 8, a),
+                              (ex, 0), (ex, port_h))
+            pygame.draw.line(vign, (16, 12, 8, a),
+                              (port_w - 1 - ex, 0), (port_w - 1 - ex, port_h))
+        screen.blit(vign, (port_x, port_y))
+
+        # Klassen-Akzent-Unterstreichung (1 dicker Strich am Portrait-Fuss)
+        underline_y = port_y + port_h - 2
+        underline_col = _shade_color(accent, 1.2) if is_sel else accent
+        pygame.draw.line(screen, underline_col,
+                          (port_x + 4, underline_y),
+                          (port_x + port_w - 4, underline_y), 2)
+        return True
+
     def _draw_class_card(self, screen, key, c, rect, is_sel, t,
                          hovered):
         from . import quotes as _q
@@ -2234,16 +2403,23 @@ class TitleUI:
             pygame.draw.line(screen, corner_col,
                               (cx_, cy_), (cx_, cy_ + corner * dy), 2)
 
-        # Großes Weapon-Icon mit Aura
+        # Update #166: AI-Klassen-Portrait wenn vorhanden, sonst Fallback
+        # auf Procedural-Weapon-Icon.
         ic_cx = card_rect.centerx
-        ic_cy = card_rect.y + 56
-        # Aura hinter Icon (klassen-getönt)
-        aura = pygame.Surface((80, 80), pygame.SRCALPHA)
-        pygame.draw.circle(aura, (*accent, 60), (40, 40), 36)
-        pygame.draw.circle(aura, (*accent, 100), (40, 40), 28)
-        screen.blit(aura, (ic_cx - 40, ic_cy - 40))
-        # Icon (bigger size = 30)
-        self._draw_class_icon(screen, ic_cx, ic_cy, key, accent, size=30)
+        portrait_rendered = self._draw_class_portrait_on_card(
+            screen, key, card_rect, accent, is_sel, t)
+        if portrait_rendered:
+            # ic_cy als Anker fuer Name/Weapon/Divider unter dem Portrait
+            # Portrait nimmt 50% der Card-Hoehe (siehe Helper).
+            ic_cy = card_rect.y + int(card_rect.h * 0.50) + 4
+        else:
+            ic_cy = card_rect.y + 56
+            # Fallback: alter Weapon-Icon-Render
+            aura = pygame.Surface((80, 80), pygame.SRCALPHA)
+            pygame.draw.circle(aura, (*accent, 60), (40, 40), 36)
+            pygame.draw.circle(aura, (*accent, 100), (40, 40), 28)
+            screen.blit(aura, (ic_cx - 40, ic_cy - 40))
+            self._draw_class_icon(screen, ic_cx, ic_cy, key, accent, size=30)
 
         # Faktion-Sigil oben rechts (kleines Glyph)
         if fac:
@@ -2255,24 +2431,30 @@ class TitleUI:
         # Name
         name = self.font_med.render(c['name'], True,
                                      GOLD_BRIGHT if is_sel else GOLD)
+        # Update #166: kompaktere Spacing wenn Portrait-Mode (Portrait
+        # nimmt 50% der Card → weniger Platz fuer Text-Bloecke).
+        if portrait_rendered:
+            name_dy, weap_dy, div_dy, stats_dy = 6, 28, 44, 50
+        else:
+            name_dy, weap_dy, div_dy, stats_dy = 28, 50, 70, 76
         screen.blit(name, (card_rect.centerx - name.get_width() // 2,
-                            ic_cy + 28))
+                            ic_cy + name_dy))
 
         # Weapon-Type-Label (klein, gedeckt)
         weap = c.get('weapon', '')
         if weap:
             ws = self.font_small.render(weap, True, (160, 140, 100))
             screen.blit(ws, (card_rect.centerx - ws.get_width() // 2,
-                              ic_cy + 50))
+                              ic_cy + weap_dy))
 
         # Divider-Linie
-        dl_y = ic_cy + 70
+        dl_y = ic_cy + div_dy
         pygame.draw.line(screen, (60, 50, 36),
                           (card_rect.x + 14, dl_y),
                           (card_rect.x + card_rect.w - 14, dl_y), 1)
 
         # Mini-Stats (kompakt, 2 Spalten, Mini-Icons)
-        stats_top = dl_y + 6
+        stats_top = ic_cy + stats_dy
         stats = [
             (f'HP {c["hp"]}',  (200, 100, 100)),
             (f'MP {c["mp"]}',  (120, 150, 230)),
@@ -2340,6 +2522,15 @@ class TitleUI:
         fac = _q.class_faction(self.selected)
         origin = _q.class_origin_quote(self.selected)
         accent = c['color']
+        # Update #166: Hero-Portrait belegt rechte 42% des Panels (vertikal),
+        # text-width wird auf linke 58% reduziert damit nichts ueberlappt.
+        try:
+            from . import sprites as _spr
+            hero_surf = _spr.get_class_sprite(self.selected)
+        except Exception:
+            hero_surf = None
+        portrait_col_w = int(panel_w * 0.42) if hero_surf is not None else 0
+        text_w = panel_w - portrait_col_w - 48 if portrait_col_w > 0 else (panel_w - 48)
 
         # Panel-Hintergrund (Pergament-Gradient + Vignette)
         pbg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
@@ -2393,7 +2584,7 @@ class TitleUI:
 
         # Beschreibung
         self._wrap_text(screen, c['desc'], panel_x + 24, cursor_y,
-                         panel_w - 48, (220, 210, 190), self.font_small)
+                         text_w, (220, 210, 190), self.font_small)
         cursor_y += 40
 
         # Fraktion + Aspekt (mit Sigil + Farb-Balken)
@@ -2426,8 +2617,18 @@ class TitleUI:
             cursor_y += oq_label.get_height() + 4
             self._wrap_text(screen, f'„{origin}"',
                              panel_x + 24, cursor_y,
-                             panel_w - 48, (225, 215, 195),
+                             text_w, (225, 215, 195),
                              self.font_small)
+
+        # Update #166: Hero-Portrait rechts (zwischen Name-Header und Skills)
+        if hero_surf is not None and portrait_col_w > 0:
+            hero_x = panel_x + panel_w - portrait_col_w - 12
+            hero_y = band_y + 14
+            hero_h = panel_h - (hero_y - panel_y) - 80   # bis ueber Skills
+            hero_w = portrait_col_w
+            self._draw_hero_portrait(
+                screen, hero_surf, hero_x, hero_y, hero_w, hero_h,
+                accent, t)
 
         # Starter-Skills am unteren Panel-Rand
         skills_y = panel_y + panel_h - 64
