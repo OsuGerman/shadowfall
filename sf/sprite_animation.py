@@ -153,12 +153,19 @@ class AnimationState:
         Returns True wenn Anim gestartet wurde. Returns False wenn ein
         gerade laufender State eine hoehere Prio hat (z.B. Trigger 'hit'
         waehrend 'death' laeuft → ignoriert).
+
+        Update #168 (Flicker-Fix): Re-Trigger des SELBEN States wird
+        ignoriert solange der Cycle noch laeuft (verhindert Frame-Reset
+        bei rapid-fire Events wie LMB-held-attack oder Multi-Hit-Damage).
+        Death darf sich nicht selbst neu starten — bleibt am letzten Frame.
         """
         if anim_name not in ANIM_CONFIG:
             return False
+        # Re-Trigger des gleichen States waehrend er laeuft → ignorieren.
+        # Verhindert dass Attack/Hit-Frame jede 0.4s auf 0 zurueckspringt.
+        if self.current == anim_name and self.locked and not self._finished:
+            return False
         # Priority-Check: nur ueberschreiben wenn neu >= alt.
-        # Ausnahme: 'death' ueberschreibt IMMER, alles andere wartet wenn
-        # locked.
         new_prio = TRIGGER_PRIORITY.get(anim_name, 0)
         cur_prio = TRIGGER_PRIORITY.get(self.current, 0)
         if self.locked:

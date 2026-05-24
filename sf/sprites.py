@@ -1066,30 +1066,48 @@ def draw_player_at(screen, p, sx, sy, walk_phase):
     fx_kind: str = ''   # procedural overlay key: '' | 'attack' | 'hit' | 'cast' | 'death'
     fx_progress: float = 0.0
 
+    # Update #168 (Flicker-Fix): Unified-Sheet-Source. Wenn Walk-Sheet
+    # existiert, IMMER aus dem Walk-Sheet rendern (mit FX-Overlay fuer
+    # attack/hit/cast/death) statt zwischen Sheets ↔ static-Sprite zu
+    # springen. Verhindert visible "blink" beim State-Wechsel
+    # idle ↔ walk weil idle (no sheet) sonst auf monk.png fiel und
+    # walk auf monk_anims/walk/<dir>.png frame N — zwei verschiedene
+    # Artwork-Versionen mit minimal anderem Silhouetten-Offset.
+    has_walk_sheet = has_anim(cls, 'walk')
+
     if anim_st is not None:
         anim_name = anim_st.current
         # 1. Versuch: echtes Sheet fuer (cls, anim, dir)
         ai_surf = get_class_anim_frame(cls, anim_name, direction, anim_st.frame)
-        if ai_surf is None and anim_name != 'idle':
-            # 2. Fallback: idle/walk-Frame als Basis, procedural-Effect drueber
-            base_anim = 'walk' if p.moving else 'walk'
-            base_frame = (int(walk_phase % WALK_FRAMES_PER_STRIP)
-                          if p.moving else 0)
-            ai_surf = get_class_anim_frame(cls, base_anim, direction, base_frame)
+        if ai_surf is None and has_walk_sheet:
+            # 2. Unified Fallback: IMMER walk-sheet als Basis, auch fuer
+            # idle (zeigt walk-frame-0 = neutrale Standpose). FX-Overlay
+            # wenn one-shot-Anim (attack/hit/cast/death).
+            if anim_name == 'idle' or not p.moving:
+                # Stehender Charakter → walk-frame-0 (neutrale Pose).
+                # Statt frame=0 hartcodiert: behalte walk_phase-Position
+                # bei wenn gerade aus walk gewechselt → smoother stop.
+                base_frame = 0 if not p.moving else int(
+                    walk_phase % WALK_FRAMES_PER_STRIP)
+            else:
+                base_frame = int(walk_phase % WALK_FRAMES_PER_STRIP)
+            ai_surf = get_class_anim_frame(cls, 'walk', direction, base_frame)
             if anim_name in ('attack', 'hit', 'cast', 'death'):
                 fx_kind = anim_name
                 fx_progress = anim_st.progress()
     else:
         # Alte Player-Instanzen ohne anim_state — alter walk_phase-Pfad
-        if has_walk_animation(cls):
+        if has_walk_sheet:
             if p.moving:
                 frame_idx = int(walk_phase % WALK_FRAMES_PER_STRIP)
             else:
                 frame_idx = 0
             ai_surf = get_class_walk_frame(cls, direction, frame_idx)
 
-    # 3. Fallback: statisches AI-Sprite (klasse.png)
-    if ai_surf is None:
+    # 3. Letzter Fallback: statisches AI-Sprite (nur wenn kein walk-sheet)
+    # Wichtig: NUR wenn has_walk_sheet=False, sonst kein-statisch-Sprite-
+    # Mixing damit kein Artwork-Sprung auftritt.
+    if ai_surf is None and not has_walk_sheet:
         ai_surf = get_class_sprite(cls)
 
     if ai_surf is not None:
