@@ -292,6 +292,72 @@ python tools/asset_audit.py --only fail   # blocker
 
 ---
 
+## 7a. RELEASE-READY-ROADMAP (kuratierte Tool-Empfehlungen)
+
+> **Stand:** noch nicht installiert. Bei jedem aktivierten Tool: pip install + TOOLBOX-Section-1 update + list_stack.py reflektiert automatisch.
+
+### Tier 1 — KRITISCH fuer Release (ohne kein Ship moeglich)
+
+| Tool | Zweck | Aufwand | Pflicht? |
+|---|---|---|---|
+| **Nuitka** | Python → C-Compile → .exe single-file (~30-50 MB) | 1 Tag | JA |
+| **PyInstaller** (Alternative) | einfacher aber langsamer als Nuitka | 1 Tag | (Nuitka oder PyInstaller) |
+| **moviepy** | Gameplay-Trailer-Recording fuer Marketing/Steam-Page | 0.5 Tag | empfohlen |
+
+### Tier 2 — Graphics/Animation-Quality
+
+| Tool | Zweck | Aufwand |
+|---|---|---|
+| **scipy.ndimage** | Echter Gaussian-Bloom (ersetzt 2-Pass-Approx in sf/lighting.py render_bloom) | 0.5 Tag |
+| **noise** (Perlin/Simplex) | Natuerliche Variations: Tile-Variance, Fog-Density, Particle-Drift, Wind | 0.5 Tag |
+| **moderngl** | Cleaner Shader-Workflow als PyOpenGL (70% weniger Code, bessere Errors) | 1 Tag |
+
+### Tier 3 — UI/UX-Polish
+
+| Tool | Zweck | Aufwand |
+|---|---|---|
+| **pygame_menu** | Settings-Menue mit Key-Rebind, Volume-Sliders, Resolution, Accessibility | 1-2 Tage |
+| **pysrt** | Untertitel-File-Management fuer Voice-Lines (Accessibility) | 0.5 Tag |
+
+### Tier 4 — Code-Quality + Tests
+
+| Tool | Zweck | Aufwand |
+|---|---|---|
+| **pytest** | Migration von ad-hoc smoke.py auf strukturiertes pytest | 1 Tag |
+| **pytest-benchmark** | FPS-Regression-Catching pro Test | 0.5 Tag |
+| **hypothesis** | Property-based Testing fuer Combat-RNG/Loot-Rolls | 0.5 Tag |
+| **ruff** | Fast Linter (10000x schneller als pylint) | 0.25 Tag |
+| **mypy** | Static-Type-Check fuer game.py (9487 LOC, Types finden Bugs) | 1 Tag |
+
+### Tier 5 — Marketing/Distribution (wenn Release nah)
+
+| Tool | Zweck |
+|---|---|
+| **steamworks-py** | Steam-Achievements, Cloud-Save, Friend-Invites |
+| **discord-rpc** | Discord Rich Presence ("Spielt Velgrad — Akt 3") |
+| **itch.io butler** | Auto-Upload zu Itch.io (CLI-Tool, kein Python-Package) |
+
+### Was wir **NICHT** brauchen (verworfene Alternativen)
+
+- ~~arcade~~ — komplette Engine-Migration unrealistisch
+- ~~Spine/DragonBones~~ — bone-animation, widerspricht Procedural-Pivot
+- ~~Panda3D / Godot~~ — 3D-Engines, alles neu
+- ~~FMOD/Wwise~~ — Pro-Audio-Middleware, overkill
+- ~~pyglet~~ — Pygame-Alternative, kein Mehrwert hier
+- ~~Cython~~ — Numba reicht fuer Hot-Loop-Speedup ohne Compile-Step
+
+### Empfohlene Aktivierungs-Reihenfolge (wenn Release-Ready werden soll)
+
+1. **scipy.ndimage** + **noise** — sofortiger Quality-Sprung, 1 Tag
+2. **pygame_menu** — Settings-UI, ohne das fehlt's beim Release
+3. **pytest** + **ruff** + **mypy** — Quality-Foundation
+4. **Nuitka** — Distribution
+5. **moviepy** — Trailer fuer Steam-Page
+
+Erst dann Steam/Itch-Spezifika.
+
+---
+
 ## 8. WIE MAN DIESE DOC AKTUELL HAELT
 
 Bei JEDER neuen Library/Tool/Modul:
