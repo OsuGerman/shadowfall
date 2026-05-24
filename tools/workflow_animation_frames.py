@@ -92,10 +92,24 @@ ANIM_FRAME_RATES = {
 }
 
 DIRECTION_DESC = {
-    'S':  'front view, facing camera',
-    'E':  'side profile facing right',
-    'N':  'back view, away from camera',
-    'W':  'side profile facing left',
+    # WICHTIG: Alle Klassen-Sprites + Mob-Sprites + Welt-Tiles sind in
+    # leichter 3/4-Top-Down-ARPG-Perspektive (Diablo 2 / POE2 / Hades-Look)
+    # — leicht erhoehter Kamera-Winkel, der nach unten auf den Charakter
+    # blickt. Reine Eye-Level/Portrait-Renders bleiben optisch flach und
+    # passen nicht zum Tile-System. Die Direction-Beschreibung muss diese
+    # Kamera-Konvention immer explizit re-enforcen, sonst kippt das Modell
+    # auf neutrale Augenhöhe-Side-Views.
+    'S':  '3/4 top-down ARPG view, camera slightly elevated looking down, '
+          'character oriented south facing the camera with body angled '
+          'naturally toward viewer',
+    'E':  '3/4 top-down ARPG view, camera slightly elevated looking down, '
+          'character oriented east (screen right) shown in three-quarter '
+          'profile, not flat side view',
+    'N':  '3/4 top-down ARPG view, camera slightly elevated looking down, '
+          'character oriented north away from camera, three-quarter rear angle',
+    'W':  '3/4 top-down ARPG view, camera slightly elevated looking down, '
+          'character oriented west (screen left) shown in three-quarter '
+          'profile, not flat side view',
 }
 
 MASTER_NEGATIVE = (
@@ -169,8 +183,12 @@ class AnimationFramesWorkflow(WorkflowBase):
         for i, phase in enumerate(phase_prompts):
             prompt = (
                 f'same character as reference, {dir_desc}, {phase}, '
-                f'consistent style and proportions, top-down ARPG sprite, '
-                f'transparent background, single frame in animation cycle'
+                f'consistent style and proportions, '
+                f'ARPG character sprite in Path of Exile 2 / Hades style '
+                f'three-quarter top-down camera, head closer to camera than feet, '
+                f'character viewed from slightly above eye level, '
+                f'transparent background, single frame in animation cycle, '
+                f'not flat eye-level portrait, not pixel art isometric'
             )
             out_path = tmp_dir / f'frame_{i+1:02d}.png'
             ok = self.run_inference_to_file(

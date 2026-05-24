@@ -384,6 +384,13 @@ def _on_cooldown(p, skill):
 
 def _apply_cd(p, skill, base_cd, cdr):
     p.skill_cd[skill] = max(0.1, base_cd * (1.0 - cdr))
+    # Update #165: Animation-Trigger 'cast' bei Skill-Use.
+    # Wird hier zentral getriggert weil _apply_cd von ALLEN cast-Pfaden
+    # aufgerufen wird (fireball, lightning, heal, frostnova).
+    try:
+        p.anim_state.trigger('cast')
+    except AttributeError:
+        pass
 
 
 def _crit_roll(eff):

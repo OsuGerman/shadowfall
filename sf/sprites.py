@@ -98,11 +98,21 @@ def get_class_sprite(cls: str) -> pygame.Surface | None:
 
 
 # ============================================================
-# WALK-ANIMATION-SHEETS (Update #164)
+# ANIMATION-SHEETS (Update #164/#165)
 # ============================================================
-# Convention: assets/sprites/classes/<class>_walk/<class>_<direction>.png
-# Jedes PNG ist ein horizontaler Strip mit N gleich-grossen Frames
-# (Default 8). Direction: down (S) | up (N) | left (W) | right (E).
+# Convention seit Update #165:
+#   assets/sprites/classes/<class>_anims/<anim>/<dir>.png
+#     wobei dir in ('down', 'up', 'left', 'right')
+#     und anim in ('idle', 'walk', 'attack', 'hit', 'cast', 'death')
+#   Fuer non-directional Anims (z.B. death):
+#     assets/sprites/classes/<class>_anims/<anim>/all.png
+#
+# Backward-compat (Update #164):
+#   assets/sprites/classes/<class>_walk/<class>_<dir>.png
+#   → wird automatisch zu <class>_anims/walk/<dir>.png gemappt
+#
+# Jedes PNG ist ein horizontaler Strip mit N gleich-breiten Frames.
+# N pro Anim siehe sprite_animation.ANIM_CONFIG.
 WALK_DIRECTIONS = ('down', 'up', 'left', 'right')
 WALK_DIR_ALIAS = {
     'S': 'down', 's': 'down',
@@ -110,10 +120,13 @@ WALK_DIR_ALIAS = {
     'W': 'left', 'w': 'left',
     'E': 'right', 'e': 'right',
 }
-WALK_FRAMES_PER_STRIP = 8
+WALK_FRAMES_PER_STRIP = 8   # Default fuer Walk; andere Anims via ANIM_CONFIG
 
-# Cache: (cls, direction) → list[Surface] der Sub-Frames
-_WALK_FRAME_CACHE: dict[tuple[str, str], list[pygame.Surface] | None] = {}
+# Cache: (cls, anim, direction) → list[Surface] der Sub-Frames (oder None)
+_ANIM_FRAME_CACHE: dict[tuple[str, str, str], list[pygame.Surface] | None] = {}
+
+# Backward-Compat-Alias (alter Cache-Name)
+_WALK_FRAME_CACHE = _ANIM_FRAME_CACHE
 
 
 def _trim_transparent(surf: pygame.Surface) -> pygame.Surface:
@@ -134,49 +147,72 @@ def _trim_transparent(surf: pygame.Surface) -> pygame.Surface:
     return cropped
 
 
-def _load_walk_strip(cls: str, direction: str) -> list[pygame.Surface] | None:
-    """Lazy-load ein 8-Frame-Walk-Strip + slice in 8 Sub-Surfaces + auto-trim.
+def _anim_strip_path(cls: str, anim: str, direction: str) -> str | None:
+    """Findet den Strip-Pfad fuer (cls, anim, direction).
 
-    direction: 'down'|'up'|'left'|'right' ODER 'S'|'N'|'W'|'E'.
-    Returnt None wenn Strip nicht existiert (Fallback auf statisches Sprite).
+    Sucht in dieser Reihenfolge (erste vorhandene Datei wins):
+      1. NEU (Update #165): <cls>_anims/<anim>/<dir>.png
+      2. NON-DIRECTIONAL:   <cls>_anims/<anim>/all.png  (z.B. death)
+      3. BACKWARD (#164):   <cls>_walk/<cls>_<dir>.png  (nur fuer anim='walk')
+    """
+    real_cls = CLASS_SPRITE_ALIAS.get(cls, cls)
+    base = os.path.join(_PROJECT_ROOT, 'assets', 'sprites', 'classes')
+    candidates = [
+        os.path.join(base, f'{real_cls}_anims', anim, f'{direction}.png'),
+        os.path.join(base, f'{real_cls}_anims', anim, 'all.png'),
+    ]
+    if anim == 'walk':
+        candidates.append(
+            os.path.join(base, f'{real_cls}_walk', f'{real_cls}_{direction}.png'))
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
 
-    Auto-Trim: jedes Sub-Frame wird auf die non-transparent bounding-box
-    gecroppt, damit der Charakter den verfuegbaren Render-Raum optimal
-    ausfuellt (statt von viel leerem Background-Space umgeben zu sein).
+
+def _load_anim_strip(cls: str, anim: str,
+                      direction: str) -> list[pygame.Surface] | None:
+    """Lazy-load + slice + auto-trim eines Animation-Strips.
+
+    Anzahl Frames bestimmt sich aus sprite_animation.ANIM_CONFIG[anim]['frames'].
+    Wenn nicht verfuegbar, fallback auf WALK_FRAMES_PER_STRIP (8).
     """
     direction = WALK_DIR_ALIAS.get(direction, direction)
     if direction not in WALK_DIRECTIONS:
         return None
-    # Alias-Mapping: 'mage' → 'sorceress' etc. — gleiche Logik wie Single-Sprite
     real_cls = CLASS_SPRITE_ALIAS.get(cls, cls)
-    key = (real_cls, direction)
-    if key in _WALK_FRAME_CACHE:
-        return _WALK_FRAME_CACHE[key]
+    key = (real_cls, anim, direction)
+    if key in _ANIM_FRAME_CACHE:
+        return _ANIM_FRAME_CACHE[key]
 
-    strip_path = os.path.join(
-        _PROJECT_ROOT, 'assets', 'sprites', 'classes',
-        f'{real_cls}_walk', f'{real_cls}_{direction}.png',
-    )
-    if not os.path.exists(strip_path):
-        _WALK_FRAME_CACHE[key] = None
+    strip_path = _anim_strip_path(cls, anim, direction)
+    if strip_path is None:
+        _ANIM_FRAME_CACHE[key] = None
         return None
     try:
         strip = pygame.image.load(strip_path)
     except Exception:
-        _WALK_FRAME_CACHE[key] = None
+        _ANIM_FRAME_CACHE[key] = None
         return None
 
-    # Strip in N gleich-breite Frames slicen + auto-trim
+    # Frame-Count aus ANIM_CONFIG (fallback 8)
+    try:
+        from .sprite_animation import ANIM_CONFIG
+        frame_count = ANIM_CONFIG.get(anim, {}).get(
+            'frames', WALK_FRAMES_PER_STRIP)
+    except ImportError:
+        frame_count = WALK_FRAMES_PER_STRIP
+
     sw, sh = strip.get_size()
-    fw = sw // WALK_FRAMES_PER_STRIP
+    fw = sw // frame_count
     if fw <= 0:
-        _WALK_FRAME_CACHE[key] = None
+        _ANIM_FRAME_CACHE[key] = None
         return None
+
     # Alpha-Premultiplikation: viele AI-Strips speichern transparente Pixel mit
     # RGB=247 (originaler weisser BG, nur Alpha=0). pygame.transform.smoothscale
     # interpoliert bilinear und blendet die weisse RGB-Komponente in die Kanten
-    # -> sichtbarer Weiss-Halo um den Charakter. Wir nullen RGB fuer alpha=0,
-    # damit der Halo verschwindet.
+    # -> sichtbarer Weiss-Halo um den Charakter. Wir nullen RGB fuer alpha=0.
     try:
         import numpy as _np
         a = pygame.surfarray.pixels_alpha(strip)
@@ -189,39 +225,59 @@ def _load_walk_strip(cls: str, direction: str) -> list[pygame.Surface] | None:
         pass
 
     frames: list[pygame.Surface] = []
-    for i in range(WALK_FRAMES_PER_STRIP):
+    for i in range(frame_count):
         sub = pygame.Surface((fw, sh), pygame.SRCALPHA)
         sub.blit(strip, (0, 0), (i * fw, 0, fw, sh))
         sub = _trim_transparent(sub)
         frames.append(sub)
-    _WALK_FRAME_CACHE[key] = frames
+    _ANIM_FRAME_CACHE[key] = frames
     return frames
 
 
-def get_class_walk_frame(cls: str, direction: str,
+def get_class_anim_frame(cls: str, anim: str, direction: str,
                           frame_idx: int) -> pygame.Surface | None:
-    """Returnt einen Sub-Frame aus dem Walk-Strip. Cached.
+    """Returnt einen Sub-Frame aus dem Anim-Strip. Cached.
 
     Args:
         cls:        Klassen-Slug (z.B. 'monk')
+        anim:       'idle'|'walk'|'attack'|'hit'|'cast'|'death'
         direction:  'down'|'up'|'left'|'right' oder 'S'|'N'|'W'|'E'
-        frame_idx:  Index 0..7 (wird modulo gerechnet, safe)
+        frame_idx:  0..N-1, wird modulo gerechnet (safe)
 
     Returns:
-        Surface oder None wenn kein Walk-Sheet fuer (cls, direction) registriert.
+        Surface oder None wenn kein Sheet fuer (cls, anim, direction)
+        registriert. Aufrufer faellt dann auf statisches Sprite + procedural
+        Visual-Effect zurueck.
     """
-    frames = _load_walk_strip(cls, direction)
+    frames = _load_anim_strip(cls, anim, direction)
     if not frames:
         return None
     return frames[frame_idx % len(frames)]
 
 
-def has_walk_animation(cls: str) -> bool:
-    """True wenn fuer cls mindestens 1 Walk-Strip existiert (down/up/left/right)."""
+def has_anim(cls: str, anim: str) -> bool:
+    """True wenn fuer (cls, anim) mind. 1 Direction-Strip existiert."""
     for d in WALK_DIRECTIONS:
-        if _load_walk_strip(cls, d) is not None:
+        if _anim_strip_path(cls, anim, d) is not None:
             return True
     return False
+
+
+# ---- Backward-Compat-Wrappers fuer Update #164-API ----
+def _load_walk_strip(cls: str, direction: str) -> list[pygame.Surface] | None:
+    """Backward-compat alias — ruft generischen Loader fuer 'walk'."""
+    return _load_anim_strip(cls, 'walk', direction)
+
+
+def get_class_walk_frame(cls: str, direction: str,
+                          frame_idx: int) -> pygame.Surface | None:
+    """Backward-compat alias — ruft generischen Loader fuer 'walk'."""
+    return get_class_anim_frame(cls, 'walk', direction, frame_idx)
+
+
+def has_walk_animation(cls: str) -> bool:
+    """Backward-compat — True wenn cls eine Walk-Anim hat."""
+    return has_anim(cls, 'walk')
 
 
 def direction_from_velocity(vx: float, vy: float) -> str:
@@ -521,16 +577,109 @@ def _draw_ai_sprite_at(screen, surf: pygame.Surface, sx: int, sy: int,
                         target_height: int) -> None:
     """Zeichnet die AI-Sprite-Surface so dass deren Fuesse bei (sx, sy) sind
     und Hoehe `target_height` ist. Behaelt Aspect-Ratio bei."""
+    _draw_ai_sprite_at_with_fx(screen, surf, sx, sy, target_height)
+
+
+def _draw_ai_sprite_at_with_fx(screen, surf: pygame.Surface, sx: int, sy: int,
+                                target_height: int, *,
+                                fx_kind: str = '',
+                                fx_progress: float = 0.0,
+                                cls: str = '') -> None:
+    """Render AI-Sprite + optional procedural Visual-Effect waehrend One-
+    Shot-Anim laeuft.
+
+    fx_kind:
+        ''       → kein Effect, normales Render
+        'attack' → leichter Scale-Pulse + Forward-Shake
+        'hit'    → Red-Tint-Flash + Backward-Shake
+        'cast'   → Aspekt-Aura-Glow (Klassen-Farbe)
+        'death'  → Slide-Down + Fade-Out
+
+    fx_progress: 0.0..1.0 — wie weit die Anim durch ist (von anim_state.progress())
+    """
+    import math as _m
     sw, sh = surf.get_size()
     if sh <= 0:
         return
-    scale = target_height / sh
+
+    # Effect-Modulation berechnen
+    scale_mult = 1.0
+    shake_x = 0
+    shake_y = 0
+    tint = None       # (r, g, b, a) overlay
+    alpha = 255
+    glow = None       # (r, g, b, a) outer aura
+
+    if fx_kind == 'attack':
+        # Wind-up (0.0-0.5): leichter Pull-Back (Scale 0.95)
+        # Strike (0.5-0.8): Scale-Pulse auf 1.1 + forward shake
+        # Recovery (0.8-1.0): zurueck auf 1.0
+        if fx_progress < 0.5:
+            scale_mult = 1.0 - 0.05 * (fx_progress / 0.5)
+        elif fx_progress < 0.8:
+            t = (fx_progress - 0.5) / 0.3
+            scale_mult = 0.95 + 0.15 * t   # 0.95 → 1.10
+            shake_x = int(_m.sin(fx_progress * 30) * 3)
+        else:
+            scale_mult = 1.10 - 0.10 * ((fx_progress - 0.8) / 0.2)
+    elif fx_kind == 'hit':
+        # Strong red flash + backward shake
+        flash_intensity = max(0.0, 1.0 - fx_progress * 1.2)
+        tint = (255, 60, 60, int(180 * flash_intensity))
+        shake_x = int(_m.sin(fx_progress * 40) * 4 * (1.0 - fx_progress))
+        scale_mult = 0.98
+    elif fx_kind == 'cast':
+        # Aspekt-Aura: pulsing glow around sprite, Klassen-Farbe
+        try:
+            from . import aspects as _asp
+            pal = _asp.aspect_palette(cls)
+            r, g, b = pal['bright']
+        except Exception:
+            r, g, b = 200, 180, 255
+        puls = abs(_m.sin(fx_progress * _m.pi * 2))
+        glow_alpha = int(120 * (0.4 + 0.6 * puls))
+        glow = (r, g, b, glow_alpha)
+        # Slight scale-up at climax
+        scale_mult = 1.0 + 0.05 * puls
+    elif fx_kind == 'death':
+        # Slide down + fade out
+        slide_px = int(target_height * 0.5 * fx_progress)
+        sy = sy + slide_px
+        alpha = max(0, int(255 * (1.0 - fx_progress * 0.7)))
+        # Slight horizontal collapse
+        scale_mult = max(0.3, 1.0 - fx_progress * 0.4)
+
+    # Skalieren
+    final_h = max(1, int(target_height * scale_mult))
+    scale = final_h / sh
     new_w = max(1, int(sw * scale))
-    new_h = max(1, int(sh * scale))
-    scaled = pygame.transform.smoothscale(surf, (new_w, new_h))
-    # Fuesse bei sy, Sprite nach oben
-    blit_x = sx - new_w // 2
-    blit_y = sy - new_h
+    scaled = pygame.transform.smoothscale(surf, (new_w, final_h))
+
+    # Alpha anwenden
+    if alpha < 255:
+        scaled = scaled.copy()
+        scaled.set_alpha(alpha)
+
+    # Tint overlay (z.B. red-flash bei Hit) — wird auf den scaled drauf-multipliziert
+    if tint is not None and tint[3] > 0:
+        tint_surf = pygame.Surface(scaled.get_size(), pygame.SRCALPHA)
+        tint_surf.fill(tint)
+        scaled = scaled.copy()
+        scaled.blit(tint_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
+    blit_x = sx - new_w // 2 + shake_x
+    blit_y = sy - final_h + shake_y
+
+    # Glow draufzeichnen UNTER den Sprite
+    if glow is not None and glow[3] > 0:
+        glow_radius = max(new_w, final_h) // 2 + 12
+        glow_surf = pygame.Surface(
+            (glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surf, glow,
+                            (glow_radius, glow_radius), glow_radius)
+        screen.blit(glow_surf,
+                     (sx - glow_radius, sy - final_h // 2 - glow_radius))
+
     screen.blit(scaled, (blit_x, blit_y))
 
 
@@ -765,25 +914,41 @@ def draw_player_at(screen, p, sx, sy, walk_phase):
                            (h, h), p.radius + 14, 3)
         screen.blit(glow, (sx - h, body_sy - h - p.radius))
 
-    # Update #164: Walk-Animation-Pfad — wenn fuer cls ein 8-Frame-Sheet
-    # in assets/sprites/classes/<cls>_walk/ existiert, render directional
-    # Frame statt statisches Sprite. Fall-through auf statisches Sprite,
-    # dann auf Procedural-Composit.
+    # Update #165: Animation-State-aware Render-Pfad.
+    # State-Machine entscheidet welche Anim laeuft (idle/walk/attack/hit/
+    # cast/death). Wenn ein Sheet fuer (cls, anim, dir) existiert → render
+    # echten Frame. Sonst fallback auf walk-frame-0 (oder static-sprite) +
+    # procedural Visual-Effect (Scale-Pulse fuer Attack, Red-Flash fuer Hit,
+    # Slide-Down+Fade fuer Death, Aspekt-Aura fuer Cast).
     ai_surf = None
-    if has_walk_animation(cls):
-        direction = direction_from_facing(getattr(p, 'facing', 0.0))
-        # Frame-Pace: walk_phase wird in game.py mit dt*10 erhoeht (rad-aehnlich
-        # fuer Procedural-Leg-Bob via sin). Fuer den 8-Frame-Strip wollen wir
-        # ~1.25 Walk-Cycles/Sek (= 10 Frames/Sek) — also direkt walk_phase % 8
-        # ohne *8 Multiplikator (alt: 10 Cycles/Sek = unrealistisch hektisch).
-        if p.moving:
-            frame_idx = int(walk_phase % WALK_FRAMES_PER_STRIP)
-        else:
-            # Idle: konstanter Frame (0 = neutrale Standpose im Sheet)
-            frame_idx = 0
-        ai_surf = get_class_walk_frame(cls, direction, frame_idx)
+    anim_st = getattr(p, 'anim_state', None)
+    direction = direction_from_facing(getattr(p, 'facing', 0.0))
+    fx_kind: str = ''   # procedural overlay key: '' | 'attack' | 'hit' | 'cast' | 'death'
+    fx_progress: float = 0.0
 
-    # Static-Fallback wenn keine Walk-Anim verfuegbar oder Direction-Strip fehlt
+    if anim_st is not None:
+        anim_name = anim_st.current
+        # 1. Versuch: echtes Sheet fuer (cls, anim, dir)
+        ai_surf = get_class_anim_frame(cls, anim_name, direction, anim_st.frame)
+        if ai_surf is None and anim_name != 'idle':
+            # 2. Fallback: idle/walk-Frame als Basis, procedural-Effect drueber
+            base_anim = 'walk' if p.moving else 'walk'
+            base_frame = (int(walk_phase % WALK_FRAMES_PER_STRIP)
+                          if p.moving else 0)
+            ai_surf = get_class_anim_frame(cls, base_anim, direction, base_frame)
+            if anim_name in ('attack', 'hit', 'cast', 'death'):
+                fx_kind = anim_name
+                fx_progress = anim_st.progress()
+    else:
+        # Alte Player-Instanzen ohne anim_state — alter walk_phase-Pfad
+        if has_walk_animation(cls):
+            if p.moving:
+                frame_idx = int(walk_phase % WALK_FRAMES_PER_STRIP)
+            else:
+                frame_idx = 0
+            ai_surf = get_class_walk_frame(cls, direction, frame_idx)
+
+    # 3. Fallback: statisches AI-Sprite (klasse.png)
     if ai_surf is None:
         ai_surf = get_class_sprite(cls)
 
@@ -796,7 +961,10 @@ def draw_player_at(screen, p, sx, sy, walk_phase):
         #   6.0x → Update #164 nach Walk-Sheet-Integration: 18 * 6.0 =
         #          108px tall, ~12% Screen-Hoehe wie PoE2/D2-Heroes
         target_h = int(p.radius * 6.0)
-        _draw_ai_sprite_at(screen, ai_surf, sx, body_sy + p.radius, target_h)
+        _draw_ai_sprite_at_with_fx(
+            screen, ai_surf, sx, body_sy + p.radius, target_h,
+            fx_kind=fx_kind, fx_progress=fx_progress, cls=cls,
+        )
     else:
         # Sprite-Proxy: neue Lore-Klassen teilen Sprites mit den 3 Base-Klassen
         proxy = CLASSES.get(cls, {}).get('sprite_proxy', cls)

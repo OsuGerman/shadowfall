@@ -175,6 +175,45 @@ brauchen Postprocess auch wenn sie "transparent" aussehen).
 **Pilot abgeschlossen:** Monk (Update #164) — 4 Direction-Strips à 8 Frames,
 auto-trimmed, in-Game als walking Animation sichtbar.
 
+### Update #165: Vollstaendige Animation-State-Machine
+
+Engine-Side ist jetzt komplett — die folgenden Animation-Types werden
+unterstuetzt sobald Sheets vorhanden sind, **mit procedural Fallback wenn
+Sheets fehlen**:
+
+| Anim   | Frames | FPS | Loop | Dir | Trigger / Auto                       |
+|--------|--------|-----|------|-----|--------------------------------------|
+| idle   | 4      | 4   | ja   | ja  | auto bei !p.moving                   |
+| walk   | 8      | 10  | ja   | ja  | auto bei p.moving                    |
+| attack | 6      | 14  | nein | ja  | sf/game.py Basic-Attack-Hook         |
+| hit    | 4      | 12  | nein | ja  | sf/combat.py damage_player           |
+| cast   | 6      | 10  | nein | ja  | sf/skills.py _apply_cd (alle Skills) |
+| death  | 8      | 8   | nein | nein| sf/combat.py wenn p.hp<=0            |
+
+**Procedural Visual-Fallback** wenn ein Anim-Sheet fehlt:
+- **attack** → Scale-Pulse (0.95 → 1.10 → 1.0) + Forward-Shake
+- **hit** → Red-Tint-Multiplikation + Backward-Shake (fade-out ueber Cycle)
+- **cast** → Aspekt-Aura (Klassen-Farbe, pulsing) + leichter Scale-Up
+- **death** → Slide-Down (0.5x sprite-height) + Fade-Out (0.7x alpha) + Horizontal-Collapse
+
+Damit ist der Monk (oder jede Klasse) **sofort spielbar mit allen
+Anim-States**, auch wenn nur das Walk-Sheet existiert. Sobald
+weitere Sheets generiert werden, schalten sie automatisch auf die
+AI-Frames um.
+
+**Filename-Konvention (Update #165):**
+```
+assets/sprites/classes/<class>_anims/
+├── idle/<dir>.png        (4 Frames horizontaler Strip)
+├── walk/<dir>.png        (8 Frames)
+├── attack/<dir>.png      (6 Frames)
+├── hit/<dir>.png         (4 Frames)
+├── cast/<dir>.png        (6 Frames)
+└── death/all.png         (8 Frames, non-directional)
+```
+`<dir>` ∈ `(down, up, left, right)`. Backward-Compat: alte `<class>_walk/`
+Convention bleibt fuer `anim=walk` erhalten.
+
 ---
 
 ## IV. WORKFLOW 3 — TEXTURE TILER (DER WICHTIGE)

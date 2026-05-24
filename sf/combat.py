@@ -1249,6 +1249,11 @@ def damage_player(game, dmg, dmg_type='physical', source=None):
     p.hp -= dmg
     p.invuln = 0.3
     game.shake = max(game.shake, 10)
+    # Update #165: Animation-Trigger 'hit' (One-Shot 4 Frames @ 12fps ≈ 0.33s)
+    try:
+        p.anim_state.trigger('hit')
+    except AttributeError:
+        pass
     # Update #131 (Y-02): Low-HP-Mechanik-Hint einmalig wenn unter 30 %.
     try:
         if p.hp > 0 and p.hp / max(1, eff['hp_max']) < 0.30:
@@ -1316,6 +1321,11 @@ def damage_player(game, dmg, dmg_type='physical', source=None):
         if not p.dying:
             p.dying = True
             p.death_timer = 0.0
+            # Update #165: Death-Anim ueberschreibt alles (permanent lock)
+            try:
+                p.anim_state.trigger('death')
+            except AttributeError:
+                pass
             # J-12 (Update #65): Event-Bus — Player-Died
             try:
                 from . import events as _ev

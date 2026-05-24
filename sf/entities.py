@@ -39,6 +39,13 @@ class Player:
         self.walk_phase = 0.0
         self.attack_cd = 0.0
         self.attack_target = None
+
+        # Update #165: Sprite-Animation-State-Machine
+        # (idle/walk/attack/hit/cast/death). Wird in Player.update via
+        # self.anim_state.update(dt, self) advanced. Trigger-Calls aus
+        # sf/game.py bei Attack/Hit/Cast/Death-Events.
+        from .sprite_animation import AnimationState
+        self.anim_state = AnimationState()
         self.skill_cd = {'fireball': 0.0, 'lightning': 0.0,
                          'heal': 0.0, 'frostnova': 0.0}
         self.invuln = 0.0

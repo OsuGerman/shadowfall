@@ -161,7 +161,7 @@ Animation-Sheets sind aufwendiger — Scenario.gg hat „Animator"-Models die Mu
 Vier orchestrierte Multi-Inference-Workflows die wir gezielt einsetzen. Vollstaendige Doku: [VELGRAD_WORKFLOWS_BIBEL.md](VELGRAD_WORKFLOWS_BIBEL.md).
 
 - [ ] **T2.W-1 Character Sheet Generator** (`tools/workflow_character_sheet.py`) — 1 Anchor-Sprite → 4-Direction-Sheet (Front/Side/Back/3Q). Foundation fuer T2.6 Animation-Pipeline. **~0.16 EUR/Charakter, 1.28 EUR fuer alle 8 Klassen**
-- [ ] **T2.W-2 Sprite Animation Frames** (`tools/workflow_animation_frames.py`) — 8-Frame Walk/Attack/Hit/Death-Cycles pro (Char, Anim, Direction). Build-on T2.W-1. **~0.32 EUR/Strip, ~30 EUR fuer alle 8 Klassen × 3 Anims × 4 Richtungen**
+- [x] **T2.W-2 Sprite Animation Frames** (`tools/workflow_animation_frames.py`) — ✅ #165 Engine-Side komplett: AnimationState-Machine (idle/walk/attack/hit/cast/death), generischer Loader fuer `<class>_anims/<anim>/<dir>.png`, Auto-Trigger bei Attack/Hit/Cast/Death-Events, procedural Visual-Fallback (Scale-Pulse/Red-Flash/Aura/Slide-Fade). Asset-Generation pro Klasse: **~0.32 EUR/Strip, ~30 EUR fuer alle 8 Klassen × 3 Anims × 4 Richtungen** ODER 0 EUR via externe Tools.
 - [x] **T2.W-3 Texture Tiler** (`tools/workflow_texture_tiler.py`) — ✅ #162 (16-Mask Modular-Tileset pro Biome, procedural-mode kostenlos via Engine-Edge-Overlay-Bake. AI-Hybrid-Mode optional ~3 EUR/Biome). Loest **T2.7-B**.
 - [ ] **T2.W-4 Inpaint / Outpaint** (`tools/workflow_inpaint.py`) — Spot-Fixes & Decor-Variations. Allzweck-Tool, on-demand. **~0.04 EUR/Edit**
 

@@ -3828,6 +3828,14 @@ class Game:
         # blockiert ist → radial nach außen pushen bis frei.
         if self._decor_collides(p.pos.x, p.pos.y, p.radius):
             self._unstuck_player(p)
+        # Update #165: Sprite-Animation-State advance (idle ↔ walk ↔
+        # attack/hit/cast/death). Trigger-Calls fuer One-Shots passieren
+        # an spezifischen Event-Stellen (Attack-Start, Damage-Taken, etc.)
+        # weiter unten in dieser Funktion.
+        try:
+            p.anim_state.update(dt, p)
+        except AttributeError:
+            pass   # alte Player-Instanzen ohne anim_state (save-game-compat)
         # PLAN A-Block: Tod-Sequenz mit Damage-Type-Transition + Wake-Up.
         # Phase 1: 'transition' — Klassen-Sprite-Death-Anim (2.0 s) +
         #          Full-Screen-Transition-Overlay (1.2 s overlap)
@@ -3995,6 +4003,12 @@ class Game:
                             f'+{int(heal)}', (220, 80, 80)))
                         p.vampire_charges -= 1
                     p.attack_cd = 0.4
+                    # Update #165: Animation-Trigger 'attack' (One-Shot,
+                    # 6 Frames @ 14fps ≈ 0.43s — matches attack_cd 0.4s).
+                    try:
+                        p.anim_state.trigger('attack')
+                    except AttributeError:
+                        pass
                     # Update #151 (User-Report „nicht jede Klasse sollte
                     # gleich aussehen"): Klassen-spezifische Attack-VFX.
                     # Jede Klasse bekommt eigenes Partikel-Profil
