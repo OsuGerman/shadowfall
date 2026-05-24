@@ -175,6 +175,36 @@ brauchen Postprocess auch wenn sie "transparent" aussehen).
 **Pilot abgeschlossen:** Monk (Update #164) — 4 Direction-Strips à 8 Frames,
 auto-trimmed, in-Game als walking Animation sichtbar.
 
+### Pitfall — wenn Sheet 8 verschiedene Charaktere zeigt
+
+**Symptom:** Beim Laufen-in-eine-Richtung wechselt der Charakter pro Frame
+(z.B. erst Soldat, dann Magier, dann Schwertkaempfer, ...). Beobachtet bei
+user-generated `monk_anims/walk/left.png` + `right.png` (Update #169).
+
+**Ursache:** Falscher Prompt — das AI-Tool hat eine "Character-Variation-
+Sheet" generiert (8 verschiedene Charaktere) statt einen "Walk-Cycle"
+(8 Frames vom selben Charakter in unterschiedlichen Lauf-Phasen).
+
+**Fix-Optionen:**
+
+A) **Re-Generation mit korrektem Prompt** — Bibel-Template aus
+   `sf/render_spec.py DIRECTION_DESC[<dir>]` + `tools/workflow_animation_frames.
+   py ANIM_FRAME_PROMPTS['walk']`. Wichtig: **referenceImages = [monk.png]**
+   damit Style-Locking funktioniert, sonst generiert das Modell unterschied-
+   liche Charaktere.
+
+B) **Direction-Fallback** (automatisch seit #169) — Engine faellt auf
+   `down.png` zurueck wenn `<dir>.png` fehlt. Charakter sieht beim Laufen-
+   nach-links visuell gleich aus wie beim Laufen-nach-unten. Nicht ideal
+   aber spielbar bis re-generiert.
+
+C) **Broken-Sheet quarantaenen** — Move broken file zu `walk/_broken/<name>.png`
+   damit der Fallback (B) automatisch greift.
+
+**Praevention:** Vor dem Verschieben in `monk_anims/walk/` immer einen
+visuellen Check: oeffne die PNG-Sheet — alle 8 Frames muessen denselben
+Charakter zeigen, nur in unterschiedlicher Lauf-Phase.
+
 ### Update #165: Vollstaendige Animation-State-Machine
 
 Engine-Side ist jetzt komplett — die folgenden Animation-Types werden

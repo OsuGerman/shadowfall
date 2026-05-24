@@ -147,23 +147,50 @@ def _trim_transparent(surf: pygame.Surface) -> pygame.Surface:
     return cropped
 
 
+# Direction-Fallback-Reihenfolge bei fehlendem Strip (Update #169).
+# Wenn der gewuenschte Direction-Strip nicht existiert, versuche diese
+# Reihenfolge — vermeidet den hässlichen "static-sprite"-Sprung und
+# behaelt visuell durchgehende Animation (auch wenn sie nicht 100%
+# directional ist solange nicht alle 4 Strips vorhanden sind).
+_DIRECTION_FALLBACK = {
+    'down':  ['down', 'up', 'left', 'right'],
+    'up':    ['up', 'down', 'left', 'right'],
+    'left':  ['left', 'down', 'up', 'right'],
+    'right': ['right', 'down', 'up', 'left'],
+}
+
+
 def _anim_strip_path(cls: str, anim: str, direction: str) -> str | None:
     """Findet den Strip-Pfad fuer (cls, anim, direction).
 
     Sucht in dieser Reihenfolge (erste vorhandene Datei wins):
-      1. NEU (Update #165): <cls>_anims/<anim>/<dir>.png
+      1. NEU (Update #165): <cls>_anims/<anim>/<dir>.png (gewuenschte Dir)
       2. NON-DIRECTIONAL:   <cls>_anims/<anim>/all.png  (z.B. death)
       3. BACKWARD (#164):   <cls>_walk/<cls>_<dir>.png  (nur fuer anim='walk')
+      4. DIRECTION-FALLBACK (Update #169): andere Directions versuchen
+         (z.B. left fehlt → fallback auf down). Vermeidet "Char wechselt
+         beim Laufen-nach-Links"-Problem wenn nicht alle 4 Sheets fertig.
     """
     real_cls = CLASS_SPRITE_ALIAS.get(cls, cls)
     base = os.path.join(_PROJECT_ROOT, 'assets', 'sprites', 'classes')
+    # 1+2: gewuenschte direction zuerst
     candidates = [
         os.path.join(base, f'{real_cls}_anims', anim, f'{direction}.png'),
         os.path.join(base, f'{real_cls}_anims', anim, 'all.png'),
     ]
     if anim == 'walk':
+        # 3: backward-compat alte monk_walk/ Convention
         candidates.append(
             os.path.join(base, f'{real_cls}_walk', f'{real_cls}_{direction}.png'))
+    # 4: andere Directions als Fallback
+    fallback_order = _DIRECTION_FALLBACK.get(direction, [direction])
+    for fb_dir in fallback_order[1:]:  # [0] ist die gewuenschte, schon getestet
+        candidates.append(
+            os.path.join(base, f'{real_cls}_anims', anim, f'{fb_dir}.png'))
+        if anim == 'walk':
+            candidates.append(
+                os.path.join(base, f'{real_cls}_walk',
+                              f'{real_cls}_{fb_dir}.png'))
     for path in candidates:
         if os.path.exists(path):
             return path
