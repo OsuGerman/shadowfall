@@ -150,33 +150,43 @@ def _remove_bg_impl(png_path: Path,
                 reachable = grown & travelable
                 if int(reachable.sum()) == prev_count:
                     break
-            # Update #175 (Fix Transparenz-Problem): Inner Char-Pixel sollen
-            # VOLL-opak sein, nur die EDGE-Ring-Pixel behalten feathered Alpha
-            # fuer Soft-Boundary. Vorher: alle non-reachable Pixel behielten
-            # ihren brightness-basierten Alpha-Wert → dunkle Robe/Schatten
-            # mit brightness 30-60 wurden teil-transparent → Char sah
-            # durchsichtig aus.
+            # Update #176 (User-Bug "Belt durchsichtig"): HARD-CHAR-MASK.
+            # Vorher (#175): inner-core via erode-2 → alpha=255, edge-ring
+            # behielt feathered alpha. Aber THIN char-features (Guertel,
+            # duenne Stoffstreifen) waren komplett im "edge-ring" und blieben
+            # teil-transparent.
             #
-            # Vorgehen:
-            #   1. Char-Mask = ~reachable (alles was nicht von Bildrand erreichbar)
-            #   2. Erode 2 → Core (sicher-innen, > 2px vom BG-Rand entfernt)
-            #   3. Core-Pixel → alpha=255 (voll opak)
-            #   4. Edge-Ring (char_mask AND NOT core) → behaelt feathered alpha
-            #      (gibt smooth-edge-Uebergang)
-            #   5. BG (reachable) → alpha=0
-            char_mask = ~reachable
-            # Erode 2px um Core zu bekommen (deep interior)
-            core = char_mask.copy()
-            for _ in range(2):
-                eroded = core.copy()
-                eroded[1:, :]  &= core[:-1, :]
-                eroded[:-1, :] &= core[1:, :]
-                eroded[:, 1:]  &= core[:, :-1]
-                eroded[:, :-1] &= core[:, 1:]
-                core = eroded
-            # Core → voll-opak; restliche char_mask → feathered alpha; BG → 0
-            alpha = np.where(core, 255, alpha)
-            alpha = np.where(reachable, 0, alpha).astype(np.uint8)
+            # Jetzt: ALLE non-reachable Pixel → alpha=255 (hart). Verliert
+            # die Soft-Boundary, aber:
+            #   - keine see-through-Probleme mehr egal wie duenn das Feature
+            #   - 1-pixel-alpha-blur am Boundary (siehe naechster Schritt)
+            #     gibt subtiles Soft-Edge ohne Body-Transparency
+            #
+            # Reachable → 0, NOT-reachable → 255 (binary mask).
+            alpha = np.where(reachable, 0, 255).astype(np.uint8)
+
+            # Optionaler 1-Pixel-Soft-Edge: blur alpha entlang der Boundary.
+            # Vermeidet "treppen"-Aliasing am Char-Rand ohne den Body
+            # durchsichtig zu machen. Sehr subtil, nur die direkten
+            # Border-Pixel werden auf ~190 statt 255 gesetzt.
+            char_mask = alpha > 0
+            # Boundary = char-pixel die mindestens einen reachable-Nachbar haben
+            boundary = char_mask.copy()
+            boundary[1:, :]  = char_mask[1:, :]  & ~char_mask[:-1, :]
+            tmp = char_mask.copy()
+            tmp[1:, :]  = char_mask[1:, :]  & ~char_mask[:-1, :]
+            boundary |= tmp
+            tmp = char_mask.copy()
+            tmp[:-1, :] = char_mask[:-1, :] & ~char_mask[1:, :]
+            boundary |= tmp
+            tmp = char_mask.copy()
+            tmp[:, 1:]  = char_mask[:, 1:]  & ~char_mask[:, :-1]
+            boundary |= tmp
+            tmp = char_mask.copy()
+            tmp[:, :-1] = char_mask[:, :-1] & ~char_mask[:, 1:]
+            boundary |= tmp
+            # Boundary-Pixel auf 200 (~78% opak) → soft 1px edge
+            alpha = np.where(boundary & char_mask, 200, alpha).astype(np.uint8)
 
         # Erode: shrink charakter mask um N Pixel (frisst Halos weg)
         if erode > 0:
