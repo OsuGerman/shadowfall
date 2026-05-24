@@ -30,7 +30,8 @@ SPRITES_DIR  = PROJECT_ROOT / 'assets' / 'sprites'
 
 # Kategorien die transparent BG brauchen.
 # Portrait + Boss-Plate + Tile behalten ihren BG (gewollt).
-TRANSPARENT_BG_CATEGORIES = {'mobs', 'classes', 'items'}
+# Update #166: decor + status (Prio-Pass HOCH, beide transparent per Render-Spec).
+TRANSPARENT_BG_CATEGORIES = {'mobs', 'classes', 'items', 'decor', 'status'}
 
 
 def remove_background(png_path: Path,
@@ -149,10 +150,32 @@ def _remove_bg_impl(png_path: Path,
                 reachable = grown & travelable
                 if int(reachable.sum()) == prev_count:
                     break
-            # Nur die BG-erreichbaren Pixel werden voll-transparent.
-            # Alle anderen behalten ihre originale (feathered) Alpha —
-            # innere dunkle Pixel die NICHT von der Kante aus erreichbar
-            # sind bleiben sichtbar. Soft-Edge bleibt erhalten.
+            # Update #175 (Fix Transparenz-Problem): Inner Char-Pixel sollen
+            # VOLL-opak sein, nur die EDGE-Ring-Pixel behalten feathered Alpha
+            # fuer Soft-Boundary. Vorher: alle non-reachable Pixel behielten
+            # ihren brightness-basierten Alpha-Wert → dunkle Robe/Schatten
+            # mit brightness 30-60 wurden teil-transparent → Char sah
+            # durchsichtig aus.
+            #
+            # Vorgehen:
+            #   1. Char-Mask = ~reachable (alles was nicht von Bildrand erreichbar)
+            #   2. Erode 2 → Core (sicher-innen, > 2px vom BG-Rand entfernt)
+            #   3. Core-Pixel → alpha=255 (voll opak)
+            #   4. Edge-Ring (char_mask AND NOT core) → behaelt feathered alpha
+            #      (gibt smooth-edge-Uebergang)
+            #   5. BG (reachable) → alpha=0
+            char_mask = ~reachable
+            # Erode 2px um Core zu bekommen (deep interior)
+            core = char_mask.copy()
+            for _ in range(2):
+                eroded = core.copy()
+                eroded[1:, :]  &= core[:-1, :]
+                eroded[:-1, :] &= core[1:, :]
+                eroded[:, 1:]  &= core[:, :-1]
+                eroded[:, :-1] &= core[:, 1:]
+                core = eroded
+            # Core → voll-opak; restliche char_mask → feathered alpha; BG → 0
+            alpha = np.where(core, 255, alpha)
             alpha = np.where(reachable, 0, alpha).astype(np.uint8)
 
         # Erode: shrink charakter mask um N Pixel (frisst Halos weg)
@@ -221,8 +244,9 @@ def process_directory(category_dir: Path, threshold: int, feather: int,
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--all', action='store_true',
-                    help='Alle transparent-BG-Kategorien (mob/class/item)')
-    ap.add_argument('--category', choices=['mob', 'class', 'item', 'all'],
+                    help='Alle transparent-BG-Kategorien (mob/class/item/decor/status)')
+    ap.add_argument('--category',
+                    choices=['mob', 'class', 'item', 'decor', 'status', 'all'],
                     default=None)
     ap.add_argument('--file', type=str, default=None,
                     help='Einzelnes PNG verarbeiten')
@@ -252,13 +276,17 @@ def main():
 
     targets = []
     if args.all or args.category == 'all' or args.category is None:
-        targets = ['mobs', 'classes', 'items']
+        targets = ['mobs', 'classes', 'items', 'decor', 'status']
     elif args.category == 'mob':
         targets = ['mobs']
     elif args.category == 'class':
         targets = ['classes']
     elif args.category == 'item':
         targets = ['items']
+    elif args.category == 'decor':
+        targets = ['decor']
+    elif args.category == 'status':
+        targets = ['status']
 
     total_ok, total_fail = 0, 0
     for sub in targets:

@@ -281,12 +281,40 @@ def _load_anim_strip(cls: str, anim: str,
     except Exception:
         pass
 
-    frames: list[pygame.Surface] = []
+    # Update #175 (Animation-Jitter-Fix): Trim mit UNION-BBox ueber ALLE 8
+    # Frames. Vorher: per-Frame eigene BBox → unterschiedliche Frame-Breiten
+    # → Char "springt" zwischen Frames weil target_h-Skalierung verschiedene
+    # End-Breiten produziert. Jetzt: bbox = max-union → konsistente
+    # Frame-Dimensions ueber den ganzen Cycle.
+    raw_frames: list[pygame.Surface] = []
     for i in range(frame_count):
         sub = pygame.Surface((fw, sh), pygame.SRCALPHA)
         sub.blit(strip, (0, 0), (i * fw, 0, fw, sh))
-        sub = _trim_transparent(sub)
-        frames.append(sub)
+        raw_frames.append(sub)
+    # Union-BBox: min(x), min(y), max(x+w), max(y+h)
+    union_bbox = None
+    for f in raw_frames:
+        bb = f.get_bounding_rect()
+        if bb.width <= 0 or bb.height <= 0:
+            continue
+        if union_bbox is None:
+            union_bbox = pygame.Rect(bb.x, bb.y, bb.width, bb.height)
+        else:
+            x1 = min(union_bbox.x, bb.x)
+            y1 = min(union_bbox.y, bb.y)
+            x2 = max(union_bbox.x + union_bbox.width,  bb.x + bb.width)
+            y2 = max(union_bbox.y + union_bbox.height, bb.y + bb.height)
+            union_bbox = pygame.Rect(x1, y1, x2 - x1, y2 - y1)
+    # Crop alle Frames auf die SELBE union-bbox
+    frames: list[pygame.Surface] = []
+    if union_bbox is not None and (union_bbox.width < fw or union_bbox.height < sh):
+        for f in raw_frames:
+            cropped = pygame.Surface(
+                (union_bbox.width, union_bbox.height), pygame.SRCALPHA)
+            cropped.blit(f, (0, 0), union_bbox)
+            frames.append(cropped)
+    else:
+        frames = raw_frames
     _ANIM_FRAME_CACHE[key] = frames
     return frames
 
