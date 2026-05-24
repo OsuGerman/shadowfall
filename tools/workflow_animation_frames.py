@@ -91,28 +91,14 @@ ANIM_FRAME_RATES = {
     'hit_react': 16, 'death': 8, 'idle_breath': 6,
 }
 
-DIRECTION_DESC = {
-    # WICHTIG: Alle Klassen-Sprites + Mob-Sprites + Welt-Tiles sind in
-    # leichter 3/4-Top-Down-ARPG-Perspektive (Diablo 2 / POE2 / Hades-Look)
-    # — leicht erhoehter Kamera-Winkel, der nach unten auf den Charakter
-    # blickt. Reine Eye-Level/Portrait-Renders bleiben optisch flach und
-    # passen nicht zum Tile-System. Die Direction-Beschreibung muss diese
-    # Kamera-Konvention immer explizit re-enforcen, sonst kippt das Modell
-    # auf neutrale Augenhöhe-Side-Views.
-    'S':  '3/4 top-down ARPG view, camera slightly elevated looking down, '
-          'character oriented south facing the camera with body angled '
-          'naturally toward viewer',
-    'E':  '3/4 top-down ARPG view, camera slightly elevated looking down, '
-          'character oriented east (screen right) shown in three-quarter '
-          'profile, not flat side view',
-    'N':  '3/4 top-down ARPG view, camera slightly elevated looking down, '
-          'character oriented north away from camera, three-quarter rear angle',
-    'W':  '3/4 top-down ARPG view, camera slightly elevated looking down, '
-          'character oriented west (screen left) shown in three-quarter '
-          'profile, not flat side view',
-}
+# Update #167: DIRECTION_DESC + MASTER_NEGATIVE werden zentral aus
+# sf/render_spec.py importiert. WICHTIG: Alle Klassen-Sprites + Mob-Sprites +
+# Welt-Tiles sind in 3/4-Top-Down-ARPG-Perspektive (D2/POE2/Hades) —
+# Eye-Level Side-Views passen NICHT zum Tile-System. Single-Source-of-Truth
+# verhindert dass das aus Versehen weggepatcht wird.
+from sf.render_spec import DIRECTION_DESC, MASTER_NEGATIVE as _SPEC_MASTER_NEG  # noqa: E402
 
-MASTER_NEGATIVE = (
+MASTER_NEGATIVE = _SPEC_MASTER_NEG + ' , ' + (
     'multiple characters, background scene, environment, watermark, text, '
     'cropped, partial body'
 )

@@ -44,20 +44,14 @@ POLL_INTERVAL_SEC    = 3.0
 POLL_TIMEOUT_SEC     = 300.0   # Boss-Plates + grosse Tiles brauchen bis 4 Min
 MAX_RETRIES          = 3
 
-# Master-Style-Prompts aus VELGRAD_SPRITE_BIBEL.md §I
-MASTER_POSITIVE = (
-    'path of exile 2 style, dark fantasy painterly artwork, gothic medieval, '
-    'volumetric lighting, dramatic chiaroscuro, hyperdetailed concept art, '
-    'muted desaturated palette with selective color accents, weathered textures, '
-    'realistic-stylized proportions, ArtStation trending, Greg Rutkowski composition, '
-    'moody atmosphere, grimdark fantasy, intricate armor details, leather and iron, '
-    '8k quality, sharp focus'
-)
-MASTER_NEGATIVE = (
-    'cartoon, anime, chibi, cel-shaded, low-poly, pixel art, MS Paint, '
-    'bright cheerful colors, saturated colors, modern clothing, sci-fi, neon, '
-    'deformed anatomy, extra limbs, mutated, blurry, jpeg artifacts, watermark, '
-    'text, signature, logo, ugly, low quality, amateur, child-like style'
+# Update #167: Master-Style + Per-Category-Specs werden zentral aus
+# sf/render_spec.py importiert (Single-Source-of-Truth). VELGRAD_RENDER_SPEC.md
+# dokumentiert die Konvention. CATEGORY_SUFFIX bleibt als lokale Erweiterung
+# fuer Kategorien die noch nicht in render_spec sind (decor, status_icon, etc.).
+from sf.render_spec import (  # noqa: E402
+    MASTER_POSITIVE, MASTER_NEGATIVE,
+    get_resolution as spec_get_resolution,
+    RENDER_SPEC as _RENDER_SPEC,
 )
 
 # Per-Category-Suffixes — werden ans Ende des Lore-Prompts gehaengt
@@ -90,6 +84,19 @@ CATEGORY_SUFFIX = {
         'no central focal point, repeatable game-map tile, '
         'pure flat ground material'
     ),
+    # Prio-Pass HOCH (VELGRAD_SPRITE_BIBEL §XI/§XIII)
+    'decor': (
+        ', single isolated prop object on plain pure-black background, '
+        'no environment, no scenery behind, top-down 3/4 angled view, '
+        'sprite-ready composition, centered subject, full silhouette visible, '
+        'ground-anchored bottom edge'
+    ),
+    'status_icon': (
+        ', small isolated game-ui icon on plain pure-black background, '
+        'no environment, single symbolic object, painterly icon style, '
+        'clear silhouette, centered, minimal background, ARPG status-effect '
+        'icon for inventory-style display'
+    ),
 }
 
 
@@ -97,11 +104,15 @@ CATEGORY_SUFFIX = {
 # BIBEL-PARSER
 # ============================================================
 # Sucht Headings der Form "### M1. Salzhueter-Brut" + danach den ```code-block```
+# Prefix-Letters:
+#   M = mob, C = class, P = portrait, B = boss_plate, T = tile
+#   D = decor (§XI), U = item_icon-unique (§XII), S = status_icon (§XIII)
 TARGET_HEADER_RE = re.compile(
     # Matched: "### M1. Salzhueter-Brut *(Akt-1-Boss)*" oder
-    #          "### C1. Warrior — Eisenwaechter (Kharn-Lineage)"
+    #          "### C1. Warrior — Eisenwaechter (Kharn-Lineage)" oder
+    #          "### U7. Verbrannte-Treue *(Two-Hand Sword [M])*"
     # Name = alles vor dem ersten "*" oder "—"; danach Lore-Suffix ignoriert.
-    r'^###\s+([MCPBT]\d+[a-z]?)\.\s+([^\n*—]+?)(?:\s*[*—].*)?\s*$',
+    r'^###\s+([MCPBTDUS]\d+[a-z]?)\.\s+([^\n*—]+?)(?:\s*[*—].*)?\s*$',
     re.MULTILINE
 )
 
@@ -118,13 +129,17 @@ def parse_sprite_bibel() -> list[dict]:
     """Returnt Liste von Target-Dicts: id, category, name, prompt."""
     text = SPRITE_BIBEL_MD.read_text(encoding='utf-8')
 
-    # Kategorie-Mapping über Header-Prefix (M, C, P, B, T)
+    # Kategorie-Mapping über Header-Prefix (M, C, P, B, T, D, U, S)
     PREFIX_CATEGORY = {
         'M': 'mob',
         'C': 'class',
         'P': 'portrait',
         'B': 'boss_plate',
         'T': 'tile',
+        # Prio-Pass HOCH (VELGRAD_SPRITE_BIBEL §XI/§XII/§XIII)
+        'D': 'decor',
+        'U': 'item_icon',     # 50 Uniques aus VELGRAD_ITEMS_UNIQUE_BIBEL
+        'S': 'status_icon',
     }
 
     targets = []
@@ -150,7 +165,7 @@ def parse_sprite_bibel() -> list[dict]:
 
         # Variant-Letter aus Prefix extrahieren (T1a/T1b/T1c/T1d/T1w/M3a/...)
         # Slug bekommt einen Suffix `_<letter>` damit Variants unterscheidbar.
-        variant_m = re.match(r'^[MCPBT]\d+([a-z])$', prefix)
+        variant_m = re.match(r'^[MCPBTDUS]\d+([a-z])$', prefix)
         variant_suffix = ('_' + variant_m.group(1)) if variant_m else ''
         target_id = _slug(name) + variant_suffix
         targets.append(dict(
@@ -342,7 +357,14 @@ def generate_sprite(entry: dict, model_override: str | None = None) -> str | Non
     cat_cfg = SPRITE_CATEGORIES.get(entry['category'])
     if cat_cfg is None:
         return None
-    size = cat_cfg['size']
+    # Update #167: Size kommt primaer aus render_spec (single source of truth),
+    # fallback auf scenario_config.SPRITE_CATEGORIES wenn nicht spec'd.
+    spec_size = spec_get_resolution(entry['category'])
+    if spec_size != (512, 512) or entry['category'] in _RENDER_SPEC:
+        # render_spec hat einen expliziten Eintrag → den verwenden
+        size = spec_size
+    else:
+        size = cat_cfg['size']
     steps = cat_cfg['steps']
     out_dir_name = cat_cfg['out_dir']
     out_path = SPRITES_DIR / out_dir_name / f"{entry['id']}.png"

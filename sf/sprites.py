@@ -382,6 +382,121 @@ def get_wall_sprite(biome: str | None) -> pygame.Surface | None:
 
 
 # ============================================================
+# PRIO-PASS HOCH (VELGRAD_SPRITE_BIBEL §XI/§XII/§XIII)
+# ============================================================
+# 3 neue Sprite-Familien werden hier zentral geladen, alle mit silent-
+# fallback auf Procedural-Renderer wenn das PNG (noch) nicht existiert.
+#
+#   §XI  Decor (17)         → get_decor_sprite(kind)
+#   §XII Item-Uniques (50)  → get_item_unique_icon(name_or_slug)
+#   §XIII Status-Icons (15) → get_status_icon(key)
+#
+# Sprite-IDs kommen 1:1 aus der Bibel via tools/sprite_gen.py.
+
+# Optional-Aliases: erlauben dass Engine-interne Kind-Strings auf einen
+# Lore-spezifischeren Bibel-Slug mappen.  Beispiel: 'lantern' in den
+# Town-Biomes nutzt die Brassweir-Lore-Lampe falls vorhanden.
+DECOR_SPRITE_ALIAS = {
+    # Engine-kind → Bibel-slug (leer = direkter 1:1-Lookup)
+    # Erweitere hier wenn neue Lore-Sprites alte Procedural-Kinds ersetzen
+    # sollen (z.B. 'lantern' → 'seedbearer_torch' in Sumpf-Biom).
+}
+
+# Status-Slugs sind 1:1 mit STATUS_EFFECTS-Keys in constants.py
+# (burn/poison/frost/bleed/shock/chill/brittle/sapped/armour_break/
+#  pinned/maim/crush/stun/slow/silence).
+STATUS_ICON_ALIAS: dict[str, str] = {}
+
+# 50 Lore-Uniques aus VELGRAD_ITEMS_UNIQUE_BIBEL.md.  Sprite-IDs
+# entsprechen 1:1 den U1..U50-Headern in VELGRAD_SPRITE_BIBEL §XII.
+# Wenn ein Item.name (deutsche Schreibweise) zu einem dieser Slugs
+# slugifiziert → wird der AI-Icon geladen.
+UNIQUE_ITEM_SLUGS: frozenset[str] = frozenset({
+    # Maces
+    'kharns_geduld', 'aschen_ankunft', 'letzter_hammer_von_velhost',
+    'der_schweigende', 'wachturm_faust',
+    # Swords
+    'echo_klinge', 'verbrannte_treue', 'senatorin_stahl', 'der_erste_eid',
+    # Axes
+    'wurzelschlitzer', 'saatkind_beil', 'brassweir_schaedelbrecher',
+    # Daggers
+    'vossharils_bruder', 'hohle_zunge', 'tintendolch_von_im_nesh',
+    'der_zweite_atem',
+    # Spears
+    'tameris_suchender', 'zhar_eth_mondbinder', 'faden_spitze',
+    'der_sechzehnte', 'sturmspeer_von_veh',
+    # Quarterstaves
+    'drei_pagoden', 'der_atemzaehler', 'schlafsplitter',
+    'bambus_des_schweigens', 'letzter_schritt',
+    # Bows
+    'saatwaechter', 'erinnerungs_bogen_von_saath', 'tannenbein',
+    'der_unbeschriebene',
+    # Crossbows
+    'mahnmal_marke_vii', 'korvens_wahrheit', 'der_letzte_hauch',
+    'verraten_sieben', 'eisenfaust_repetier',
+    # Wands
+    'funken_fluch', 'asche_aspekt', 'tintenfeder_von_im_nesh',
+    # Sceptres
+    'bischof_schwur', 'spirit_anker', 'hohlauges_erbe',
+    # Staves
+    'sieben_atem_stab', 'glasgoldener_zepter_stab', 'wurzelmark_stuetze',
+    'vergessens_brand',
+    # Talismans
+    'drei_tier_anhaenger', 'baerenhirten_kette', 'wolfsmond_amulett',
+    # Special / Story
+    'kharns_traene', 'der_achte',
+})
+
+
+def _slug_unique_name(name: str) -> str:
+    """Slugifiziert einen Item-Namen 1:1 wie tools/sprite_gen._slug().
+    Wird hier dupliziert um ImportError-Cycle zu vermeiden (tools/ ist
+    nicht garantiert auf dem sys.path zur Runtime)."""
+    s = (name or '').lower().strip()
+    # Erst Umlaute substituieren BEVOR regex-strippt (sonst werden ä etc.
+    # auf die Punktklasse [^\w] gematcht und entfernt — wir wollen sie
+    # zu ae/oe/ue umwandeln).
+    s = s.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue')
+    s = s.replace('ß', 'ss')
+    import re as _re
+    s = _re.sub(r"[^\w\s-]", '', s, flags=_re.UNICODE)
+    s = _re.sub(r"[-\s]+", '_', s)
+    return s.strip('_')
+
+
+def get_decor_sprite(kind: str | None) -> pygame.Surface | None:
+    """§XI: Returnt AI-Decor-Sprite oder None (→ Procedural-Fallback in world.draw_decor)."""
+    if not kind:
+        return None
+    sprite_id = DECOR_SPRITE_ALIAS.get(kind, kind)
+    return _load_ai_sprite(sprite_id)
+
+
+def get_status_icon(key: str | None) -> pygame.Surface | None:
+    """§XIII: Returnt AI-Status-Icon oder None (→ Procedural-Circle in _status_overlay)."""
+    if not key:
+        return None
+    sprite_id = STATUS_ICON_ALIAS.get(key, key)
+    return _load_ai_sprite(sprite_id)
+
+
+def get_item_unique_icon(name_or_slug: str | None) -> pygame.Surface | None:
+    """§XII: Returnt AI-Item-Icon für ein Unique oder None.
+
+    Akzeptiert sowohl den deutschen Item-Namen ("Kharns Geduld") als
+    auch den slug ("kharns_geduld").  Items die nicht zu den 50 Bibel-
+    Uniques gehören returnen None (→ Slot-basiertes Procedural-Icon).
+    """
+    if not name_or_slug:
+        return None
+    slug = name_or_slug if name_or_slug in UNIQUE_ITEM_SLUGS \
+        else _slug_unique_name(name_or_slug)
+    if slug not in UNIQUE_ITEM_SLUGS:
+        return None
+    return _load_ai_sprite(slug)
+
+
+# ============================================================
 # EDGE-OVERLAY-SYSTEM (Auto-Tile-Light, Update #160)
 # ============================================================
 # Statt 47-Mask-Tilesets generieren wir prozedural pro Biom Edge-Shadow-
@@ -691,6 +806,10 @@ def reload_sprite_cache() -> None:
     _EDGE_OVERLAY_CACHE.clear()
     _WALL_AVG_CACHE.clear()
     _WALK_FRAME_CACHE.clear()
+    # Prio-Pass HOCH (VELGRAD_SPRITE_BIBEL §XII/§XIII):
+    # Scaled-Caches der neuen Sprite-Familien
+    _STATUS_ICON_SCALED.clear()
+    _UNIQUE_ICON_SCALED.clear()
 
 
 # ============================================================
@@ -841,7 +960,13 @@ def _leg_bob(walk_phase):
 
 
 def _status_overlay(screen, sx, sy, h, status):
-    """Zeichnet Status-Icons über dem Sprite."""
+    """Zeichnet Status-Icons über dem Sprite.
+
+    Prio-Pass HOCH (VELGRAD_SPRITE_BIBEL §XIII): wenn ein 64×64-AI-Icon
+    für den Status-Key in assets/sprites/status/<key>.png liegt, wird es
+    auf 12×12 runterskaliert geblittet.  Sonst Procedural-Kreis (Legacy-
+    Fallback).  Stack-Pixel bleiben in beiden Fällen identisch.
+    """
     if not status:
         return
     icons_y = sy - h - 18
@@ -851,13 +976,28 @@ def _status_overlay(screen, sx, sy, h, status):
             continue
         col = STATUS_EFFECTS[key]['color']
         x = sx - n * 5 + i * 10
-        pygame.draw.circle(screen, col, (x, icons_y), 4)
-        pygame.draw.circle(screen, WHITE, (x, icons_y), 4, 1)
+        ai_icon = get_status_icon(key)
+        if ai_icon is not None:
+            # Render-Cache pro key (Skalierung ist teuer für 60fps mit vielen Mobs)
+            cached = _STATUS_ICON_SCALED.get(key)
+            if cached is None:
+                cached = pygame.transform.smoothscale(ai_icon, (12, 12))
+                _STATUS_ICON_SCALED[key] = cached
+            screen.blit(cached, (x - 6, icons_y - 6))
+        else:
+            pygame.draw.circle(screen, col, (x, icons_y), 4)
+            pygame.draw.circle(screen, WHITE, (x, icons_y), 4, 1)
         # Stacks
         if st['stacks'] > 1:
             # kleines weißes Pixel pro Stack (max 5 sichtbar)
             for k in range(min(5, st['stacks'])):
                 pygame.draw.circle(screen, WHITE, (x - 2 + k, icons_y - 6), 1)
+
+
+# Cache für 12×12 skalierte Status-Icons (sonst smoothscale jeden Frame
+# pro Mob × Status-Key).  Wird beim Hot-Reload via reload_sprite_cache
+# ebenfalls geleert.
+_STATUS_ICON_SCALED: dict[str, pygame.Surface] = {}
 
 
 def _outline_circle(screen, color, pos, r, outline=BLACK):
@@ -960,7 +1100,14 @@ def draw_player_at(screen, p, sx, sy, walk_phase):
         #   3.8x → immer noch zu klein bei radius=18 (nur ~68px tall)
         #   6.0x → Update #164 nach Walk-Sheet-Integration: 18 * 6.0 =
         #          108px tall, ~12% Screen-Hoehe wie PoE2/D2-Heroes
-        target_h = int(p.radius * 6.0)
+        # Update #167: Multiplier kommt jetzt aus sf/render_spec.py
+        # (Single-Source-of-Truth, siehe VELGRAD_RENDER_SPEC.md)
+        try:
+            from . import render_spec as _rs
+            target_mult = _rs.get_target_h_mult('class') or 6.0
+        except Exception:
+            target_mult = 6.0
+        target_h = int(p.radius * target_mult)
         _draw_ai_sprite_at_with_fx(
             screen, ai_surf, sx, body_sy + p.radius, target_h,
             fx_kind=fx_kind, fx_progress=fx_progress, cls=cls,
@@ -1396,7 +1543,13 @@ def draw_enemy_at(screen, e, sx, sy):
             # Mob-Sprite-Calibration: e.height = radius*2.2, plus ~80%
             # Body-Cap. Insgesamt ~2.5x radius. Update analog zum
             # Player-Sprite-Fix nach User-Feedback.
-            target_h = int(e.radius * 2.5)
+            # Update #167: Multiplier aus sf/render_spec.py.
+            try:
+                from . import render_spec as _rs
+                mob_mult = _rs.get_target_h_mult('mob') or 2.5
+            except Exception:
+                mob_mult = 2.5
+            target_h = int(e.radius * mob_mult)
             _draw_ai_sprite_at(screen, ai_mob, sx, sy, target_h)
             # Status-Effekte trotzdem rendern (uebernimmt der Block unten)
             _status_overlay(screen, sx, sy, e.height, e.status)
@@ -2275,6 +2428,11 @@ def draw_item_icon(screen, item, rect):
     """Zeichnet ein detailliertes Item-Sprite in den gegebenen Rect (z.B. Inventar-Slot).
 
     Größe passt sich rect.w / rect.h an. Farbe leitet sich von Rarity ab.
+
+    Prio-Pass HOCH (VELGRAD_SPRITE_BIBEL §XII): Unique-Items mit Lore-
+    Namen aus VELGRAD_ITEMS_UNIQUE_BIBEL (50 Stück) bekommen automatisch
+    den AI-generierten 128×128-Icon, sobald das PNG vorliegt.  Procedural-
+    Slot-Icon (sword/helmet/...) bleibt Fallback für alle anderen.
     """
     from .constants import RARITY_COLOR
     col = RARITY_COLOR[item.rarity]
@@ -2283,10 +2441,27 @@ def draw_item_icon(screen, item, rect):
     cx, cy = rect.x + rect.w // 2, rect.y + rect.h // 2
     s = min(rect.w, rect.h)
 
-    # Hintergrund-Glow (rarity-farbig)
+    # Hintergrund-Glow (rarity-farbig) — vor jedem Icon-Stil
     glow = pygame.Surface((s, s), pygame.SRCALPHA)
     pygame.draw.circle(glow, (*col, 60), (s // 2, s // 2), s // 2 - 2)
     screen.blit(glow, (rect.x, rect.y))
+
+    # Step 1: AI-Unique-Icon-Pfad (silent fallback wenn PNG fehlt)
+    if item.rarity == 'unique':
+        ai = get_item_unique_icon(item.name)
+        if ai is not None:
+            cached_key = ('_uniqitem', item.name, s)
+            scaled = _UNIQUE_ICON_SCALED.get(cached_key)
+            if scaled is None:
+                ai_w, ai_h = ai.get_size()
+                # In rect einpassen, Aspect-Ratio bewahren
+                scale = (s - 4) / max(ai_w, ai_h)
+                tw, th = max(1, int(ai_w * scale)), max(1, int(ai_h * scale))
+                scaled = pygame.transform.smoothscale(ai, (tw, th))
+                _UNIQUE_ICON_SCALED[cached_key] = scaled
+            sw_, sh_ = scaled.get_size()
+            screen.blit(scaled, (cx - sw_ // 2, cy - sh_ // 2))
+            return
 
     if item.slot == 'weapon':
         _icon_sword(screen, cx, cy, s, col, col_dark, col_bright)
@@ -2298,6 +2473,10 @@ def draw_item_icon(screen, item, rect):
         _icon_ring(screen, cx, cy, s, col, col_dark, col_bright)
     elif item.slot == 'amulet':
         _icon_amulet(screen, cx, cy, s, col, col_dark, col_bright)
+
+
+# Per-Item-Name + Slot-Size Cache für skalierte Unique-Icons
+_UNIQUE_ICON_SCALED: dict[tuple, pygame.Surface] = {}
 
 
 def _icon_sword(screen, cx, cy, s, col, dark, bright):

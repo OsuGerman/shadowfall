@@ -23,21 +23,25 @@ from tools.scenario_config import PROJECT_ROOT, SPRITES_DIR  # noqa: E402
 # ============================================================
 # DIRECTION-PROMPTS — style-locked via referenceImages
 # ============================================================
+# Update #167: 3/4-Top-Down-ARPG-Konvention aus sf/render_spec.py.
+# Direction-Descriptions sind dort zentralisiert (alle 4 sind 3/4-View,
+# KEINE flachen Eye-Level-Side-Views — passen sonst nicht zum Tile-System).
+# Wir kombinieren die zentrale Direction-Desc mit dem 4-Dir-Sheet-spezifischen
+# Pose-Suffix.
+from sf.render_spec import DIRECTION_DESC, MASTER_NEGATIVE as _SPEC_MASTER_NEG  # noqa: E402
+
 DIRECTION_PROMPTS = {
-    'S':  ('front view, facing camera directly, full-body frontal pose, '
-           'centered, sprite-ready'),
-    'E':  ('side profile facing right, exact 90-degree turn, full-body, '
-           'sprite-ready'),
-    'N':  ('back view, character facing away from camera, full-body, '
-           'sprite-ready'),
-    'SE': ('three-quarter view facing down-right, dynamic walking pose, '
-           'full-body, sprite-ready'),
+    'S':  (DIRECTION_DESC['S']  + ', frontal full-body pose, sprite-ready'),
+    'E':  (DIRECTION_DESC['E']  + ', dynamic walking pose hint, sprite-ready'),
+    'N':  (DIRECTION_DESC['N']  + ', full-body, sprite-ready'),
+    'SE': (DIRECTION_DESC['S']  + ', three-quarter facing down-right, '
+           'dynamic walking pose, sprite-ready'),
 }
 DIRECTION_ORDER = ['S', 'E', 'N', 'SE']   # Reihenfolge im 2x2-Sheet
 
-MASTER_NEGATIVE = (
+MASTER_NEGATIVE = _SPEC_MASTER_NEG + ', ' + (
     'multiple characters, group shot, background scene, environment, '
-    'props, weapons floating, cropped, partial body, watermark, text'
+    'props, weapons floating, cropped, partial body'
 )
 
 # Default Sub-Sprite-Size im Sheet
