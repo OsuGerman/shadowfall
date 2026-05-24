@@ -165,28 +165,30 @@ def _remove_bg_impl(png_path: Path,
             # Reachable → 0, NOT-reachable → 255 (binary mask).
             alpha = np.where(reachable, 0, 255).astype(np.uint8)
 
-            # Optionaler 1-Pixel-Soft-Edge: blur alpha entlang der Boundary.
-            # Vermeidet "treppen"-Aliasing am Char-Rand ohne den Body
-            # durchsichtig zu machen. Sehr subtil, nur die direkten
-            # Border-Pixel werden auf ~190 statt 255 gesetzt.
+            # Update #177 (Bug-Fix Boundary): Vorheriger Code hat den GANZEN
+            # char_mask als boundary gemarkt → ALLER Body bei alpha=200
+            # statt 255 → User sah "Brunnen durch die Robe".
+            #
+            # Korrekte boundary-Detection: pixel ist boundary nur wenn
+            # mindestens 1 Nachbar NICHT char ist.
             char_mask = alpha > 0
-            # Boundary = char-pixel die mindestens einen reachable-Nachbar haben
-            boundary = char_mask.copy()
-            boundary[1:, :]  = char_mask[1:, :]  & ~char_mask[:-1, :]
-            tmp = char_mask.copy()
-            tmp[1:, :]  = char_mask[1:, :]  & ~char_mask[:-1, :]
-            boundary |= tmp
-            tmp = char_mask.copy()
-            tmp[:-1, :] = char_mask[:-1, :] & ~char_mask[1:, :]
-            boundary |= tmp
-            tmp = char_mask.copy()
-            tmp[:, 1:]  = char_mask[:, 1:]  & ~char_mask[:, :-1]
-            boundary |= tmp
-            tmp = char_mask.copy()
-            tmp[:, :-1] = char_mask[:, :-1] & ~char_mask[:, 1:]
-            boundary |= tmp
-            # Boundary-Pixel auf 200 (~78% opak) → soft 1px edge
-            alpha = np.where(boundary & char_mask, 200, alpha).astype(np.uint8)
+            # Shifte char_mask in 4 Richtungen, dann AND
+            # Wenn alle 4 Nachbarn char → interior. Wenn min. 1 non-char → boundary.
+            shifted_up    = np.zeros_like(char_mask)
+            shifted_up[:-1, :]   = char_mask[1:, :]
+            shifted_down  = np.zeros_like(char_mask)
+            shifted_down[1:, :]  = char_mask[:-1, :]
+            shifted_left  = np.zeros_like(char_mask)
+            shifted_left[:, :-1] = char_mask[:, 1:]
+            shifted_right = np.zeros_like(char_mask)
+            shifted_right[:, 1:] = char_mask[:, :-1]
+            # Interior: alle 4 Nachbarn sind char
+            interior = shifted_up & shifted_down & shifted_left & shifted_right
+            # Boundary: char-pixel das KEIN reines interior ist
+            boundary = char_mask & ~interior
+            # Boundary-Pixel auf 220 (~86% opak) → minimaler 1px soft edge.
+            # Interior bleibt bei 255 (alpha-Default vom vorigen np.where).
+            alpha = np.where(boundary, 220, alpha).astype(np.uint8)
 
         # Erode: shrink charakter mask um N Pixel (frisst Halos weg)
         if erode > 0:
