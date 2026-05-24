@@ -28,7 +28,8 @@ SOUNDS_DIR   = PROJECT_ROOT / 'Sounds'   # bestehender Ordner
 VOICE_DIR    = PROJECT_ROOT / 'sounds' / 'voice'
 SFX_DIR      = PROJECT_ROOT / 'sounds' / 'sfx' / 'generated'
 
-VOICE_POOL_MD       = PROJECT_ROOT / 'VELGRAD_VOICE_LINES_POOL.md'
+VOICE_POOL_MD       = PROJECT_ROOT / 'VELGRAD_VOICE_LINES_POOL_EN.md'  # Update #178: EN-Switch
+VOICE_POOL_DE_MD    = PROJECT_ROOT / 'VELGRAD_VOICE_LINES_POOL.md'      # Legacy-Quelle, fuer Lore-Bibel
 VOICE_CASTING_MD    = PROJECT_ROOT / 'VELGRAD_VOICE_CASTING.md'
 VOICE_MANIFEST_JSON = VOICE_DIR / 'voice_manifest.json'
 VOICE_REGISTRY_PY   = PROJECT_ROOT / 'sf' / 'voice_registry.py'
@@ -66,10 +67,19 @@ DEFAULT_VOICE_SETTINGS = dict(
 # ============================================================
 # PRONUNCIATION-HINTS für Velgrad'sche Eigennamen
 # ============================================================
-# Werden als SSML-<phoneme>-Tags eingefügt (wenn vom Modell unterstützt)
-# oder als Klartext-Ersetzung. eleven_multilingual_v2 unterstützt SSML
-# nur teilweise — wir nehmen primär Klartext-Hints (deutsche Phonetik).
+# Update #178 (EN-Switch): Die deutschen Phonetik-Hints (Velgrad -> Wellgrahd
+# etc.) wurden deaktiviert. eleven_multilingual_v2 liest englischen Text
+# mit englischer Aussprache — deutsche Lautschriften wuerden mit englischer
+# Phonetik gemangelt. Eigennamen bleiben in der Originalschreibung;
+# Bindestrich-Namen erhalten ein Leerzeichen, damit der TTS keine Pause
+# als Wortgrenze interpretiert.
 PRONUNCIATION = {
+    'Im-Nesh':   'Im Nesh',
+    'Zhar-Eth':  'Zhar Eth',
+}
+
+# Legacy: deutsche Phonetik (fuer Referenz, falls jemand zurueck switcht)
+PRONUNCIATION_DE_LEGACY = {
     'Aithein':   'Aithäin',
     'Im-Nesh':   'Im Nesch',
     'Shulavh':   'Schulawh',

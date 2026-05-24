@@ -453,6 +453,19 @@ def update_decals(game, dt):
                     _snd.play('aoe_impact', volume=0.8)
             except Exception:
                 pass
+            # V-03 (Update #168): Scorched-Earth nach Fire-AoE.
+            # Persistent 18 s Boden-Decal an der Aktivierungs-Stelle.
+            try:
+                dmg_type = getattr(d, 'dmg_type', None)
+                kind = getattr(d, 'kind', None)
+                if dmg_type == 'fire' or kind == DECAL_KIND.DOT:
+                    surf_fx = getattr(game, 'surface_fx', None)
+                    if surf_fx is not None and d.radius >= 30:
+                        surf_fx.spawn_scorched_earth(
+                            d.pos.x, d.pos.y,
+                            radius=int(d.radius * 0.85))
+            except Exception:
+                pass
         if d.activated and (d.age - d.windup) >= d.lifetime:
             decals.remove(d)
 

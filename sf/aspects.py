@@ -382,6 +382,10 @@ def draw_aspect_watermark(screen, rect, aspect_or_class, alpha=22):
     """Großes Aspekt-Glyph als Pergament-Watermark in der Mitte eines Modals.
 
     Sehr subtil (alpha-Wert ~20) — nur dezente Lore-Andeutung im Hintergrund.
+
+    H-22 (Update #168): Animierte Aspekt-Specific-Layer.  Kharn pulsiert
+    glühend, Nheyra driftet horizontal, Valsa-Asche flockt fallend,
+    Shulavh wickelt sich.  Pro Aspekt eigener Loop.
     """
     pal = aspect_palette(aspect_or_class)
     color = pal['primary']
@@ -395,15 +399,42 @@ def draw_aspect_watermark(screen, rect, aspect_or_class, alpha=22):
     size = min(rect.w, rect.h) - 120
     if size < 100:
         return
+    # H-22: Animations-Faktor pro Aspekt
+    t = pygame.time.get_ticks() / 1000.0
+    drift_x = 0
+    drift_y = 0
+    pulse_mult = 1.0
+    if aspect_key == 'kharn':
+        # Pulsierendes Eisen-Glüh
+        pulse_mult = 0.85 + 0.15 * math.sin(t * 0.8)
+    elif aspect_key == 'nheyra':
+        # Horizontale Drift
+        drift_x = int(math.sin(t * 0.3) * 8)
+    elif aspect_key == 'valsa':
+        # Asche flockt langsam fallend
+        drift_y = int((t * 6.0) % 12) - 6
+    elif aspect_key == 'shulavh':
+        # Wickel-Drehung (rotational subtle, simulated via x/y)
+        drift_x = int(math.cos(t * 0.4) * 5)
+        drift_y = int(math.sin(t * 0.4) * 5)
+    elif aspect_key == 'im_nesh':
+        # Funken-Zucken (kurze Bursts)
+        if int(t * 4) % 3 == 0:
+            pulse_mult = 1.15
+    elif aspect_key == 'ousen':
+        # Sanftes Atmen
+        pulse_mult = 0.9 + 0.1 * math.sin(t * 0.5)
     # Render Glyph in eigene Surface mit Alpha
+    eff_alpha = int(alpha * pulse_mult)
     glyph_surf = pygame.Surface((size + 40, size + 40), pygame.SRCALPHA)
     draw_glyph(glyph_surf, size // 2 + 20, size // 2 + 20,
                 size, aspect_key,
-                color=(*color, alpha))
+                color=(*color, eff_alpha))
     # Glyph drawn directly with rgb — manually set alpha via blit
-    glyph_surf.set_alpha(alpha * 2)
+    glyph_surf.set_alpha(int(eff_alpha * 2))
     screen.blit(glyph_surf,
-                 (cx - (size + 40) // 2, cy - (size + 40) // 2))
+                 (cx - (size + 40) // 2 + drift_x,
+                  cy - (size + 40) // 2 + drift_y))
 
 
 def draw_ornament_divider(screen, x, y, width, color):

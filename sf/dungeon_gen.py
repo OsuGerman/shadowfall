@@ -214,6 +214,13 @@ class DungeonGrid:
         g_score = {start_cell: 0}
         tie = 0
         steps = 0
+        # Audit #179 C.7: Best-Reached-Cell tracken — wenn max_steps
+        # ueberschritten wird, returnen wir den Pfad zur dem Ziel
+        # naehesten erreichten Zelle. Bei NPCs (Escort/Quest) ist ein
+        # "nahe drangekommen"-Pfad besser als "stuck-forever".
+        best_cell = start_cell
+        best_h = abs(start_cell[0] - end_cell[0]) + abs(
+            start_cell[1] - end_cell[1])
         while open_set and steps < max_steps:
             steps += 1
             _, _, current = heapq.heappop(open_set)
@@ -224,6 +231,12 @@ class DungeonGrid:
                     current = came_from[current]
                 path.reverse()
                 return path
+            # Best-So-Far Tracking
+            cur_h = abs(current[0] - end_cell[0]) + abs(
+                current[1] - end_cell[1])
+            if cur_h < best_h:
+                best_h = cur_h
+                best_cell = current
             cx, cy = current
             for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
                 nx, ny = cx + dx, cy + dy
@@ -236,7 +249,18 @@ class DungeonGrid:
                     h = abs(nx - end_cell[0]) + abs(ny - end_cell[1])
                     tie += 1
                     heapq.heappush(open_set, (tentative_g + h, tie, (nx, ny)))
-        return None  # kein Pfad innerhalb max_steps
+        # Audit #179 C.7: Fallback — Pfad zur naehesten erreichten Zelle.
+        # Nur wenn wir wirklich naeher dran sind als beim Start (sonst
+        # ist es kein Fortschritt und None ist die ehrliche Antwort).
+        if best_cell != start_cell:
+            path = []
+            current = best_cell
+            while current in came_from:
+                path.append(current)
+                current = came_from[current]
+            path.reverse()
+            return path
+        return None  # weder Ziel noch nahe rangekommen → kein Pfad
 
     def find_walkable_near(self, x, y, max_radius=4):
         """Sucht nächste begehbare Zelle in Spirale.

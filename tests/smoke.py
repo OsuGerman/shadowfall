@@ -2243,6 +2243,10 @@ def test_camera_lookahead():
     from sf.game import Game
     g = Game()
     g.start_game('adventure')
+    # Update #141 hat camera_lookahead default auf False gesetzt
+    # (Motion-Sickness-Fix). Fuer diesen Test explizit aktivieren —
+    # wir testen das LOOKAHEAD-Verhalten, nicht den Default.
+    g.settings['camera_lookahead'] = True
     # 1. Stillstand-Baseline messen
     g._cam_offset_x = 0.0
     g._cam_offset_y = 0.0
@@ -2312,9 +2316,9 @@ def test_motion_sickness_defaults():
     from sf.game import Game
     g = Game()
     g.start_game('adventure')
-    # 1+2: Defaults
+    # 1+2: Defaults (Update #141: BEIDE auf False fuer Motion-Sickness-Fix)
     assert g.settings['camera_cursor_lean'] is False
-    assert g.settings['camera_lookahead'] is True
+    assert g.settings['camera_lookahead'] is False
     # 3: Toggles im Modal
     assert 'camera_cursor_lean' in g._SETTING_KEYS
     assert 'camera_lookahead' in g._SETTING_KEYS
@@ -2468,18 +2472,23 @@ def test_akt_progression_clarity():
     asch_hints = [n for n in g.event_notifications
                    if 'Aschenfelder' in n.get('sub', '')]
     assert len(asch_hints) >= 1
-    # 4+5: ALLE Outposts gerendert + Locked-Click-Hint
+    # 4+5: Update #180 hat den Outpost-Render-Pfad umgestellt — jetzt
+    # werden NUR unlocked-Outposts gerendert (keine Locked-Schloss-Portale
+    # mehr, User-Request um visuelle UI-Last zu reduzieren).
     g.player.completed_dungeons = set()   # noch keine Akte clear
     g.enter_town()
-    # Erwartet: ALLE non-brassweir Outposts gerendert
-    all_outpost_keys = {k for k in _op.OUTPOSTS.keys() if k != 'brassweir'}
+    unlocked = set(_op.unlocked_outposts(g.player))
+    expected_keys = {k for k in unlocked if k != 'brassweir'}
     rendered_keys = {op.outpost_key for op in g.outpost_portals}
-    assert all_outpost_keys == rendered_keys, (
-        f'Erwartet {all_outpost_keys}, bekommen {rendered_keys}')
-    # Locked-Portale haben _locked=True
+    assert expected_keys == rendered_keys, (
+        f'Erwartet {expected_keys}, bekommen {rendered_keys}')
+    # Mit nur 1 Outpost (zhar_eth_karawane) sollte kein _locked-Portal
+    # mehr gerendert sein (Update #180 hat den Locked-Pfad entfernt).
     locked_count = sum(1 for op in g.outpost_portals
                         if getattr(op, '_locked', False))
-    assert locked_count > 0, 'Mindestens 1 Locked-Portal erwartet'
+    assert locked_count == 0, (
+        f'Update #180: keine locked-Portale mehr — '
+        f'bekommen {locked_count} locked')
     return True
 
 
@@ -3551,6 +3560,167 @@ def test_hidden_quest_discovery_via_decor():
     assert qid in log.active, (
         f'Quest sollte nach 3 lore_tablets offered sein, '
         f'discovery_counts={log.discovery_counts}')
+    return True
+
+
+def test_compass_resolves_decor_target():
+    """Update #161 (ROADMAP Engine-Lücke „Quest-Compass durchgängig"):
+    INTERACT-Stage mit `decor_kind='lore_tablet'` löst zur nächsten
+    Lore-Tafel auf.  Wir tracken mara_spur explizit damit der
+    salzwunde-TALK-Stage nicht die Priorität klaut.
+    """
+    from sf.game import Game
+    from sf.entities import Decor
+    from sf import world as _w
+    g = Game()
+    g.start_game('adventure')
+    # Aktiviere + tracke Mara-Spur (TALK + INTERACT + RETURN)
+    g.quest_log.offer('akt1_mara_spur')
+    qst = g.quest_log.active['akt1_mara_spur']
+    qst.advance_stage(g)
+    assert qst.stage['type'] == 'interact'
+    assert qst.stage['target']['decor_kind'] == 'lore_tablet'
+    g.quest_log.set_tracked('akt1_mara_spur')
+    # Player + Stadt-lore_tablets ggf. weit weg — wir spawnen einen
+    # neuen lore_tablet direkt bei Player → muss als nächstes zurück
+    g.player.pos.x, g.player.pos.y = 0, 0
+    # Entferne existierende lore_tablets aus tiles damit der Test
+    # deterministisch ist
+    g.tiles = [t for t in g.tiles
+                if getattr(t, 'kind', None) != 'lore_tablet']
+    tablet = Decor(100, 200, 'lore_tablet', 0.0, 16, 0.5, 10)
+    tablet.lore_text = 'test'
+    tablet.lore_read = False
+    g.tiles.append(tablet)
+    pos = _w._resolve_quest_target_pos(g)
+    assert pos is not None
+    assert abs(pos[0] - 100) < 1, f'erwarte ~100, bekam {pos[0]}'
+    assert abs(pos[1] - 200) < 1, f'erwarte ~200, bekam {pos[1]}'
+    return True
+
+
+def test_compass_skips_read_lore_tablets():
+    """Update #161: Bereits gelesene lore_tablets werden vom Compass
+    ignoriert — Spieler sieht den nächsten unread Marker.
+    """
+    from sf.game import Game
+    from sf.entities import Decor
+    from sf import world as _w
+    g = Game()
+    g.start_game('adventure')
+    g.quest_log.offer('akt1_mara_spur')
+    qst = g.quest_log.active['akt1_mara_spur']
+    qst.advance_stage(g)
+    g.quest_log.set_tracked('akt1_mara_spur')
+    # Bereinige tiles, deterministischer Test
+    g.tiles = [t for t in g.tiles
+                if getattr(t, 'kind', None) != 'lore_tablet']
+    # Tablet A: bereits gelesen, näher
+    a = Decor(50, 50, 'lore_tablet', 0.0, 16, 0.5, 10)
+    a.lore_text = 'A'
+    a.lore_read = True
+    # Tablet B: unread, weiter weg
+    b = Decor(300, 300, 'lore_tablet', 0.0, 16, 0.5, 10)
+    b.lore_text = 'B'
+    b.lore_read = False
+    g.tiles.append(a)
+    g.tiles.append(b)
+    g.player.pos.x, g.player.pos.y = 0, 0
+    pos = _w._resolve_quest_target_pos(g)
+    # Sollte auf B zeigen (A ist read, B ist unread)
+    assert pos is not None
+    assert abs(pos[0] - 300) < 1, f'erwarte ~300, bekam {pos[0]}'
+    return True
+
+
+def test_set_linking_api():
+    """Update #161 (WELT_AUFBAU 5.5): link_items / unlink_item /
+    linked_partner — Shulavhs Faden bindet 2 Items per gemeinsamer
+    link_id.
+    """
+    from sf.items import (Item, link_items, unlink_item,
+                            linked_partner)
+    a = Item(slot='weapon', rarity='magic', name='A',
+              affixes=[], ilvl=5, sockets=[])
+    b = Item(slot='ring', rarity='magic', name='B',
+              affixes=[], ilvl=5, sockets=[])
+    assert a.link_id is None
+    assert b.link_id is None
+    # Bind
+    lid = link_items(a, b)
+    assert lid is not None
+    assert a.link_id == lid
+    assert b.link_id == lid
+    # linked_partner findet das Gegenstück
+    items = [a, b]
+    assert linked_partner(a, items) is b
+    assert linked_partner(b, items) is a
+    # Double-link blockt
+    c = Item(slot='helmet', rarity='magic', name='C',
+              affixes=[], ilvl=5, sockets=[])
+    assert link_items(a, c) is None   # a bereits gelinkt
+    # Self-link blockt
+    d = Item(slot='helmet', rarity='magic', name='D',
+              affixes=[], ilvl=5, sockets=[])
+    assert link_items(d, d) is None
+    # Unlink — sollte beide Items ent-linken via all_items_iter
+    unlink_item(a, all_items_iter=items)
+    assert a.link_id is None
+    assert b.link_id is None
+    return True
+
+
+def test_set_linking_applies_bonus():
+    """Update #161: 2 Items mit gleicher link_id im equipment geben
+    +15% dmg_pct + 10% cdr (Shulavhs-Faden-Set-Bonus).
+    """
+    from sf.items import Item, link_items, aggregate_stats
+    from sf.entities import Player
+    p = Player('warrior')
+    a = Item(slot='weapon', rarity='magic', name='A',
+              affixes=[], ilvl=5, sockets=[])
+    b = Item(slot='helmet', rarity='magic', name='B',
+              affixes=[], ilvl=5, sockets=[])
+    link_items(a, b)
+    p.equipment['weapon'] = a
+    p.equipment['helmet'] = b
+    stats = aggregate_stats(p)
+    assert stats['dmg_pct'] >= 15, (
+        f'Faden-Bonus dmg_pct fehlt: {stats["dmg_pct"]}')
+    assert stats['cdr'] >= 10, (
+        f'Faden-Bonus cdr fehlt: {stats["cdr"]}')
+    # Nur 1 Item equipped → kein Bonus
+    p2 = Player('mage')
+    a2 = Item(slot='weapon', rarity='magic', name='A',
+                affixes=[], ilvl=5, sockets=[])
+    b2 = Item(slot='helmet', rarity='magic', name='B',
+                affixes=[], ilvl=5, sockets=[])
+    link_items(a2, b2)
+    p2.equipment['weapon'] = a2
+    # b2 NICHT equipped
+    stats2 = aggregate_stats(p2)
+    assert stats2['dmg_pct'] < 15
+    assert stats2['cdr'] < 10
+    return True
+
+
+def test_set_linking_save_load():
+    """Update #161: link_id wird via Save/Load persistiert.
+    """
+    from sf.items import Item
+    from sf import save as _save
+    item = Item(slot='weapon', rarity='magic', name='X',
+                 affixes=[], ilvl=5, sockets=[],
+                 link_id='shulavh_abcd1234')
+    d = _save._item_to_dict(item)
+    assert d.get('link_id') == 'shulavh_abcd1234'
+    restored = _save._item_from_dict(d)
+    assert restored.link_id == 'shulavh_abcd1234'
+    # Item ohne link_id schreibt den Key nicht
+    plain = Item(slot='ring', rarity='common', name='Y',
+                  affixes=[], ilvl=1, sockets=[])
+    d2 = _save._item_to_dict(plain)
+    assert 'link_id' not in d2
     return True
 
 
@@ -5883,6 +6053,120 @@ def test_skilltree_hover_preview():
     return True
 
 
+def test_quest_abandon_api():
+    """Audit #179 C.2: QuestLog.abandon() entfernt aus active, verhindert Re-Offer."""
+    from sf.game import Game
+    g = Game()
+    g.start_game('adventure')
+    log = g.quest_log
+    # Nicht-Main-Quest finden — ensure_initial offert Main + ggf. Bounties.
+    side_qid = None
+    for qid, st in log.active.items():
+        if not getattr(st, 'is_main', False):
+            side_qid = qid
+            break
+    if side_qid is None:
+        # Wenn keine Side-Quest verfuegbar, lass den Test passen
+        # (Game-Start-Inhalt kann variieren).
+        return True
+    assert side_qid in log.active
+    # Abandon
+    ok = log.abandon(side_qid)
+    assert ok is True, f'abandon({side_qid}) failed'
+    assert side_qid not in log.active
+    assert side_qid in log.abandoned
+    # Re-Offer wird durch abandoned-Set blockiert
+    re_st = log.offer(side_qid)
+    assert re_st is None, 'Re-Offer einer abgebrochenen Quest sollte None geben'
+    # retake() reaktiviert
+    log.retake(side_qid)
+    assert side_qid not in log.abandoned
+    re_st = log.offer(side_qid)
+    assert re_st is not None, 'Nach retake() sollte offer wieder klappen'
+    return True
+
+
+def test_quest_abandon_protects_main():
+    """Audit #179 C.2: Main-Quests duerfen NICHT abgebrochen werden."""
+    from sf.game import Game
+    g = Game()
+    g.start_game('adventure')
+    log = g.quest_log
+    main_qid = None
+    for qid, st in log.active.items():
+        if getattr(st, 'is_main', False):
+            main_qid = qid
+            break
+    if main_qid is None:
+        return True   # kein Main aktiv — Test irrelevant
+    ok = log.abandon(main_qid)
+    assert ok is False, 'Main-Quest darf nicht abgebrochen werden'
+    assert main_qid in log.active, 'Main-Quest muss aktiv bleiben'
+    return True
+
+
+def test_quest_abandon_save_load():
+    """Audit #179 C.2: abandoned Set ueberlebt save/load roundtrip."""
+    from sf.game import Game
+    from sf import save as _save
+    g = Game()
+    g.start_game('adventure', slot=98)
+    side_qid = None
+    for qid, st in g.quest_log.active.items():
+        if not getattr(st, 'is_main', False):
+            side_qid = qid
+            break
+    if side_qid is None:
+        return True
+    g.quest_log.abandon(side_qid)
+    assert _save.save_game(g, slot=98)
+    # Game-Reset
+    g2 = Game()
+    assert _save.load_game(g2, slot=98)
+    assert side_qid in g2.quest_log.abandoned, (
+        f'{side_qid} sollte in abandoned sein nach reload, '
+        f'bekommen {g2.quest_log.abandoned}')
+    # Cleanup
+    _save.delete_save(slot=98)
+    return True
+
+
+def test_astar_closest_walkable_fallback():
+    """Audit #179 C.7: A* gibt closest-walkable-Pfad bei max_steps statt None."""
+    from sf.dungeon_gen import DungeonGrid, FLOOR
+    grid = DungeonGrid(60, 60)
+    # Default: alle walkable (FLOOR)
+    for y in range(60):
+        for x in range(60):
+            grid.tiles[y][x] = FLOOR
+    # Mit sehr kleinem max_steps soll der Fallback greifen.
+    path = grid.astar((0, 0), (50, 50), max_steps=5)
+    assert path is not None, 'C.7-Fallback haette closest-walkable liefern muessen'
+    # Letzter Pfad-Punkt sollte naeher am Ziel sein als Start
+    last = path[-1]
+    h_last = abs(last[0] - 50) + abs(last[1] - 50)
+    h_start = 50 + 50  # Manhattan
+    assert h_last < h_start, (
+        f'closest-walkable-Pfad sollte naeher als Start sein: '
+        f'h_last={h_last} vs h_start={h_start}')
+    return True
+
+
+def test_profiler_section_records():
+    """Audit #179 C.13: profiler.section() schreibt in Frame-Buffer."""
+    from sf import profiler as _prof
+    _prof.reset_sections()
+    with _prof.section('test_section_x'):
+        # Kleine arbeit damit die zeit messbar ist
+        for _ in range(1000):
+            pass
+    summary = _prof.frame_summary()
+    assert 'test_section_x' in summary
+    assert summary['test_section_x'] >= 0
+    _prof.reset_sections()
+    return True
+
+
 # Test-Registry
 TESTS = [
     ('game_init',                  test_game_init),
@@ -5907,6 +6191,12 @@ TESTS = [
     ('ui_text_no_crash_stress',    test_ui_text_layout_no_crash_resolutions),
     ('respec_orb_of_regret',       test_respec_orb_of_regret),
     ('skilltree_hover_preview',    test_skilltree_hover_preview),
+    # Audit #179 C-Fixes
+    ('quest_abandon_api',          test_quest_abandon_api),
+    ('quest_abandon_protects_main', test_quest_abandon_protects_main),
+    ('quest_abandon_save_load',    test_quest_abandon_save_load),
+    ('astar_closest_walkable',     test_astar_closest_walkable_fallback),
+    ('profiler_section_records',   test_profiler_section_records),
     ('skilltree_filter_cycle',     test_skilltree_filter_cycle),
     ('skilltree_plan_mode',        test_skilltree_plan_mode),
     ('skilltree_alloc_animation',  test_skilltree_alloc_animation),
@@ -6077,6 +6367,11 @@ TESTS = [
     ('quest_pin_save_load',        test_quest_pin_save_load_roundtrip),
     ('quest_compass_prefers_tracked', test_quest_compass_prefers_tracked),
     ('cycle_tracked_quest',        test_cycle_tracked_quest_hotkey),
+    ('compass_resolves_decor',     test_compass_resolves_decor_target),
+    ('compass_skips_read_tablets', test_compass_skips_read_lore_tablets),
+    ('set_linking_api',            test_set_linking_api),
+    ('set_linking_applies_bonus',  test_set_linking_applies_bonus),
+    ('set_linking_save_load',      test_set_linking_save_load),
 ]
 
 

@@ -334,6 +334,9 @@ class QuestLog:
         # via P-Hotkey gesetzt + von `_resolve_quest_target_pos`
         # bevorzugt.
         self.tracked_quest_id = None
+        # Audit #179 C.2: Abandoned Quests — verhindert dass die gleiche
+        # Quest sofort wieder angeboten wird. Persistiert ueber save/load.
+        self.abandoned = set()
 
     def set_tracked(self, qid):
         """Update #160 (T2.3-C): Setze/Toggle die getrackte Quest.
@@ -364,7 +367,11 @@ class QuestLog:
         return st
 
     def offer(self, qid):
-        if qid in self.active or qid in self.completed:
+        # Audit #179 C.2: Abgebrochene Quests werden nicht automatisch
+        # re-offered — erst manuell aus `abandoned` entfernen (via re-take
+        # vom NPC oder Console-Command).
+        if (qid in self.active or qid in self.completed
+                or qid in self.abandoned):
             return None
         q = _qd.quest_by_id(qid)
         if q is None:
@@ -372,6 +379,38 @@ class QuestLog:
         st = QuestState(q)
         self.active[qid] = st
         return st
+
+    def abandon(self, qid):
+        """Audit #179 C.2: Eine aktive Quest abbrechen.
+
+        Entfernt sie aus `active`, fuegt sie zu `abandoned` hinzu damit
+        sie nicht sofort wieder angeboten wird. Tracked Quest wird
+        geclearet wenn sie es war.
+
+        Returns True wenn abgebrochen, False wenn nicht aktiv.
+        """
+        if qid not in self.active:
+            return False
+        # Main-Quests (akt-1 .. akt-7) duerfen NICHT abgebrochen werden —
+        # das wuerde die Akt-Progression brechen. Side- / Bounty- / Hidden-
+        # Quests sind ok.
+        st = self.active[qid]
+        if getattr(st, 'is_main', False):
+            return False
+        del self.active[qid]
+        self.abandoned.add(qid)
+        if self.tracked_quest_id == qid:
+            self.tracked_quest_id = None
+        return True
+
+    def retake(self, qid):
+        """Audit #179 C.2: Eine abgebrochene Quest wieder annehmbar machen.
+
+        Entfernt sie aus `abandoned` — der nächste `offer(qid)` Call (z.B.
+        beim NPC-Talk) startet sie neu. Wird vom UI nicht direkt verwendet,
+        ist aber API fuer Console-Commands / Save-Migration.
+        """
+        self.abandoned.discard(qid)
 
     def ensure_initial(self):
         """Startet die Default-Akt-1-Quests bei Game-Start."""

@@ -715,6 +715,14 @@ def dodge_roll(game):
     p._dodge_trail.append({
         'x': p.pos.x, 'y': p.pos.y, 'age': 0.0, 'life': 0.4,
     })
+    # V-07 (Update #168): Dust-Puff am Dodge-Start.
+    try:
+        surf_fx = getattr(game, 'surface_fx', None)
+        if surf_fx is not None:
+            surf_fx.spawn_dust_puff(p.pos.x, p.pos.y, radius=28,
+                                     color=(190, 170, 120))
+    except Exception:
+        pass
 
 
 def cast_ultimate(game):
@@ -805,7 +813,10 @@ def cast_teleport(game):
         return
     wpos = game.s2w(*pygame.mouse.get_pos())
     diff = wpos - p.pos
-    if diff.length() < 1:
+    # Audit #179 A.5: length_squared() ist schneller (kein sqrt) und schuetzt
+    # explizit vor Null-Vektor in normalize() (Vector2.normalize() crasht bei
+    # length == 0).
+    if diff.length_squared() < 1.0:
         return
     dist = min(diff.length(), 220)
     direction = diff.normalize()

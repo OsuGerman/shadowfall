@@ -182,11 +182,11 @@ VOICE_POOLS: dict[tuple[str, str], list[str]] = {
         'sounds/voice/generic/generic_boss_encounter_03.mp3',
         'sounds/voice/generic/generic_boss_encounter_04.mp3',
     ],
-    ('generic', 'death_lines_pool_ber_alle_klassen_klassen_agnostisch'): [
-        'sounds/voice/generic/generic_death_lines_pool_ber_alle_klassen_klassen_agnostisch_01.mp3',
-        'sounds/voice/generic/generic_death_lines_pool_ber_alle_klassen_klassen_agnostisch_02.mp3',
-        'sounds/voice/generic/generic_death_lines_pool_ber_alle_klassen_klassen_agnostisch_03.mp3',
-        'sounds/voice/generic/generic_death_lines_pool_ber_alle_klassen_klassen_agnostisch_04.mp3',
+    ('generic', 'death_lines_pool_ueber_alle_klassen_klassen_agnostisch'): [
+        'sounds/voice/generic/generic_death_lines_pool_ueber_alle_klassen_klassen_agnostisch_01.mp3',
+        'sounds/voice/generic/generic_death_lines_pool_ueber_alle_klassen_klassen_agnostisch_02.mp3',
+        'sounds/voice/generic/generic_death_lines_pool_ueber_alle_klassen_klassen_agnostisch_03.mp3',
+        'sounds/voice/generic/generic_death_lines_pool_ueber_alle_klassen_klassen_agnostisch_04.mp3',
     ],
     ('generic', 'pickup'): [
         'sounds/voice/generic/generic_pickup_01.mp3',

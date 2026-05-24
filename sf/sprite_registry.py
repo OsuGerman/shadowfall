@@ -1,80 +1,117 @@
-"""Auto-generiert von tools/sprite_gen.py.
+"""Sprite-Registry & Aliase (Audit #179 B.3 erweitert).
 
-Sprite-Registry: target_id -> projekt-relativer PNG-Pfad.
+Diese Datei war urspruenglich von tools/sprite_gen.py generiert und mappte
+target-IDs auf PNG-Pfade in assets/sprites/.  Nach dem Procedural-Pivot
+(Update #171) ist `SPRITES` ein No-Op-Stub — die Engine rendert procedural.
+
+Update #179 B.3: Vorher waren die Alias-Maps (CLASS, MOB, TILE, PORTRAIT,
+BOSS) hardcoded in sf/sprites.py. Jetzt zentralisiert hier — single source
+of truth fuer Engine-Key -> Sprite-ID Mappings. Hat 3 Vorteile:
+  1. sprites.py kuerzer (weniger Hardcodes im Renderer)
+  2. Aenderungen an Mappings nur an einer Stelle
+  3. Tools koennen Mappings inspizieren ohne sprites.py importieren
+
+Wenn jemand experimentell wieder PNG-Assets bereitstellt, fuege die in
+`SPRITES` ein UND rufe `sf.sprites.set_ai_sprites_enabled(True)` auf.
 """
 from __future__ import annotations
 
 
-SPRITES: dict[str, str] = {
-    # ---- boss_plate ----
-    'echo_drache': 'assets/sprites/bosses/echo_drache.png',
-    'ertrunkene_koenigin': 'assets/sprites/bosses/ertrunkene_koenigin.png',
-    'nicht_gott': 'assets/sprites/bosses/nicht_gott.png',
-    'salzhueter_brut': 'assets/sprites/bosses/salzhueter_brut.png',
-    'senator_geist': 'assets/sprites/bosses/senator_geist.png',
-    'shulavh': 'assets/sprites/bosses/shulavh.png',
-    'vehren': 'assets/sprites/bosses/vehren.png',
-    'velharn_trio': 'assets/sprites/bosses/velharn_trio.png',
-    # ---- class ----
-    'druid': 'assets/sprites/classes/druid.png',
-    'huntress': 'assets/sprites/classes/huntress.png',
-    'mercenary': 'assets/sprites/classes/mercenary.png',
-    'monk': 'assets/sprites/classes/monk.png',
-    'ranger': 'assets/sprites/classes/ranger.png',
-    'sorceress': 'assets/sprites/classes/sorceress.png',
-    'warrior': 'assets/sprites/classes/warrior.png',
-    'witch': 'assets/sprites/classes/witch.png',
-    # ---- decor ----
-    'anvil': 'assets/sprites/decor/anvil.png',
-    'bonewitch_skull_altar': 'assets/sprites/decor/bonewitch_skull_altar.png',
-    'brassweir_barrel': 'assets/sprites/decor/brassweir_barrel.png',
-    'caravan_wagon': 'assets/sprites/decor/caravan_wagon.png',
-    'drowned_idol': 'assets/sprites/decor/drowned_idol.png',
-    'echo_glass_shard': 'assets/sprites/decor/echo_glass_shard.png',
-    'forgotten_obelisk': 'assets/sprites/decor/forgotten_obelisk.png',
-    'inquisitor_pyre_stake': 'assets/sprites/decor/inquisitor_pyre_stake.png',
-    'mahnmal_chain': 'assets/sprites/decor/mahnmal_chain.png',
-    'mahnmal_pyre': 'assets/sprites/decor/mahnmal_pyre.png',
-    'mahnmal_stele': 'assets/sprites/decor/mahnmal_stele.png',
-    'monk_meditation_bell': 'assets/sprites/decor/monk_meditation_bell.png',
-    'pier_post': 'assets/sprites/decor/pier_post.png',
-    'salt_spire': 'assets/sprites/decor/salt_spire.png',
-    'seedbearer_torch': 'assets/sprites/decor/seedbearer_torch.png',
-    'shulavh_loom': 'assets/sprites/decor/shulavh_loom.png',
-    'velharn_mirror': 'assets/sprites/decor/velharn_mirror.png',
-    # ---- item_icon ----
-    'aschen_ankunft': 'assets/sprites/items/aschen_ankunft.png',
-    'brassweir_schaedelbrecher': 'assets/sprites/items/brassweir_schaedelbrecher.png',
-    'der_erste_eid': 'assets/sprites/items/der_erste_eid.png',
-    'der_schweigende': 'assets/sprites/items/der_schweigende.png',
-    'echo_klinge': 'assets/sprites/items/echo_klinge.png',
-    'kharns_geduld': 'assets/sprites/items/kharns_geduld.png',
-    'letzter_hammer_von_velhost': 'assets/sprites/items/letzter_hammer_von_velhost.png',
-    'saatkind_beil': 'assets/sprites/items/saatkind_beil.png',
-    'senatorin_stahl': 'assets/sprites/items/senatorin_stahl.png',
-    'verbrannte_treue': 'assets/sprites/items/verbrannte_treue.png',
-    'wachturm_faust': 'assets/sprites/items/wachturm_faust.png',
-    'wurzelschlitzer': 'assets/sprites/items/wurzelschlitzer.png',
-    # ---- mob ----
-    'aschenbrut_akt_3_generic_mob': 'assets/sprites/mobs/aschenbrut_akt_3_generic_mob.png',
-    'ertrunkene_koenigin_akt_6a_boss_mini': 'assets/sprites/mobs/ertrunkene_koenigin_akt_6a_boss_mini.png',
-    'glaslord_senator_geist_akt_2': 'assets/sprites/mobs/glaslord_senator_geist_akt_2.png',
-    'salzhueter_brut': 'assets/sprites/mobs/salzhueter_brut.png',
-    'vehren_echo_akt_3_mini_variante': 'assets/sprites/mobs/vehren_echo_akt_3_mini_variante.png',
-    'wurzelhueter_akt_4_generic_mob': 'assets/sprites/mobs/wurzelhueter_akt_4_generic_mob.png',
-    # ---- tile ----
-    'crypt_floor_a': 'assets/sprites/tiles/crypt_floor_a.png',
-    'crypt_floor_c': 'assets/sprites/tiles/crypt_floor_c.png',
-    'crypt_wall_w': 'assets/sprites/tiles/crypt_wall_w.png',
-    'town_brassweir': 'assets/sprites/tiles/town_brassweir.png',
-    # Update #172: Town-Floor 4-Variants (Brassweir-Hafenstein-Refresh)
-    'town_floor_a': 'assets/sprites/tiles/town_floor_a.png',
-    'town_floor_b': 'assets/sprites/tiles/town_floor_b.png',
-    'town_floor_c': 'assets/sprites/tiles/town_floor_c.png',
-    'town_floor_d': 'assets/sprites/tiles/town_floor_d.png',
-    'town_wall_w':  'assets/sprites/tiles/town_wall_w.png',
-}
+SPRITES: dict[str, str] = {}
 
 
 def sprite_path(target_id: str) -> str | None:
     return SPRITES.get(target_id)
+
+
+# ============================================================
+# ALIAS-MAPS (Engine-Key -> Sprite-ID)
+# ============================================================
+# Klassen-Aliases: Engine-cls -> Sprite-ID.
+# Lore: Sorceress ist die Caster-Klasse (engine: 'mage'),
+# Mercenary belegt den Rogue-Slot (engine: 'rogue').
+CLASS_SPRITE_ALIAS: dict[str, str] = {
+    'mage':  'sorceress',
+    'rogue': 'mercenary',
+}
+
+# Mob-Aliases: bestiary_key -> Sprite-ID.
+# Sprite-IDs aus VELGRAD_SPRITE_BIBEL haben Lore-Suffixe — wir mappen
+# die Engine-bestiary-keys auf die generierten PNG-Namen.
+MOB_SPRITE_ALIAS: dict[str, str] = {
+    'salzhueter_brut':     'salzhueter_brut',
+    'glaslord':            'glaslord_senator_geist_akt_2',
+    'echo_senator':        'glaslord_senator_geist_akt_2',
+    'vehren_echo':         'vehren_echo_akt_3_mini_variante',
+    'ertrunkene_koenigin': 'ertrunkene_koenigin_akt_6a_boss_mini',
+    'asch_soldat':         'aschenbrut_akt_3_generic_mob',
+    'aschenbrut':          'aschenbrut_akt_3_generic_mob',
+    'wurzelhueter':        'wurzelhueter_akt_4_generic_mob',
+    'mark_krieger':        'wurzelhueter_akt_4_generic_mob',
+}
+
+# Tile-Aliases: biome -> Sprite-ID.
+TILE_SPRITE_ALIAS: dict[str, str] = {
+    'crypt':        'crypt_akt_1',
+    'frost':        'frost_glass_ruins_akt_2',
+    'lava':         'lava_akt_3',
+    'swamp':        'swamp_akt_4',
+    'astral':       'astral_akt_5',
+    'desert':       'desert_akt_1b',
+    'town':         'town_brassweir',
+    'wound_salt':   'wound_salt_akt_6a',
+    'wound_ash':    'wound_ash_akt_6b',
+    'wound_hollow': 'wound_hollow_akt_6c',
+    'hollow_word':  'hollow_word_akt_7',
+}
+
+# Portrait-Aliases: NPC-Voice-Key -> Sprite-ID (Lore-Beschreibungs-Slugs).
+PORTRAIT_ALIAS: dict[str, str] = {
+    'korven':       'korven_vor_soeldnermeister',
+    'helst':        'bruder_helst_der_hundertjaehrige',
+    'vossharil':    'vossharil_die_dreimalige',
+    'tameris':      'tameris_die_lichtsucherin',
+    'otreth':       'otreth_hohlauge_gemcutter',
+    'mara':         'mara_die_mahnerin',
+    'vehren':       'inquisitor_general_vehren',
+    'drei_muetter': 'die_drei_muetter_trias_in_einem_portrait',
+}
+
+# Boss-Aliases: encounter-key -> boss_plate Sprite-ID (Cinematic-Intro X-06).
+# 1:1-Mappings dokumentieren explizit dass die Keys identisch sind — falls
+# das mal divergiert, hat man die einzige zu aktualisierende Stelle hier.
+BOSS_ALIAS: dict[str, str] = {
+    'salzhueter_brut':     'salzhueter_brut',
+    'vehren':              'vehren',
+    'senator_geist':       'senator_geist',
+    'shulavh':             'shulavh',
+    'velharn_trio':        'velharn_trio',
+    'ertrunkene_koenigin': 'ertrunkene_koenigin',
+    'echo_drache':         'echo_drache',
+    'nicht_gott':          'nicht_gott',
+}
+
+
+def resolve_class(cls: str) -> str:
+    """Engine-cls -> Sprite-ID (Identity wenn kein Alias)."""
+    return CLASS_SPRITE_ALIAS.get(cls, cls)
+
+
+def resolve_mob(bestiary_key: str) -> str:
+    """bestiary_key -> Sprite-ID (Identity wenn kein Alias)."""
+    return MOB_SPRITE_ALIAS.get(bestiary_key, bestiary_key)
+
+
+def resolve_tile(biome: str) -> str:
+    """biome -> Sprite-ID (Identity wenn kein Alias)."""
+    return TILE_SPRITE_ALIAS.get(biome, biome)
+
+
+def resolve_portrait(npc_key: str) -> str:
+    """NPC-Voice-Key -> Sprite-ID (Identity wenn kein Alias)."""
+    return PORTRAIT_ALIAS.get(npc_key, npc_key)
+
+
+def resolve_boss(encounter_key: str) -> str:
+    """encounter_key -> Sprite-ID (Identity wenn kein Alias)."""
+    return BOSS_ALIAS.get(encounter_key, encounter_key)

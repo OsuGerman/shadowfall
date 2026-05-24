@@ -147,5 +147,41 @@ def uninstall():
     if _original_excepthook is not None:
         sys.excepthook = _original_excepthook
         _original_excepthook = None
-    _game_ref = None
-    _recent_events.clear()
+
+
+# ============================================================
+# Audit #179 B.4: Debug-Trace fuer swallowed exceptions.
+# ============================================================
+# Aktivieren via env-var `SHADOWFALL_TRACE_SWALLOWED=1` (oder `1+stderr`).
+# Wenn aktiv, schreiben `trace_swallowed(label)` Calls die aktuelle
+# Exception in den Crash-Ring-Buffer (und optional auf stderr). Damit
+# werden silent failures von bestehenden `except Exception: pass`-Bloecken
+# sichtbar — ohne den Code-Pfad zu aendern.
+#
+# Usage (opt-in pro Stelle):
+#     try:
+#         risky_call()
+#     except Exception:
+#         crash_logger.trace_swallowed('combat.hit_enemy.particles')
+#         # original silent-pass
+_TRACE_SWALLOWED = bool(os.environ.get('SHADOWFALL_TRACE_SWALLOWED'))
+_TRACE_TO_STDERR = 'stderr' in os.environ.get(
+    'SHADOWFALL_TRACE_SWALLOWED', '')
+
+
+def trace_swallowed(label):
+    """Loggt die aktuelle Exception in den Event-Ring-Buffer.
+
+    No-Op wenn `SHADOWFALL_TRACE_SWALLOWED` nicht gesetzt ist — null
+    Overhead in Release-Builds. Sollte aus einem `except Exception:`-Block
+    gerufen werden (nutzt `sys.exc_info()`).
+    """
+    if not _TRACE_SWALLOWED:
+        return
+    exc_type, exc_value, _ = sys.exc_info()
+    if exc_type is None:
+        return
+    msg = f'[swallowed:{label}] {exc_type.__name__}: {exc_value}'
+    append_event(msg)
+    if _TRACE_TO_STDERR:
+        sys.stderr.write(msg + '\n')

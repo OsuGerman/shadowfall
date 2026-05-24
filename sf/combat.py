@@ -106,6 +106,18 @@ def hit_enemy(game, e, dmg, crit=False, dmg_type='physical'):
                     'PINNED!', (140, 200, 240), big=True))
             except Exception:
                 pass
+        # V-02 (Update #168): Ice-Surface bei Frost-Stack >=3.
+        # Decal unter dem Mob als persistent Boden-Kristall.
+        if e.status['frost']['stacks'] >= 3 and not getattr(
+                e, '_ice_decal_spawned', False):
+            try:
+                surf_fx = getattr(game, 'surface_fx', None)
+                if surf_fx is not None:
+                    surf_fx.spawn_ice_crack(
+                        e.pos.x, e.pos.y, radius=72)
+                    e._ice_decal_spawned = True
+            except Exception:
+                pass
 
     # PLAN J-08: Meta-Trigger-Event bei Crit (Cast-on-Crit).
     if crit:
@@ -116,7 +128,12 @@ def hit_enemy(game, e, dmg, crit=False, dmg_type='physical'):
         except Exception:
             pass
 
-    # Boss-Shield: erst Schild brechen
+    # Boss-Shield (PHASE-LAYER): erst Phase-Shield brechen.
+    # NOTE: e.shield und e.shield_hp (PLAN F-12, weiter unten) sind ZWEI
+    # separate Shield-Layer — e.shield ist Boss-Phase-Shield (max-basiert,
+    # Phase-Trigger), e.shield_hp ist Brute/Glaslord-Guardian-Buffer
+    # (einmalig, kein Regen). Bei Brute-Bossen koennen beide aktiv sein:
+    # zuerst Phase-Shield, dann Guardian-HP, dann HP. Audit #179 A.6.
     if e.shield > 0:
         absorbed = min(e.shield, dmg)
         e.shield -= absorbed
@@ -548,6 +565,17 @@ def kill_enemy(game, e):
             _ev.publish(_ev.EventKey.ON_BOSS_DEFEATED, game=game, boss=e)
     except Exception:
         pass
+    # AA-04 (Update #168): Telemetrie-Hook (opt-in via Setting).
+    if getattr(e, 'is_boss', False):
+        try:
+            from . import telemetry as _tel
+            _tel.record_boss_kill(
+                game,
+                boss_kind=getattr(e, 'bestiary_key', '?'),
+                time_taken_s=getattr(game.player,
+                                      'prog_play_time_s', 0.0))
+        except Exception:
+            pass
     # A-04 (Update #47): Damage-Type-Death-Sound-Layer.  Spielt einen leisen
     # Type-spezifischen Sound über den generischen 'death'-Trigger, sodass
     # Spieler die Todes-Ursache hört (Fire-Sizzle, Ice-Crack, Zap, …).
@@ -614,7 +642,11 @@ def kill_enemy(game, e):
                 (255, 140, 60), random.uniform(1.0, 1.8),
                 random.uniform(3, 5), gravity=-30)
     # F-15 (Update #45): Soul-Eater-Affix in der Nähe → stärker
-    for ally in game.enemies:
+    # Audit #179 B.5: SpatialGrid-Query statt linear.
+    _grid = getattr(game, 'enemy_grid', None)
+    _soul_iter = (_grid.query_radius(e.pos.x, e.pos.y, 200)
+                  if _grid is not None else game.enemies)
+    for ally in _soul_iter:
         if ally is e or ally.dying:
             continue
         if 'soul_eater' in getattr(ally, 'affixes', ()):
@@ -636,7 +668,11 @@ def kill_enemy(game, e):
         is_enraged = random.random() < 0.5
         reaction_type = 'enraged' if is_enraged else 'fearful'
         radius = 220
-        for ally in game.enemies:
+        # Audit #179 B.5: SpatialGrid-Query statt linear.
+        _grid2 = getattr(game, 'enemy_grid', None)
+        _pack_iter = (_grid2.query_radius(e.pos.x, e.pos.y, radius)
+                      if _grid2 is not None else game.enemies)
+        for ally in _pack_iter:
             if ally is e or ally.dying:
                 continue
             if (ally.pos - e.pos).length() < radius:
@@ -1149,6 +1185,40 @@ def kill_enemy(game, e):
                                      'STUFENAUFSTIEG!', (255, 215, 90)))
         game.spawn_particles(game.player.pos.x, game.player.pos.y, 80,
                              (255, 215, 90), life_max=1.6, size_max=8)
+        # X-07 (Update #168): Level-Up-Mini-Cinematic.  0.6 s Camera-Zoom-
+        # to-Player via Crit-Pull, Gold-Aura-Burst (8-strahliges Pulse-
+        # Ring), Slow-Mo-Beat 0.18 s.  Anti-Spam via _levelup_cinematic_t.
+        try:
+            import time as _t
+            now_anim = _t.time()
+            if now_anim - getattr(game, '_levelup_cinematic_t', 0.0) > 8.0:
+                game._levelup_cinematic_t = now_anim
+                # Slow-Mo + Shake-Pulse
+                game.slow_mo_left = max(getattr(game, 'slow_mo_left', 0.0), 0.18)
+                game.shake = max(getattr(game, 'shake', 0), 14)
+                # 8-Strahl Pulse-Ring Particles
+                import math as _m
+                for k in range(8):
+                    a = _m.tau * k / 8
+                    vx = _m.cos(a) * 220
+                    vy = _m.sin(a) * 220
+                    game.particles_push(
+                        game.player.pos.x, game.player.pos.y,
+                        vx, vy,
+                        (255, 240, 130), 0.5, 6, gravity=-20)
+                # Crit-Zoom-Pull zum Player
+                if hasattr(game, 'trigger_crit_zoom'):
+                    game.trigger_crit_zoom(
+                        game.player.pos.x, game.player.pos.y)
+                # Banner-Notification
+                if hasattr(game, 'push_event_notification'):
+                    game.push_event_notification(
+                        'levelup',
+                        f'Stufenaufstieg: {game.player.level}',
+                        sub='Mahnmal-Schritt vorwärts',
+                        color=(255, 230, 130), duration=2.6)
+        except Exception:
+            pass
         # Update #81 + #148: Klassen-Voice-Line bei Level-Up (Lore-Anker
         # zu VELGRAD_VOICE_LINES_POOL.md).  Cooldown 30 s damit nicht
         # bei XP-Flood (4-5 Level-Ups in Folge) gespammt wird.

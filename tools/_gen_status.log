@@ -1,0 +1,32 @@
+============================================================
+SPRITE-GEN — START
+============================================================
+  Targets im Manifest:  127
+  Pending (Filter):      15
+  Variants pro Target:    1
+  Total API-Calls:       15
+  Plan-Budget/Monat:   5000 Bilder (0.3 %)
+  Pro Kategorie:
+    status_icon   15 targets
+============================================================
+  [  1/15] status_icon burn                             inf_id=job_pscMQo… ok (135.2s)
+  [  2/15] status_icon poison                           inf_id=job_q9XjUY… ok (6.5s)
+  [  3/15] status_icon frost                            inf_id=job_TSXT4p… ok (6.5s)
+  [  4/15] status_icon bleed                            inf_id=job_2UdC2M… ok (6.3s)
+  [  5/15] status_icon shock                            inf_id=job_KdCFEa… ok (6.4s)
+  [  6/15] status_icon chill                            inf_id=job_4gv8RP… ok (6.3s)
+  [  7/15] status_icon brittle                          inf_id=job_KUQqCL… ok (6.2s)
+  [  8/15] status_icon sapped                           inf_id=job_PN3TwF… ok (6.4s)
+  [  9/15] status_icon armour_break                     inf_id=job_1PjxEU… ok (6.1s)
+  [ 10/15] status_icon pinned                           inf_id=job_tPR97s… ok (6.3s)
+  [ 11/15] status_icon maim                             inf_id=job_RESZdW… ok (6.4s)
+  [ 12/15] status_icon crush                            inf_id=job_v8pfUy… ok (7.1s)
+  [ 13/15] status_icon stun                             inf_id=job_AX1rpf… ok (6.3s)
+  [ 14/15] status_icon slow                             inf_id=job_iEsJs9… ok (6.3s)
+  [ 15/15] status_icon silence                          inf_id=job_VrVMXS… ok (6.0s)
+============================================================
+  Done:   15
+  Failed: 0
+  Output: C:\Users\Circleguard\Downloads\hier\assets\sprites
+  Registry: C:\Users\Circleguard\Downloads\hier\sf\sprite_registry.py
+============================================================

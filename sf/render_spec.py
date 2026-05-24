@@ -263,6 +263,10 @@ RENDER_SPEC: dict[str, dict] = {
     # ============================================================
     # Status-Icon (HUD-Buff-Tray + Enemy-Status-Pips, Update #166)
     # ============================================================
+    # Source-Res 128×128 (Scenario.gg verlangt min. 128 width); Engine
+    # cached pro key einen smoothscale-Downscale auf 12×12 in
+    # sf/sprites.py._STATUS_ICON_SCALED.  Größere Source = besseres
+    # Downscale-Filtering ohne Pixel-Artefakte.
     'status_icon': {
         'camera_prompt': (
             'frontal isolated game-ui icon, symbol-centered composition, '
@@ -280,7 +284,7 @@ RENDER_SPEC: dict[str, dict] = {
             'multiple icons, character, person, environment, scenery, text, '
             'numbers, ui frame, border'
         ),
-        'resolution': (64, 64),
+        'resolution': (128, 128),
         'bg_policy': 'transparent',
         'target_h_mult': None,           # Fixed 12px im _status_overlay
         'aspect_tolerance': 0.05,

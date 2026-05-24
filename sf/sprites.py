@@ -28,13 +28,20 @@ from .constants import (
 _SPRITE_CACHE: dict[str, pygame.Surface | None] = {}
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Update #168: Globaler Master-Switch fuer ALLE AI-Sprites.
-# Wenn False, returnen ALLE Loader (_load_ai_sprite UND _load_anim_strip)
-# sofort None -> Engine zeichnet komplett procedural (Pre-T2.2-Look).
-# Default True (AI-Sprites an). Wird von Game.__init__ aus settings['ai_sprites']
-# gespiegelt und vom Settings-Modal-Click live umgeschaltet.
-# Setting-Toggle ruft set_ai_sprites_enabled() + reload_sprite_cache().
-_AI_SPRITES_ENABLED = True
+# Update #171: PROCEDURAL-ONLY-PIVOT.
+# User-Entscheidung: alle KI-generierten Sprite-PNGs entfernt; das Spiel
+# rendert ausschliesslich procedural. Der Master-Switch bleibt als
+# Opt-Out fuer experimentelles Re-Enablement bestehen.
+#
+# Update #168-Konvention (historisch):
+#   Wenn False, returnen ALLE Loader (_load_ai_sprite UND _load_anim_strip)
+#   sofort None -> Engine zeichnet komplett procedural.
+#
+# Default war bis Update #170 True; seit Update #171 ist False der
+# kanonische Wert. Wer das wieder anschalten will, muss
+# `set_ai_sprites_enabled(True)` aufrufen UND die assets/sprites/-Dateien
+# bereitstellen.
+_AI_SPRITES_ENABLED = False
 
 
 def set_ai_sprites_enabled(enabled: bool) -> None:
@@ -50,41 +57,17 @@ def ai_sprites_enabled() -> bool:
     return _AI_SPRITES_ENABLED
 
 
-# Klassen-Aliases (Engine-cls -> Sprite-ID)
-CLASS_SPRITE_ALIAS = {
-    'mage':  'sorceress',     # Lore: Sorceress ist die Caster-Klasse
-    'rogue': 'mercenary',     # Rogue-Slot wird vom Mercenary belegt
-}
-
-# Mob-Aliases (bestiary_key -> Sprite-ID)
-# Sprite-IDs aus VELGRAD_SPRITE_BIBEL haben Lore-Suffixe — wir mappen
-# die Engine-bestiary-keys auf die generierten PNG-Namen.
-MOB_SPRITE_ALIAS = {
-    'salzhueter_brut': 'salzhueter_brut',
-    'glaslord':        'glaslord_senator_geist_akt_2',
-    'echo_senator':    'glaslord_senator_geist_akt_2',
-    'vehren_echo':     'vehren_echo_akt_3_mini_variante',
-    'ertrunkene_koenigin': 'ertrunkene_koenigin_akt_6a_boss_mini',
-    'asch_soldat':     'aschenbrut_akt_3_generic_mob',
-    'aschenbrut':      'aschenbrut_akt_3_generic_mob',
-    'wurzelhueter':    'wurzelhueter_akt_4_generic_mob',
-    'mark_krieger':    'wurzelhueter_akt_4_generic_mob',
-}
-
-# Tile-Aliases (biome -> Sprite-ID)
-TILE_SPRITE_ALIAS = {
-    'crypt':        'crypt_akt_1',
-    'frost':        'frost_glass_ruins_akt_2',
-    'lava':         'lava_akt_3',
-    'swamp':        'swamp_akt_4',
-    'astral':       'astral_akt_5',
-    'desert':       'desert_akt_1b',
-    'town':         'town_brassweir',
-    'wound_salt':   'wound_salt_akt_6a',
-    'wound_ash':    'wound_ash_akt_6b',
-    'wound_hollow': 'wound_hollow_akt_6c',
-    'hollow_word':  'hollow_word_akt_7',
-}
+# Audit #179 B.3: Alias-Maps wurden nach sf/sprite_registry.py verschoben.
+# Re-Imports fuer Backward-Compat — Code der die Module-Level-Symbole
+# direkt referenziert (z.B. tools/) funktioniert weiterhin.
+from .sprite_registry import (
+    CLASS_SPRITE_ALIAS, MOB_SPRITE_ALIAS, TILE_SPRITE_ALIAS,
+    resolve_class as _resolve_class,
+    resolve_mob as _resolve_mob,
+    resolve_tile as _resolve_tile,
+    resolve_portrait as _resolve_portrait,
+    resolve_boss as _resolve_boss,
+)
 
 
 def _load_ai_sprite(target_id: str) -> pygame.Surface | None:
@@ -120,7 +103,7 @@ def _load_ai_sprite(target_id: str) -> pygame.Surface | None:
 
 def get_class_sprite(cls: str) -> pygame.Surface | None:
     """Returnt die AI-Klassen-Sprite-Surface oder None (Procedural-Fallback)."""
-    sprite_id = CLASS_SPRITE_ALIAS.get(cls, cls)
+    sprite_id = _resolve_class(cls)
     return _load_ai_sprite(sprite_id)
 
 
@@ -198,7 +181,7 @@ def _anim_strip_path(cls: str, anim: str, direction: str) -> str | None:
          (z.B. left fehlt → fallback auf down). Vermeidet "Char wechselt
          beim Laufen-nach-Links"-Problem wenn nicht alle 4 Sheets fertig.
     """
-    real_cls = CLASS_SPRITE_ALIAS.get(cls, cls)
+    real_cls = _resolve_class(cls)
     base = os.path.join(_PROJECT_ROOT, 'assets', 'sprites', 'classes')
     # 1+2: gewuenschte direction zuerst
     candidates = [
@@ -237,7 +220,7 @@ def _load_anim_strip(cls: str, anim: str,
     direction = WALK_DIR_ALIAS.get(direction, direction)
     if direction not in WALK_DIRECTIONS:
         return None
-    real_cls = CLASS_SPRITE_ALIAS.get(cls, cls)
+    real_cls = _resolve_class(cls)
     key = (real_cls, anim, direction)
     if key in _ANIM_FRAME_CACHE:
         return _ANIM_FRAME_CACHE[key]
@@ -411,7 +394,7 @@ def get_mob_sprite(bestiary_key: str | None) -> pygame.Surface | None:
     """Returnt AI-Mob-Sprite oder None."""
     if not bestiary_key:
         return None
-    sprite_id = MOB_SPRITE_ALIAS.get(bestiary_key, bestiary_key)
+    sprite_id = _resolve_mob(bestiary_key)
     return _load_ai_sprite(sprite_id)
 
 
@@ -423,7 +406,7 @@ def get_tile_sprite(biome: str | None) -> pygame.Surface | None:
     """
     if not biome:
         return None
-    sprite_id = TILE_SPRITE_ALIAS.get(biome, biome)
+    sprite_id = _resolve_tile(biome)
     return _load_ai_sprite(sprite_id)
 
 
@@ -760,38 +743,14 @@ def get_portrait(npc_key: str | None) -> pygame.Surface | None:
     """Returnt NPC-Portrait fuer Dialog-UI. Mapping ueber Voice-Keys."""
     if not npc_key:
         return None
-    # Portrait-Sprite-IDs aus Manifest sind Lore-Beschreibungs-Slugs
-    PORTRAIT_ALIAS = {
-        'korven':       'korven_vor_soeldnermeister',
-        'helst':        'bruder_helst_der_hundertjaehrige',
-        'vossharil':    'vossharil_die_dreimalige',
-        'tameris':      'tameris_die_lichtsucherin',
-        'otreth':       'otreth_hohlauge_gemcutter',
-        'mara':         'mara_die_mahnerin',
-        'vehren':       'inquisitor_general_vehren',
-        'drei_muetter': 'die_drei_muetter_trias_in_einem_portrait',
-    }
-    sprite_id = PORTRAIT_ALIAS.get(npc_key, npc_key)
-    return _load_ai_sprite(sprite_id)
+    return _load_ai_sprite(_resolve_portrait(npc_key))
 
 
 def get_boss_plate(encounter_key: str | None) -> pygame.Surface | None:
     """Returnt Boss-Concept-Plate fuer Cinematic-Intro (X-06)."""
     if not encounter_key:
         return None
-    # Boss-Encounter-Keys mappen 1:1 zu boss_plate-Sprite-IDs
-    BOSS_ALIAS = {
-        'salzhueter_brut':     'salzhueter_brut',
-        'vehren':              'vehren',
-        'senator_geist':       'senator_geist',
-        'shulavh':             'shulavh',
-        'velharn_trio':        'velharn_trio',
-        'ertrunkene_koenigin': 'ertrunkene_koenigin',
-        'echo_drache':         'echo_drache',
-        'nicht_gott':          'nicht_gott',
-    }
-    sprite_id = BOSS_ALIAS.get(encounter_key, encounter_key)
-    return _load_ai_sprite(sprite_id)
+    return _load_ai_sprite(_resolve_boss(encounter_key))
 
 
 def _draw_ai_sprite_at(screen, surf: pygame.Surface, sx: int, sy: int,
@@ -876,17 +835,16 @@ def _draw_ai_sprite_at_with_fx(screen, surf: pygame.Surface, sx: int, sy: int,
     new_w = max(1, int(sw * scale))
     scaled = pygame.transform.smoothscale(surf, (new_w, final_h))
 
-    # Alpha anwenden
-    if alpha < 255:
+    # Alpha + Tint zusammen anwenden — eine Kopie reicht (Audit #179 A.3).
+    needs_copy = alpha < 255 or (tint is not None and tint[3] > 0)
+    if needs_copy:
         scaled = scaled.copy()
-        scaled.set_alpha(alpha)
-
-    # Tint overlay (z.B. red-flash bei Hit) — wird auf den scaled drauf-multipliziert
-    if tint is not None and tint[3] > 0:
-        tint_surf = pygame.Surface(scaled.get_size(), pygame.SRCALPHA)
-        tint_surf.fill(tint)
-        scaled = scaled.copy()
-        scaled.blit(tint_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        if alpha < 255:
+            scaled.set_alpha(alpha)
+        if tint is not None and tint[3] > 0:
+            tint_surf = pygame.Surface(scaled.get_size(), pygame.SRCALPHA)
+            tint_surf.fill(tint)
+            scaled.blit(tint_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
 
     blit_x = sx - new_w // 2 + shake_x
     blit_y = sy - final_h + shake_y

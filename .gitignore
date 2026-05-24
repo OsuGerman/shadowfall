@@ -6,6 +6,8 @@ ElevenLabs.txt
 scenario.txt
 Scenario.txt
 .scenario_key
+ChatGPT.txt
+.openai_key
 shadowfall.csv
 .env
 *.key

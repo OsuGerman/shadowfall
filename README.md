@@ -49,15 +49,15 @@ Das ist alles. Game laeuft mit komplettem Sound + 8 Klassen + Akt-1-Quests + Bos
   - **Huntress** (Speerschwester, Shulavh-Lineage)
   - **Druid** (Wandelnde, Drei-Tiere-Lineage)
 - **7 Fraktionen** mit Konflikt-Matrix (Erblinde Kirche, Tribunal der Asche, Mahnmal-Gilde, Knochenwitwen, Saattraeger, Speerschwestern, Stille Schritte)
-- **53 Quests** ausformuliert (Haupt + Faction + Side + Lore + Crafting + Bounty + Hidden) — siehe [QUEST_BIBEL.md](QUEST_BIBEL.md)
+- **53 Quests** ausformuliert (Haupt + Faction + Side + Lore + Crafting + Bounty + Hidden) — siehe [docs/lore/QUEST_BIBEL.md](docs/lore/QUEST_BIBEL.md)
 - **3 Endings** mit Akt-7-Wahl
 - **Voice-Acting fuer alle Haupt-NPCs** — Korven, Helst, Vossharil, Tameris, Otreth, Mara, Vehren, Drei Muetter
 
 ### Gameplay-Systeme
 
-- **30 Bestiarium-Mobs** mit individuellen Hurt/Death-Sounds — siehe [VELGRAD_BESTIARIUM.md](VELGRAD_BESTIARIUM.md)
+- **30 Bestiarium-Mobs** mit individuellen Hurt/Death-Sounds — siehe [docs/gameplay/VELGRAD_BESTIARIUM.md](docs/gameplay/VELGRAD_BESTIARIUM.md)
 - **15 Boss-Encounters** mit Multi-Phase-Cinematics + Spawn-Methods (`rise_from_grave`, `assemble`, `descend_from_throne`, `emerge_from_liquid`, ...)
-- **50 Unique-Items** — siehe [VELGRAD_ITEMS_UNIQUE_BIBEL.md](VELGRAD_ITEMS_UNIQUE_BIBEL.md)
+- **50 Unique-Items** — siehe [docs/gameplay/VELGRAD_ITEMS_UNIQUE_BIBEL.md](docs/gameplay/VELGRAD_ITEMS_UNIQUE_BIBEL.md)
 - **7 Aspekt-Pakte** als Skill-Gem-System (Kharn/Nheyra/Ousen/Valsa/Im-Nesh/Shulavh/Vergessen)
 - **Crafting**: Upgrade, Reroll, Socket, Enchant, Salvage + Otreth-Gemcutter
 - **Mahnmal-Fast-Travel** zwischen freigeschalteten Outposts
@@ -110,7 +110,7 @@ Pipeline-Tools in [`tools/`](tools/) erlauben **Re-Generation** mit eigenem Elev
 | 6 | Drei Wunden | Wunden-Lager | Salzwunde, Aschwunde, Hohlwunde — den Pakt lesen |
 | 7 | Hohlwort | Drei Muetter | Konfrontation mit Im-Nesh, dem Hundertzuengigen |
 
-Vollstaendige Lore in [VELGRAD_LORE_BIBEL.md](VELGRAD_LORE_BIBEL.md) (588 Zeilen).
+Vollstaendige Lore in [docs/lore/VELGRAD_LORE_BIBEL.md](docs/lore/VELGRAD_LORE_BIBEL.md) (588 Zeilen).
 
 ---
 
@@ -165,19 +165,19 @@ shadowfall/
 ├── Nebel von Arken.mp3        ← Music-Track 1
 ├── Soundtrack 3.mp3           ← Music-Track 2
 │
-├── PLAN.md                    ← Master-Plan (140+ Updates)
-├── WELT_AUFBAU.md             ← Welt-Topologie + NPC-Roster + Phasen-Plan
-├── QUEST_BIBEL.md             ← 53 Quests ausformuliert + Stage-Definitionen
-├── VELGRAD_LORE_BIBEL.md      ← Kosmologie + 7 Aspekte + Akt-Storyline (588 Zeilen)
-├── VELGRAD_BESTIARIUM.md      ← 30 Mobs mit AI-Patterns
-├── VELGRAD_ITEMS_UNIQUE_BIBEL.md      ← 50 Unique-Items
-├── VELGRAD_VOICE_LINES_POOL.md        ← Dialog-Texte pro NPC
-├── VELGRAD_VOICE_CASTING.md           ← Voice-IDs pro Charakter (ElevenLabs)
-├── VELGRAD_AUDIO_DESIGN_BIBEL.md      ← Audio-Vision
-├── VELGRAD_SFX_BIBEL.md               ← 453 SFX-Definitionen + Generation-Prompts
-├── POE2_GAMEPLAY_SYSTEMS_ERWEITERUNG.md  ← Mechanik-Referenz
-├── POE2_SKILLS_BRIEFING_FUER_CLAUDE_CODE.md  ← Skill-Tree-Referenz
-├── CHANGELOG.md               ← Update-Historie (Update #1 → #150+)
+├── docs/project-mgmt/PLAN.md                    ← Master-Plan (140+ Updates)
+├── docs/project-mgmt/WELT_AUFBAU.md             ← Welt-Topologie + NPC-Roster + Phasen-Plan
+├── docs/lore/QUEST_BIBEL.md             ← 53 Quests ausformuliert + Stage-Definitionen
+├── docs/lore/VELGRAD_LORE_BIBEL.md      ← Kosmologie + 7 Aspekte + Akt-Storyline (588 Zeilen)
+├── docs/gameplay/VELGRAD_BESTIARIUM.md      ← 30 Mobs mit AI-Patterns
+├── docs/gameplay/VELGRAD_ITEMS_UNIQUE_BIBEL.md      ← 50 Unique-Items
+├── docs/design/VELGRAD_VOICE_LINES_POOL.md        ← Dialog-Texte pro NPC
+├── docs/design/_legacy/VELGRAD_VOICE_CASTING.md           ← Voice-IDs pro Charakter (ElevenLabs)
+├── docs/design/VELGRAD_AUDIO_DESIGN_BIBEL.md      ← Audio-Vision
+├── docs/design/VELGRAD_SFX_BIBEL.md               ← 453 SFX-Definitionen + Generation-Prompts
+├── docs/gameplay/POE2_GAMEPLAY_SYSTEMS_ERWEITERUNG.md  ← Mechanik-Referenz
+├── docs/gameplay/POE2_SKILLS_BRIEFING_FUER_CLAUDE_CODE.md  ← Skill-Tree-Referenz
+├── docs/meta/CHANGELOG.md               ← Update-Historie (Update #1 → #150+)
 ├── tests/                     ← pytest Smoke-Tests
 └── Design idee/               ← UI-Mockups (HTML/JSX)
 ```
@@ -208,7 +208,7 @@ Falls du z. B. eine andere Stimme fuer Korven oder Vossharil willst, kannst du d
 1. **ElevenLabs-Account** erstellen ([elevenlabs.io](https://elevenlabs.io)) — Creator-Plan (~22 EUR/mo) empfohlen
 2. **API-Key** holen unter Settings → API Keys
 3. Im Projekt-Root `ElevenLabs.txt` anlegen mit dem Key (eine Zeile, nichts sonst)
-4. In `VELGRAD_VOICE_CASTING.md` die `voice_id` fuer einen NPC ersetzen
+4. In `docs/design/_legacy/VELGRAD_VOICE_CASTING.md` die `voice_id` fuer einen NPC ersetzen
 5. Voice-Generation:
    ```bash
    python tools/voice_manifest_builder.py
@@ -221,7 +221,7 @@ Falls du z. B. eine andere Stimme fuer Korven oder Vossharil willst, kannst du d
 
 Analog fuer SFX, falls du z. B. den Salzhueter-Boss-Roar dramatischer haben willst:
 
-1. In `VELGRAD_SFX_BIBEL.md` den ElevenLabs-Prompt anpassen
+1. In `docs/design/VELGRAD_SFX_BIBEL.md` den ElevenLabs-Prompt anpassen
 2. Im SFX-Manifest die `status` auf `pending` setzen (`sounds/sfx/sfx_manifest.json`)
 3. `python tools/sfx_gen.py` rufen
 
@@ -270,7 +270,7 @@ Smoke-Tests in [`tests/smoke.py`](tests/smoke.py) decken Engine-Importe, Save/Lo
 - ⏳ Endgame-Atlas (Welkende Welten)
 - ⏳ KI-generierte Sprites via Scenario.gg / Stable Diffusion (geplant)
 
-Detail-Roadmap in [ROADMAP.md](ROADMAP.md) (5-Tier-Sprint-Plan, 149 priorisierte Tasks aus PLAN.md + WELT_AUFBAU.md + QUEST_BIBEL.md synthetisiert).
+Detail-Roadmap in [docs/project-mgmt/ROADMAP.md](docs/project-mgmt/ROADMAP.md) (5-Tier-Sprint-Plan, 149 priorisierte Tasks aus docs/project-mgmt/PLAN.md + docs/project-mgmt/WELT_AUFBAU.md + docs/lore/QUEST_BIBEL.md synthetisiert).
 
 ---
 
@@ -283,7 +283,7 @@ Detail-Roadmap in [ROADMAP.md](ROADMAP.md) (5-Tier-Sprint-Plan, 149 priorisierte
 - **Update #146** — Phase-1-SFX-Generation (227 SFX: Mob/Boss/Skill/UI/Cinematic)
 - **Update #145** — Voice-Lines-Generation (227 Lines, alle 8 Haupt-NPCs)
 
-Vollstaendige Update-Historie in [CHANGELOG.md](CHANGELOG.md).
+Vollstaendige Update-Historie in [docs/meta/CHANGELOG.md](docs/meta/CHANGELOG.md).
 
 ---
 

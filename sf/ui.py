@@ -386,29 +386,56 @@ def _draw_mahnmal_marken(screen, game, font_small):
     # draw_hud nach dem Quest-Render gesetzt; Default Fallback 492.
     box_x = SCREEN_W - 280 - 18
     box_y = getattr(game, '_quest_tracker_bottom_y', 70 + 256 + 26 + 140) + 14
-    # Kompakte Pillen pro Marke
-    sw = 36
-    sh = 22
-    gap = 4
+    # Update #180: Pill-Layout breiter + Roman in font_med + Divider —
+    # vorher 36×22 mit allem in font_small → "I" und "×2" lagen direkt
+    # nebeneinander und wirkten wie Platzhalter ("Ix2").
+    sw = 62
+    sh = 30
+    gap = 6
+    font_med = getattr(game, 'font_med', font_small)
     title = font_small.render('MAHNMAL-MARKEN', True, GOLD_BRIGHT)
     screen.blit(title, (box_x, box_y))
-    y = box_y + title.get_height() + 4
+    y = box_y + title.get_height() + 6
     for i, (mk, cnt) in enumerate(held):
         col = ASPEKT_COL.get(mk, GOLD)
         row = i // 4
         ccol = i % 4
         x = box_x + ccol * (sw + gap)
         yy = y + row * (sh + gap)
+        # Pergament-Hintergrund mit leichtem Gradient (oben heller)
         bg = pygame.Surface((sw, sh), pygame.SRCALPHA)
-        bg.fill((20, 14, 8, 230))
+        for by in range(sh):
+            tt = by / max(1, sh - 1)
+            rr = int(28 + (16 - 28) * tt)
+            gg = int(20 + (10 - 20) * tt)
+            bb = int(12 + (6 - 12) * tt)
+            pygame.draw.line(bg, (rr, gg, bb, 235), (0, by), (sw, by))
         screen.blit(bg, (x, yy))
+        # Doppel-Rahmen (Aspekt-Farbe außen, dunkel innen)
         pygame.draw.rect(screen, col, (x, yy, sw, sh), 1)
-        # Roman-Zahl
-        rs = font_small.render(ROMAN[mk], True, col)
-        screen.blit(rs, (x + 4, yy + 3))
-        # Count rechts
-        cs = font_small.render(f'×{cnt}', True, WHITE)
-        screen.blit(cs, (x + sw - cs.get_width() - 4, yy + 3))
+        pygame.draw.rect(screen, (60, 40, 22),
+                          (x + 2, yy + 2, sw - 4, sh - 4), 1)
+        # Roman-Zahl (font_med, Aspekt-Farbe, mit Schatten)
+        rs_sh = font_med.render(ROMAN[mk], True, (10, 6, 4))
+        rs = font_med.render(ROMAN[mk], True, col)
+        roman_w = rs.get_width()
+        # Linke Zelle (Roman) ist ca. 45% der Breite, rechte 55% (Count)
+        left_cell_w = int(sw * 0.42)
+        rx = x + (left_cell_w - roman_w) // 2
+        ry = yy + (sh - rs.get_height()) // 2
+        screen.blit(rs_sh, (rx + 1, ry + 1))
+        screen.blit(rs, (rx, ry))
+        # Vertikaler Divider zwischen Numeral und Count
+        div_x = x + left_cell_w
+        pygame.draw.line(screen, (90, 63, 36),
+                          (div_x, yy + 5),
+                          (div_x, yy + sh - 5), 1)
+        # Count rechts (font_small, weiß)
+        cs = font_small.render(f'x{cnt}', True, WHITE)
+        right_cell_w = sw - left_cell_w
+        cx = div_x + (right_cell_w - cs.get_width()) // 2
+        cy = yy + (sh - cs.get_height()) // 2
+        screen.blit(cs, (cx, cy))
 
 
 def draw_bar(screen, font_small, x, y, w, h, val, max_val, color, label, text):
@@ -996,10 +1023,11 @@ def _draw_akt_progression_hud(screen, game, font_small):
     # Clamp auf Max-Index
     idx = max(0, min(len(_AKT_PROGRESSION) - 1, akt))
     _, region_name, _, next_hint = _AKT_PROGRESSION[idx]
-    # Position: unter ERINNERUNG-Bar (die endet bei ~y=126) + Pillen
-    # (y=150).  Wir setzen den Akt-Block bei y=192.
+    # Update #181: Position dynamisch — direkt unter dem Pillen-Block,
+    # der wiederum unter der Cartouche sitzt.  Fallback 192 falls Pillen-
+    # Bottom noch nicht gesetzt (Game-Init / Test-Frame).
     base_x = 30
-    base_y = 192
+    base_y = getattr(game, '_pills_bottom_y', 192)
     # Background-Strip (sehr dezent — kein dicker Block)
     region_surf = font_small.render(region_name, True, (243, 213, 114))
     hint_surf = font_small.render(
@@ -1092,9 +1120,12 @@ def _draw_character_cartouche(screen, game, font_small, font_med):
     _asp.draw_glyph(screen, sig_cx, sig_cy, 20,
                      aspect_key, color=pal['bright'])
 
-    # Rechts neben Portrait: Stufe + Mastery + Fraktion / Name / Domäne.
-    # Update #35: Layout kompakter, kein Text-Overlap durch lange Faktion-
-    # Namen ("STILLE SCHRITTE" wurde abgeschnitten).
+    # Rechts neben Portrait: Stufe + Mastery / Klassen-Name / Faktion.
+    # Update #181 (User-Fix „HUD ordentlich, kein Ueberlappen"):
+    # Vorher 4 Zeilen mit harten Y-Offsets -> Lines ueberschnitten sich
+    # + Rail klemmte unter dem Aspekt-Text.  Jetzt 3 Zeilen mit dyn.
+    # Hoehen-Stacking.  Aspekt+Domain entfernt (war redundant -- der
+    # Aspekt-Sigil + Halo am Portrait kommunizieren das schon visuell).
     tx = px + psize + 14
     line1_col = (180, 140, 80)  # bronze-warm
     fac_name = fac['name'].upper() if fac else 'WANDERER'
@@ -1103,29 +1134,28 @@ def _draw_character_cartouche(screen, game, font_small, font_med):
     mastery_rank = max(1, sum(1 for m in MILESTONES if mastery_xp >= m))
     ROMAN = ['', 'I', 'II', 'III', 'IV', 'V',
               'VI', 'VII', 'VIII', 'IX', 'X']
-    # Zeile 1: kompakt "STUFE N · MEISTER X"
     line1_text = (f'STUFE {p.level}  ·  MEISTER '
                    f'{ROMAN[min(mastery_rank, 10)]}')
     line1 = font_small.render(line1_text, True, line1_col)
-    screen.blit(line1, (tx, py + 2))
-    # Klassen-Name groß
     name_surf = font_med.render(cls_name.upper(), True, (235, 220, 175))
     name_sh = font_med.render(cls_name.upper(), True, (10, 6, 4))
-    screen.blit(name_sh, (tx + 1, py + 18 + 1))
-    screen.blit(name_surf, (tx, py + 18))
-    # Zeile 3: Faktion-Name (separat, damit nicht abgeschnitten)
     fac_surf = font_small.render(fac_name, True,
                                    _shade_color(pal['primary'], 1.3))
-    screen.blit(fac_surf, (tx, py + 18 + name_surf.get_height() + 2))
-    # Zeile 4: Aspekt + Domäne
-    aspect_short = fac['aspect'].upper() if fac else aspect_key.upper()
-    dom_text = f'Aspekt {aspect_short}  ·  {pal["domain"]}'
-    dom = font_small.render(dom_text, True, _shade_color(pal['primary'], 1.0))
-    screen.blit(dom, (tx, py + 18 + name_surf.get_height()
-                       + fac_surf.get_height() + 4))
-    # Mini-XP-Rail UNTER der Cartouche (volle Breite vom Cartouche-Block)
-    rail_y = py + psize + 6  # 6 px unter dem Portrait
-    rail_w = psize + 14 + 220  # ähnlich breit wie Portrait + Text
+
+    # Dynamisches Stacking — jede Zeile bekommt eigene Hoehe + 4 px Gap.
+    line_gap = 4
+    ly = py + 2
+    screen.blit(line1, (tx, ly))
+    ly += line1.get_height() + line_gap
+    screen.blit(name_sh, (tx + 1, ly + 1))
+    screen.blit(name_surf, (tx, ly))
+    ly += name_surf.get_height() + line_gap
+    screen.blit(fac_surf, (tx, ly))
+    text_bottom = ly + fac_surf.get_height()
+
+    # XP-Rail sitzt unter PORTRAIT oder TEXT (je nachdem was tiefer ist).
+    rail_y = max(py + psize, text_bottom) + 8
+    rail_w = psize + 14 + 220
     rail_x = px
     pygame.draw.rect(screen, (10, 6, 4), (rail_x, rail_y, rail_w, 4))
     pygame.draw.rect(screen, (90, 63, 36), (rail_x, rail_y, rail_w, 4), 1)
@@ -1136,11 +1166,14 @@ def _draw_character_cartouche(screen, game, font_small, font_med):
             pygame.draw.line(screen, col,
                               (rail_x, rail_y + hy),
                               (rail_x + fw, rail_y + hy))
-    # Erinnerung-Label (clamped auf 100 %)
     xp_pct = min(100, int(100 * p.xp / max(1, p.xp_to_next)))
     erin = font_small.render(
         f'ERINNERUNG · {xp_pct}%', True, (154, 118, 66))
     screen.blit(erin, (rail_x, rail_y + 8))
+    # Update #181: Bottom-Y der Cartouche an Game durchreichen damit
+    # nachfolgende HUD-Elemente (Pillen + Akt-Tracker) sauber darunter
+    # einrasten ohne Ueberlappen.
+    game._cartouche_bottom_y = rail_y + 8 + erin.get_height() + 4
 
 
 def _draw_top_status_bar(screen, game, font_small, font_med, font_dmg):
@@ -1296,12 +1329,9 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
     # Update #29: Character-Cartouche oben-links (aus velgrad-hud.jsx).
     # Portrait-Hexagon + Aspekt-Glyph + Klassen-Stufe + Mini-XP-Rail.
     _draw_character_cartouche(screen, game, font_small, font_med)
-
-    # Update #144: Akt-Progression-Indikator unter der Cartouche.
-    # Zeigt persistent „Akt N — Region · Nächstes Ziel" damit der
-    # Spieler immer weiß wo er ist und was als nächstes ansteht.
-    # User-Frage „wo sind die Aschfelder" → diese Info war versteckt.
-    _draw_akt_progression_hud(screen, game, font_small)
+    # Update #181: Akt-Progression-HUD wird weiter unten nach den
+    # Skill-Pillen gerendert (siehe Pillen-Block) damit es deren
+    # Bottom-Y kennt — dynamische Y-Positionierung statt fester 192.
 
     # ============================================================
     # OBERER STATUS-BAR (Update #26 ornamentiert)
@@ -1317,15 +1347,18 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
         main = log.main_quest_state()
         if main is not None and main.stage is not None:
             from . import aspects as _asp
-            box_w = 300
+            box_w = 320
             box_x = SCREEN_W - box_w - 18
             box_y = 70 + 256 + 32
+            # Update #180: Typografie-Hierarchie — Titel in font_med
+            # (vorher alles font_small → flat, kein Eye-Catch).
+            font_title = getattr(game, 'font_med', font_small)
             # Header: Eyebrow "QUEST" + Title
             eyebrow = font_small.render(
                 '— DEINE AUFGABE —', True, (180, 140, 80))
-            title_surf = font_small.render(
+            title_surf = font_title.render(
                 main.title.upper(), True, (243, 213, 114))
-            title_sh = font_small.render(main.title.upper(), True, (10, 6, 4))
+            title_sh = font_title.render(main.title.upper(), True, (10, 6, 4))
             region_surf = font_small.render(
                 main.region, True, (154, 118, 66))
             # Stage-Text
@@ -1342,9 +1375,15 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
             if cur:
                 stage_lines.append(cur)
             line_h = font_small.get_height() + 2
-            box_h = (28 + eyebrow.get_height() + title_surf.get_height()
-                     + region_surf.get_height() + len(stage_lines) * line_h
-                     + 24)
+            # Update #180 fix: groessere Gaps — font_med (Cinzel 24pt)
+            # rendert optisch hoeher als get_height() angibt; Divider
+            # schnitt sonst durch die Title-Baseline.
+            # Layout: top14 + eyebrow + 10 + title + 14 + 10
+            #       + region + 12 + stages + bottom14
+            box_h = (14 + eyebrow.get_height() + 10
+                     + title_surf.get_height() + 14 + 10
+                     + region_surf.get_height() + 12
+                     + len(stage_lines) * line_h + 14)
             # Pergament-Hintergrund mit Gradient
             bg = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
             for y in range(box_h):
@@ -1379,22 +1418,24 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
                          (tab_x + tab_w // 2 - qlbl.get_width() // 2,
                           box_y - 8))
             # Eyebrow
-            y = box_y + 12
+            y = box_y + 14
             screen.blit(eyebrow, (box_x + box_w // 2 -
                                     eyebrow.get_width() // 2, y))
-            y += eyebrow.get_height() + 4
-            # Titel mit Schatten
-            screen.blit(title_sh, (box_x + 12 + 1, y + 1))
-            screen.blit(title_surf, (box_x + 12, y))
-            y += title_surf.get_height() + 4
+            y += eyebrow.get_height() + 10
+            # Titel zentriert mit Schatten (font_med)
+            t_x = box_x + (box_w - title_surf.get_width()) // 2
+            screen.blit(title_sh, (t_x + 1, y + 1))
+            screen.blit(title_surf, (t_x, y))
+            y += title_surf.get_height() + 14
             # Mini-Divider
             pygame.draw.line(screen, (90, 63, 36),
-                              (box_x + 12, y),
-                              (box_x + box_w - 12, y), 1)
-            y += 4
-            # Region
-            screen.blit(region_surf, (box_x + 12, y))
-            y += region_surf.get_height() + 6
+                              (box_x + 24, y),
+                              (box_x + box_w - 24, y), 1)
+            y += 10
+            # Region zentriert
+            r_x = box_x + (box_w - region_surf.get_width()) // 2
+            screen.blit(region_surf, (r_x, y))
+            y += region_surf.get_height() + 12
             # Stage-Text
             for line in stage_lines:
                 ls = font_small.render(line, True, (220, 200, 170))
@@ -1685,13 +1726,10 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
 
     # Skill-Punkt-/Attribut-Hinweise als kompakte Pillen UNTER der
     # ERINNERUNG-Bar.
-    # Update #134 (User-Screenshot „UI schaut nur teilweise fertig"):
-    # Die alten Pillen nutzten Unicode-Glyphen (★◆⚜) die in der Body-
-    # Font nicht existieren → wurden als leere Rechtecke (□) gerendert.
-    # Jetzt: kleiner Kreis als Farbpunkt-Prefix (rendert immer sauber)
-    # und die Pillen werden enger an die Cartouche gerückt (y=148 statt
-    # 162, x=30) damit sie nicht isoliert wirken.
-    pill_y = 150
+    # Update #181: pill_y dynamisch aus _cartouche_bottom_y damit es nie
+    # mit dem ERINNERUNG-Label kollidiert (Fallback 150 falls Cartouche
+    # noch nicht gezeichnet wurde).
+    pill_y = getattr(game, '_cartouche_bottom_y', 150)
     pill_x = 30
     pills = []
     if p.skill_points > 0:
@@ -1700,6 +1738,7 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
         pills.append(('Attr (I)', p.attr_points, (180, 220, 255)))
     if p.class_points > 0:
         pills.append(('Klasse (K)', p.class_points, (220, 180, 255)))
+    pill_h_total = 0
     for label, count, col in pills:
         text = font_small.render(f'{count} {label}', True, col)
         pad = 8
@@ -1707,11 +1746,11 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
         dot_gap = 6
         pw = text.get_width() + pad * 2 + dot_r * 2 + dot_gap
         ph = text.get_height() + 4
+        pill_h_total = max(pill_h_total, ph)
         bg = pygame.Surface((pw, ph), pygame.SRCALPHA)
         bg.fill((20, 14, 8, 220))
         screen.blit(bg, (pill_x, pill_y))
         pygame.draw.rect(screen, col, (pill_x, pill_y, pw, ph), 1)
-        # Farb-Punkt als Marker (Unicode-frei)
         dot_cx = pill_x + pad + dot_r
         dot_cy = pill_y + ph // 2
         pygame.draw.circle(screen, col, (dot_cx, dot_cy), dot_r)
@@ -1720,6 +1759,13 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
         screen.blit(text,
                      (pill_x + pad + dot_r * 2 + dot_gap, pill_y + 2))
         pill_x += pw + 6
+    # Update #181: Bottom-Y der Pillen-Reihe an Akt-Tracker durchreichen
+    # (auch wenn keine Pillen aktiv sind — dann == Cartouche-Bottom).
+    game._pills_bottom_y = pill_y + pill_h_total + (8 if pills else 0)
+
+    # Update #144 + #181: Akt-Progression-HUD jetzt HIER (nach Pillen)
+    # damit es _pills_bottom_y kennt und sauber darunter einrastet.
+    _draw_akt_progression_hud(screen, game, font_small)
 
     # Hinweise (links unten)
     keys = font_small.render(
@@ -2100,6 +2146,28 @@ class TitleUI:
         pygame.draw.ellipse(glow, (220, 180, 110, glow_alpha),
                              (0, 0, 900, 200))
         screen.blit(glow, (SCREEN_W // 2 - 450, 50))
+        # X-10 (Update #168): Rotierendes Aspekt-Sigil hinter Logo —
+        # 7-zackiger Mahnmal-Stern (Aspekt-Lineage-Lore).
+        sigil_surf = pygame.Surface((220, 220), pygame.SRCALPHA)
+        sigil_cx = sigil_cy = 110
+        angle = t * 0.18
+        for i in range(7):
+            a = angle + math.tau * i / 7
+            outer = 96
+            inner = 38
+            x_out = sigil_cx + math.cos(a) * outer
+            y_out = sigil_cy + math.sin(a) * outer
+            x_in = sigil_cx + math.cos(a + math.pi / 7) * inner
+            y_in = sigil_cy + math.sin(a + math.pi / 7) * inner
+            pygame.draw.line(sigil_surf, (220, 180, 110, 50),
+                             (sigil_cx, sigil_cy), (x_out, y_out), 1)
+            pygame.draw.circle(sigil_surf, (255, 220, 140, 80),
+                                (int(x_out), int(y_out)), 2)
+        pygame.draw.circle(sigil_surf, (220, 180, 110, 90),
+                            (sigil_cx, sigil_cy), 96, 1)
+        pygame.draw.circle(sigil_surf, (220, 180, 110, 60),
+                            (sigil_cx, sigil_cy), 36, 1)
+        screen.blit(sigil_surf, (SCREEN_W // 2 - 110, 38))
 
         # Title-Shadow-Stack (vier-Richtungen-Tiefe)
         title_text = 'SHADOWFALL'
@@ -3553,7 +3621,7 @@ class SkillTreeUI:
         # Update #30: Velgrad-Tome-Style Skill-Tree-Page
         self._draw_tree_tome_frame(screen, modal, game, pal)
 
-        # Header — Folio + Titel + Folio (Update #30 Fix)
+        # Header — Folio + Titel + Folio (Update #30 Fix, Layout-Cleanup)
         head_l = self.font_small.render(
             'LIBER MEMORIAE', True, (180, 140, 80))
         screen.blit(head_l, (modal.x + 36, modal.y + 14))
@@ -3569,24 +3637,24 @@ class SkillTreeUI:
         title_x = modal.x + modal.w // 2 - title.get_width() // 2
         screen.blit(title_sh, (title_x + 1, modal.y + 33))
         screen.blit(title, (title_x, modal.y + 32))
-        # Divider
+        # Divider unter dem Titel — trennt Header-Chrome vom Statusband
         _asp.draw_ornament_divider(
-            screen, modal.x + 36, modal.y + 66,
+            screen, modal.x + 36, modal.y + 58,
             modal.w - 72, (154, 118, 66))
 
         sp = game.player.skill_points
         cp = game.player.class_points
         oor = getattr(game.player, 'orbs_of_regret', 0)
-        # Update #75 H-17 + #76 H-14/H-15:
-        # Orb-of-Regret-Counter sichtbar machen, Filter + Plan-Mode anzeigen.
+        # Status-Band (nur Ressourcen + Filter — Keybinds liegen im Footer).
+        # Update #76 H-14/H-15: Filter + Plan-Mode-Anzeige.
         filt_lbl = self.FILTER_LABELS.get(self.filter_tag, '?')
         plan_str = f'   ·   PLAN ({len(self.planned)})' if self.plan_mode else ''
         sp_text = self.font_small.render(
             f'Universal: {sp}   ·   Klasse: {cp}   ·   Orbs: {oor}   ·   '
-            f'Filter [F]: {filt_lbl}{plan_str}   ·   RMB: Refund   ·   P: Plan   ·   K: Schließen',
+            f'Filter [F]: {filt_lbl}{plan_str}',
             True, pal['halo'] if sp + cp > 0 else TEXT_DIM)
         screen.blit(sp_text, (modal.x + modal.w // 2 - sp_text.get_width() // 2,
-                              modal.y + 76))
+                              modal.y + 68))
 
         # H-13 (Update #75): Hover-Tracking aktualisieren BEVOR Nodes
         # gezeichnet werden — Rects aus letztem Frame sind noch valide
@@ -3599,14 +3667,14 @@ class SkillTreeUI:
 
         # ----- Universaler Tree (oben links) -----
         sec_lbl = self.font_small.render('UNIVERSAL', True, GOLD_BRIGHT)
-        screen.blit(sec_lbl, (modal.x + 24, modal.y + 56))
+        screen.blit(sec_lbl, (modal.x + 24, modal.y + 92))
 
         node_keys = list(TREE_NODES.keys())
         cols = 4
         node_w = 200
-        node_h = 88
+        node_h = 100
         gx = modal.x + 24
-        gy = modal.y + 80
+        gy = modal.y + 112
         self._node_rects = {}
         for i, key in enumerate(node_keys):
             col = i % cols
@@ -3624,9 +3692,9 @@ class SkillTreeUI:
         # ----- Klassen-Tree (unter Universal) -----
         from .constants import CLASSES
         class_name = CLASSES[game.player.cls]['name']
-        # Universal hat (12 / 4 = 3 Reihen) → y-offset 3 * (88+10) = 294
+        # gy = modal.y + 112, node_h = 100 (+10 gap) → 3 Reihen = 330
         rows_univ = (len(node_keys) + cols - 1) // cols
-        cgy = modal.y + 80 + rows_univ * (node_h + 10) + 30
+        cgy = gy + rows_univ * (node_h + 10) + 36
         sec_lbl = self.font_small.render(
             f'KLASSE: {class_name.upper()}', True, GOLD_BRIGHT)
         screen.blit(sec_lbl, (modal.x + 24, cgy - 22))
@@ -3634,6 +3702,17 @@ class SkillTreeUI:
         cnodes = CLASS_TREE_NODES.get(game.player.cls, {})
         cnode_keys = list(cnodes.keys())
         self._cnode_rects = {}
+        if not cnode_keys:
+            # Empty-State: noch keine Klassen-Erinnerungen für diese Klasse
+            # definiert.  Hinweis-Karte über die volle Tree-Breite statt
+            # leerer Platzhalter-Fläche.
+            empty_w = cols * node_w + (cols - 1) * 10
+            empty_rect = pygame.Rect(gx, cgy, empty_w, node_h)
+            self._draw_empty_card(
+                screen, empty_rect,
+                title=f'Erinnerungen für {class_name} folgen',
+                body=('Diese Klasse erhält in einem späteren Akt ihren '
+                      'eigenen Erinnerungszweig.'))
         for i, key in enumerate(cnode_keys):
             col = i % cols
             row = i // cols
@@ -3655,12 +3734,13 @@ class SkillTreeUI:
 
         # ----- Auren (rechte Spalte) -----
         ax = modal.x + 24 + cols * (node_w + 10) + 16
-        ay = modal.y + 80
+        ay = modal.y + 112
         aw = modal.w - (ax - modal.x) - 24
         sec_lbl = self.font_small.render('AUREN (Mana-Reservation)',
                                           True, GOLD_BRIGHT)
-        screen.blit(sec_lbl, (ax, modal.y + 56))
+        screen.blit(sec_lbl, (ax, modal.y + 92))
         self._aura_rects = {}
+        rendered_auras = 0
         for aura_key, spec in AURAS.items():
             if game.player.cls not in spec['class_']:
                 continue
@@ -3683,6 +3763,18 @@ class SkillTreeUI:
                 'AKTIV — klicken um zu deaktivieren' if active else 'klicken zum aktivieren',
                 True, (180, 220, 100) if active else TEXT_DIM)
             screen.blit(status, (ax + 10, ay + 46))
+            ay += 80
+            rendered_auras += 1
+        if rendered_auras == 0:
+            # Empty-State: keine Auren für diese Klasse (z. B. Mönch /
+            # Huntress / Druid).  Anstelle eines leeren Spaltenkopfs eine
+            # dezente Hinweis-Karte.
+            empty_rect = pygame.Rect(ax, ay, aw, 70)
+            self._draw_empty_card(
+                screen, empty_rect,
+                title='Keine Auren verfügbar',
+                body=('Diese Klasse kanalisiert ihre Kraft direkt — '
+                      'kein Mana-Reservation-Slot.'))
             ay += 80
 
         # Skill-Level-Anzeige unter Auren
@@ -3975,13 +4067,20 @@ class SkillTreeUI:
         _asp.draw_filigree_corners(screen, modal, (154, 118, 66), size=36)
         # Aspekt-Watermark in der Mitte (subtile Pergament-Schicht)
         _asp.draw_aspect_watermark(screen, modal, game.player.cls, alpha=18)
-        # Footer-Quote
+        # Footer — Keybind-Hinweis (links) + Quote (zentriert) + Divider.
+        # Keybinds wurden aus dem überfrachteten Header-Statusband in den
+        # Footer verschoben, damit das obere Band nicht in die AUREN-Spalte
+        # bleedet.
+        keybinds = 'RMB: Refund   ·   P: Plan   ·   F: Filter   ·   K: Schließen'
+        kb_surf = self.font_small.render(keybinds, True, (150, 120, 80))
+        screen.blit(kb_surf, (modal.x + 36, modal.y + modal.h - 52))
         quote = '„Was du erinnerst, wirst du sein. Was du vergisst, fällt aus dir heraus."'
         qsurf = self.font_small.render(quote, True, (200, 160, 100))
-        screen.blit(qsurf, (modal.x + 36, modal.y + modal.h - 30))
+        screen.blit(qsurf, (modal.x + modal.w // 2 - qsurf.get_width() // 2,
+                             modal.y + modal.h - 30))
         _asp.draw_ornament_divider(
             screen, modal.x + modal.w // 2 - 90,
-            modal.y + modal.h - 22, 180, (90, 63, 36))
+            modal.y + modal.h - 14, 180, (90, 63, 36))
 
     def _draw_node(self, screen, rect, name, lvl, max_lvl, desc, can_invest,
                    border_color=None):
@@ -4043,6 +4142,27 @@ class SkillTreeUI:
                                  for c in border_color[:3]),
                           (rect.x, rect.y), (rect.right, rect.y), 1)
 
+        # H-18 (Update #168): Hex-Polygon-Akzent rechts unten am Node-Rect.
+        # Subtle 6-eckiges Symbol als Mahnmal-Lore-Akzent.  Bei
+        # Masterworked ein 2. Inner-Hex (Diamant-Marker).
+        hex_cx = rect.right - 14
+        hex_cy = rect.bottom - 14
+        hex_r = 8 if not maxed else 9
+        hex_pts = []
+        for i in range(6):
+            a = math.pi / 3 * i - math.pi / 6
+            hex_pts.append((hex_cx + math.cos(a) * hex_r,
+                             hex_cy + math.sin(a) * hex_r))
+        try:
+            pygame.draw.polygon(screen, border_color, hex_pts, 1)
+            if maxed:
+                inner_pts = [(hex_cx + (px - hex_cx) * 0.55,
+                              hex_cy + (py - hex_cy) * 0.55)
+                             for (px, py) in hex_pts]
+                pygame.draw.polygon(screen, (255, 255, 255), inner_pts)
+        except (ValueError, TypeError):
+            pass
+
         # Allocated: dot links oben als Lvl-Indikator
         if lvl > 0:
             for k in range(min(lvl, 6)):
@@ -4063,17 +4183,17 @@ class SkillTreeUI:
         screen.blit(lvl_text,
                      (rect.right - lvl_text.get_width() - 10, rect.y + 8))
 
-        # Desc
+        # Desc — voller Vertikalraum bis kurz vor unteren Rand (kein
+        # '+ Investieren' Button-Text mehr; Bronze-Border signalisiert
+        # Investierbarkeit, kleines '+' Glyph rechts unten als Affordance).
         desc_col = (210, 200, 180) if lvl > 0 or can_invest else (120, 110, 90)
         self._wrap(screen, desc, rect.x + 10, rect.y + 42,
-                    rect.w - 20, desc_col)
+                    rect.w - 28, desc_col)
 
         if can_invest:
-            btn_text = self.font_small.render(
-                '+ Investieren', True, (227, 180, 64))
-            screen.blit(btn_text,
-                         (rect.centerx - btn_text.get_width() // 2,
-                          rect.bottom - 16))
+            plus = self.font_small.render('+', True, (227, 180, 64))
+            screen.blit(plus, (rect.right - plus.get_width() - 24,
+                                rect.bottom - plus.get_height() - 4))
 
     def _wrap(self, screen, text, x, y, max_w, color):
         font = self.font_small
@@ -4091,6 +4211,36 @@ class SkillTreeUI:
                 line = test
         if line:
             screen.blit(font.render(line, True, color), (x, cy))
+
+    def _draw_empty_card(self, screen, rect, title, body):
+        """Hinweis-Karte für leere Tree-/Auren-Bereiche.  Dezent
+        gestrichelter Bronze-Rand + zentrierter Titel + gewrappte
+        Body-Zeile.  Verhindert dass leere Klassen (z. B. Mönch ohne
+        Klassen-Erinnerungen oder Auren) als unfertiger Platzhalter
+        wirken.
+        """
+        bg = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
+        bg.fill((22, 18, 14, 200))
+        screen.blit(bg, rect.topleft)
+        col = (110, 86, 50)
+        dash, gap = 6, 4
+        x0, y0, x1, y1 = rect.left, rect.top, rect.right - 1, rect.bottom - 1
+        cx = x0
+        while cx < x1:
+            pygame.draw.line(screen, col, (cx, y0), (min(cx + dash, x1), y0), 1)
+            pygame.draw.line(screen, col, (cx, y1), (min(cx + dash, x1), y1), 1)
+            cx += dash + gap
+        cy = y0
+        while cy < y1:
+            pygame.draw.line(screen, col, (x0, cy), (x0, min(cy + dash, y1)), 1)
+            pygame.draw.line(screen, col, (x1, cy), (x1, min(cy + dash, y1)), 1)
+            cy += dash + gap
+        t_surf = self.font_small.render(title, True, (180, 150, 100))
+        screen.blit(t_surf,
+                     (rect.centerx - t_surf.get_width() // 2, rect.y + 12))
+        body_y = rect.y + 12 + t_surf.get_height() + 8
+        self._wrap(screen, body, rect.x + 14, body_y,
+                    rect.w - 28, (140, 125, 100))
 
 
 # ============================================================

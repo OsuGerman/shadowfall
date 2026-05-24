@@ -331,6 +331,15 @@ def tick_ai_state(game, e, dt):
     e._ai_last_hp = e.hp
 
     if state == AIState.IDLE:
+        # O-20 (Update #168): Idle-Variations (Fidgets).
+        # Alle 4-8 s spielt ein Mob eine Idle-Anim — sichtbar via
+        # `e._fidget_left`-Flag (rendered in sprites).  Cheap-Add.
+        e._fidget_cd = getattr(e, '_fidget_cd', 0.0) - dt
+        if e._fidget_cd <= 0:
+            e._fidget_cd = random.uniform(4.0, 8.0)
+            e._fidget_left = 0.6   # 0.6 s sichtbarer fidget
+        if getattr(e, '_fidget_left', 0.0) > 0:
+            e._fidget_left -= dt
         if hp_changed:
             _enter_state(e, AIState.AGGRO)
             _on_aggro_enter(game, e)

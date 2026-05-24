@@ -26,6 +26,8 @@ from .crafting import CraftingUI
 from .shop import ShopUI
 from .stash import StashUI
 from .ui import TitleUI, SkillTreeUI, RuneChoiceUI
+from .spatial_grid import SpatialGrid
+from . import profiler as _profiler_mod
 
 
 # ============================================================
@@ -82,10 +84,14 @@ class Game:
         # nicht installiert). Used by spawn_splitter_burst() / throwables.
         # Eigenes Movement-System bleibt UNANGETASTET — physics nur fuer
         # specific Decor-/Throwable-Effekte.
+        # Audit #179 B.4: ImportError isoliert (pymunk-Modul fehlt im
+        # Procedural-Build); AttributeError fuer API-Drift bei optionalen
+        # Tools-Builds. Andere Exceptions wie ValueError aus dem Constructor
+        # WUERDEN ein echter Bug sein und sollen propagieren.
         try:
             from . import physics as _phys
             self.physics = _phys.PhysicsWorld()
-        except Exception:
+        except (ImportError, AttributeError):
             self.physics = None
         pygame.display.set_caption('Shadowfall — Erweitert')
         self.clock = pygame.time.Clock()
@@ -164,22 +170,22 @@ class Game:
         self.console = _console_mod.DebugConsole(
             self.font_med, self.font_small)
         # AA-05 (Update #168): Mod-Hook-API
+        # Audit #179 B.4: Lazy-Import-Pattern fuer optionale Module —
+        # ImportError ist OK (Module fehlt), AttributeError fuer API-Drift.
         try:
             from . import modloader as _modloader
             self.mod_loader = _modloader.ModLoader()
-        except Exception:
+        except (ImportError, AttributeError):
             self.mod_loader = None
-        # AA-06 (Update #168): Replay-Recorder (default inactive)
         try:
             from . import replay as _replay
             self.replay_recorder = _replay.ReplayRecorder()
-        except Exception:
+        except (ImportError, AttributeError):
             self.replay_recorder = None
-        # AA-08 (Update #168): Asset-Validator beim Startup
         try:
             from . import asset_validator as _av
             _av.run_startup_validation()
-        except Exception:
+        except (ImportError, AttributeError):
             pass
         self._vignette = ui_mod.make_vignette()
         self.lighting = lighting.LightingSystem(ambient_alpha=130)
@@ -306,6 +312,12 @@ class Game:
         self.weather = weather_mod.WeatherSystem()
         self.blood_pools = []
         self.last_dungeon_pos = None  # (dungeon_id, pos) für Teleport-zurück
+        # Audit #179 B.5: SpatialGrid fuer O(1)-Radius-Queries (Fireball-AoE,
+        # Splash, Chain, Pack-Death). Wird in update() einmal pro Frame
+        # rebuilt — ~5us bei 50 Enemies. Cell-Size 128 px deckt typische
+        # AoE-Radien 40-240 px in 1-4 Zellen ab. False-Positives an Zell-
+        # Raendern werden vom Caller per Final-Distance-Check gefiltert.
+        self.enemy_grid = SpatialGrid(cell_size=128)
         self.stats = {}
         self.achievements_done = set()
         self.dungeon_tier = {}    # dungeon_id -> max unlocked tier
@@ -369,11 +381,11 @@ class Game:
             # B-12 (Update #50): Minimap-Rotation. Default Norden-fix-oben;
             # Toggle dreht Minimap mit Spieler-Facing.
             'minimap_rotate': False,
-            # Update #168: Master-Switch fuer AI-Sprites (Decor / Items /
-            # Status / Klassen / Mobs / Bosse / Tiles / Portraits).
-            # False = komplett-procedural Look. True = Hybrid (AI wo
-            # vorhanden, sonst procedural Fallback wie immer).
-            'ai_sprites': True,
+            # Update #171: PROCEDURAL-ONLY-PIVOT.
+            # User-Entscheidung: alle KI-generierten Sprite-PNGs entfernt.
+            # `ai_sprites` Default jetzt False — Settings-Toggle bleibt als
+            # Opt-In falls jemand experimentell wieder PNGs einliefert.
+            'ai_sprites': False,
             # P-05 (Update #52): Frame-Cap (30/60/120/144/0=unlimited).
             # 60 ist der Lore-/Briefing-Default; 0 = uncapped für Speedrunner.
             'frame_cap': 60,
@@ -393,10 +405,11 @@ class Game:
             # Lean (X-02) ist Motion-Sickness-Trigger.  Default OFF,
             # Spieler kann es opt-in im Settings-Modal aktivieren.
             'camera_cursor_lean': False,
-            # Update #141: Camera-Lookahead (X-01) bleibt default ON
-            # weil player-driven (geringes Motion-Sickness-Risiko), aber
-            # toggelbar für sehr empfindliche Spieler.
-            'camera_lookahead': True,
+            # Update #141 + User-Request: Camera-Lookahead default OFF
+            # (zusammen mit Cursor-Lean) — beide bewegen die Kamera
+            # ohne Spieler-Input und triggern bei vielen Spielern
+            # Motion-Sickness.  Opt-In im Settings-Modal.
+            'camera_lookahead': False,
             # Update #168 (M-10): Bloom-Pass — off/low/high.
             # Performance: low = 4-6 ms/frame, high = 8-12 ms/frame.
             'bloom': 'low',
@@ -454,6 +467,14 @@ class Game:
         # Wird in `_emit_photosensitive_flash()` getickt.
         self._flash_window_t = 0.0
         self._flash_window_count = 0
+        # Audit #179 C.8: Crash-Recovery-Check beim Start. Wenn ein
+        # Autosave existiert das neuer ist als der Slot-Save, halten wir
+        # den Eintrag fuer den Title-Screen-Toast vor. F8 wendet ihn an.
+        try:
+            self.pending_autosave_recovery = save_mod.check_autosave_recovery()
+        except Exception:
+            self.pending_autosave_recovery = None
+        self._autosave_toast_shown = False
         self.reset()
 
     # ---------- Reset ----------
@@ -532,6 +553,12 @@ class Game:
 
     # ---------- Area-Wechsel ----------
     def enter_town(self):
+        # Audit #179 C.9: SFX-Channels beim Scene-Wechsel resetten — sonst
+        # spielen Dungeon-Loops (Wind, Lava) noch nachher in Town.
+        try:
+            snd.stop_all()
+        except Exception:
+            pass
         # Autosave
         if self.area in ('dungeon', 'outpost'):
             try:
@@ -589,6 +616,13 @@ class Game:
         self.pending_aftershocks.clear()
         self.pending_comets.clear()
         self.decals.clear()
+        # Update #179: ephemere World-Entities beim Map-Wechsel clearen,
+        # sonst rendern stale falling_rocks-Drop-Shadows / loot-Splines / Funken
+        # an ihrer alten Welt-Position in der neuen Map ("Geister-Schatten").
+        self.falling_rocks.clear()
+        self._loot_animations.clear()
+        self.particles.clear()
+        self.floaters.clear()
         # V-08 (Update #168): 3 Banner-Cloths bei Brassweir-Stadt-Tor.
         try:
             sfx_mod = self._surface_fx_mod
@@ -646,58 +680,41 @@ class Game:
         from .entities import Decor as _DecorCls
         self.outpost_portals = []
         unlocked = set(_op.unlocked_outposts(self.player))
-        # Update #143 (User-Frage „wo sind die Aschfelder?"): ALLE
-        # Outposts werden gerendert (auch noch nicht freigeschaltete) —
-        # locked-Portale bekommen einen `_locked`-Flag + Hint-Label
-        # „🔒 Akt N abschließen".  Damit weiß der Spieler welche Akte
-        # ihm noch offen stehen + was er als nächstes braucht.
-        # Brassweir (Hub) wird nicht als Portal gerendert.
-        all_outpost_keys = [k for k in _op.OUTPOSTS.keys() if k != 'brassweir']
-        # Sort nach Akt-Nummer für konsistente Reihenfolge
+        # Update #180 (User-Request): NUR freigeschaltete Outposts werden
+        # gerendert.  Vorher (#143) waren auch locked-Portale mit 🔒-Label
+        # sichtbar — gab visuelle UI-Last + Banner-Kollision bei 7+ Portalen
+        # in einer Reihe.  Spieler bekommt die Outpost-Reveal-Sequenz jetzt
+        # incremental: pro abgeschlossenem Akt taucht ein neues Portal auf.
+        # Brassweir (Hub) ist nie ein Portal — bleibt ausgeschlossen.
+        all_outpost_keys = [k for k in _op.OUTPOSTS.keys()
+                              if k != 'brassweir' and k in unlocked]
         all_outpost_keys.sort(
             key=lambda k: (_op.OUTPOSTS[k].get('akt', 99),
                             _op.OUTPOSTS[k].get('tier_gate', 99)))
         if all_outpost_keys:
             n = len(all_outpost_keys)
-            # Spacing 130 px pro Portal, in einer Reihe
             spacing = 130
             base_y = 400
             start_x = -((n - 1) * spacing) / 2.0
             from .constants import DUNGEONS as _DUNGEONS
-            akt_progress = len(getattr(self.player,
-                                         'completed_dungeons', ()))
             for i, ok in enumerate(all_outpost_keys):
                 px = start_x + i * spacing
                 py = base_y
                 op_cfg = _op.OUTPOSTS[ok]
                 akt = op_cfg.get('akt', 1)
-                is_unlocked = ok in unlocked
-                # Akt-Prefix
                 if ok == 'zhar_eth_karawane':
                     akt_lbl = 'Akt 1b (Optional)'
                 else:
                     akt_lbl = f'Akt {akt}'
                 full_lbl = f'{akt_lbl} — {op_cfg["region_name"]}'
-                # Locked-Hint: wieviele Akte fehlen?
-                if not is_unlocked:
-                    gate = op_cfg.get('tier_gate', 99)
-                    # Spieler braucht (gate - 1) abgeschlossene Dungeons
-                    needed = gate - 1 - akt_progress
-                    if needed == 1:
-                        full_lbl = f'🔒 {full_lbl} — Akt {akt - 1} zuerst'
-                    elif needed > 1:
-                        full_lbl = f'🔒 {full_lbl} — {needed} Akte zuerst'
-                    else:
-                        full_lbl = f'🔒 {full_lbl}'
-                else:
-                    # Level-Req-Hint nur für UNLOCKED + zu-schwache
-                    dungeon_id = op_cfg.get('dungeon_id')
-                    if dungeon_id and dungeon_id in _DUNGEONS:
-                        req = _DUNGEONS[dungeon_id].get('level_req', 1)
-                        if self.player.level < req:
-                            full_lbl += f' (Stufe {req}+)'
+                # Level-Req-Hint fuer zu-schwache Spieler
+                dungeon_id = op_cfg.get('dungeon_id')
+                if dungeon_id and dungeon_id in _DUNGEONS:
+                    req = _DUNGEONS[dungeon_id].get('level_req', 1)
+                    if self.player.level < req:
+                        full_lbl += f' (Stufe {req}+)'
                 portal = _OPortal(px, py, ok, label=full_lbl)
-                portal._locked = not is_unlocked
+                portal._locked = False
                 self.outpost_portals.append(portal)
             # Wegmal-Schild als Decor (Lore-Tafel) — Update #124: nach y=280
             # nach oben verschoben (weg von Mahnmal-Stele bei y=305).
@@ -788,6 +805,11 @@ class Game:
         """
         if outpost_key == 'brassweir':
             return self.enter_town()
+        # Audit #179 C.9: SFX-Channels beim Scene-Wechsel resetten.
+        try:
+            snd.stop_all()
+        except Exception:
+            pass
         from . import outposts as _op
         cfg = _op.get_outpost(outpost_key)
         if cfg is None:
@@ -824,6 +846,11 @@ class Game:
         self.pending_aftershocks.clear()
         self.pending_comets.clear()
         self.decals.clear()
+        # Update #179: siehe enter_town — Geister-Schatten vermeiden.
+        self.falling_rocks.clear()
+        self._loot_animations.clear()
+        self.particles.clear()
+        self.floaters.clear()
         self.breadcrumbs.clear()
         self._breadcrumb_drop_t = 0.0
         # Update #138 (V-06): Footprints beim Map-Wechsel löschen
@@ -867,6 +894,11 @@ class Game:
         return True
 
     def enter_dungeon(self, dungeon_id, tier=None):
+        # Audit #179 C.9: SFX-Channels beim Scene-Wechsel resetten.
+        try:
+            snd.stop_all()
+        except Exception:
+            pass
         # Update #137 (AA-03): Event-Log für Crash-Repro
         try:
             from . import crash_logger as _crash
@@ -922,6 +954,11 @@ class Game:
         self.pending_aftershocks.clear()
         self.pending_comets.clear()
         self.decals.clear()
+        # Update #179: siehe enter_town — Geister-Schatten vermeiden.
+        self.falling_rocks.clear()
+        self._loot_animations.clear()
+        self.particles.clear()
+        self.floaters.clear()
         # B-07: Trail beim Map-Wechsel löschen
         self.breadcrumbs.clear()
         self._breadcrumb_drop_t = 0.0
@@ -942,6 +979,10 @@ class Game:
         self.portals = []
         self.npcs = []
         self.dungeon_portals = []
+        # Update #179: Outpost-Return-Portal beim Dungeon-Enter clearen,
+        # sonst rendert sich der "Zurueck nach Brassweir"-Stein an seiner
+        # alten Outpost-Welt-Koordinate (0, 380) mitten im Dungeon.
+        self.outpost_return_portal = None
         self._dungeon_boss_pos = boss_pos
         self._dungeon_boss_spawned = False
         self._dungeon_done_timer = 0.0
@@ -1379,6 +1420,10 @@ class Game:
         if ev.key == pygame.K_F12:
             self._write_bug_report()
             return
+        # Audit #179 C.8: F8 = Crash-Recovery aus Autosave anwenden.
+        if ev.key == pygame.K_F8:
+            self._try_apply_crash_recovery()
+            return
         if self.state == 'title':
             if ev.key in (pygame.K_RETURN, pygame.K_SPACE):
                 self.start_game('adventure')
@@ -1513,11 +1558,13 @@ class Game:
         elif ev.key == pygame.K_j:
             self.modal = None if self.modal == 'questlog' else 'questlog'
         elif ev.key == pygame.K_p and self.modal == 'questlog':
-            # Update #160 (ROADMAP T2.3-C): P-Hotkey im QuestLog cycelt
-            # die getrackte Quest durch alle aktiven Quests
-            # (None → quest0 → quest1 → ... → None).  Compass folgt der
-            # getrackten Quest.
-            self._cycle_tracked_quest()
+            # SHIFT+P im QuestLog: Audit #179 C.2 — getrackte Quest abbrechen.
+            # P ohne SHIFT cycelt nur den Track (Update #160).
+            mods = pygame.key.get_mods()
+            if mods & pygame.KMOD_SHIFT:
+                self._abandon_tracked_quest()
+            else:
+                self._cycle_tracked_quest()
         elif ev.key == pygame.K_n:
             # N = Notizen / Codex (Lore-Discoveries, Bestiarium-Entdeckungen)
             self.modal = None if self.modal == 'codex' else 'codex'
@@ -1599,6 +1646,29 @@ class Game:
             qst = log.active.get(new_tracked)
             title = qst.title if qst else new_tracked
             self.toast(f'📌 Verfolge: „{title}“', (255, 220, 100))
+
+    def _abandon_tracked_quest(self):
+        """Audit #179 C.2: Bricht die getrackte (oder erste aktive) Quest ab.
+
+        Main-Quests sind geschuetzt (kein Brechen der Akt-Progression).
+        Toast meldet Erfolg/Schutz.
+        """
+        log = getattr(self, 'quest_log', None)
+        if log is None or not log.active:
+            return
+        qid = getattr(log, 'tracked_quest_id', None)
+        if qid is None:
+            qid = next(iter(log.active.keys()), None)
+        if qid is None:
+            return
+        st = log.active.get(qid)
+        title = getattr(st, 'title', qid) if st else qid
+        if log.abandon(qid):
+            self.toast(f'✗ Quest abgebrochen: „{title}"',
+                       (220, 150, 100))
+        else:
+            self.toast(f'⚠ Quest „{title}" kann nicht abgebrochen werden '
+                       f'(Main-Quest).', (255, 200, 80))
 
     def _cycle_class(self, dir):
         keys = list(CLASSES.keys())
@@ -3559,6 +3629,27 @@ class Game:
     def update(self, dt):
         self._click_grace -= dt
         self._tick_toasts(dt)
+        # Audit #179 B.5: SpatialGrid einmal pro Frame rebuilden. AoE/Chain/
+        # Pack-Death-Queries unten nutzen `enemy_grid.query_radius()` statt
+        # linearer Iteration. Rebuild ist O(N) ~5us bei 50 Enemies — billiger
+        # als eine einzige O(N^2)-Operation pro Frame.
+        if self.enemies:
+            self.enemy_grid.rebuild(self.enemies)
+        else:
+            self.enemy_grid.clear()
+        # Audit #179 C.8: One-Shot-Toast wenn Crash-Recovery verfuegbar ist.
+        # Erscheint nur einmal im Title-State, damit der User weiss, dass F8
+        # das Autosave wiederherstellt.
+        if (not self._autosave_toast_shown
+                and self.pending_autosave_recovery
+                and self.state == 'title'):
+            rec = self.pending_autosave_recovery
+            age_min = int(rec.get('age_minutes', 0))
+            self.toast(
+                f'⚠ Crash erkannt — F8 für Autosave (Slot {rec["slot"]}, '
+                f'{age_min} Min alt) wiederherstellen.',
+                (255, 200, 80))
+            self._autosave_toast_shown = True
         # ROADMAP T1.3: Dialog-Modal Word-Reveal Timer
         if self.modal == 'dialog':
             try:
@@ -4461,7 +4552,9 @@ class Game:
                             fx.apply(self, e, 'burn', stacks=2)
                         if proj.kind == 'fireball':
                             aoe = proj.extra.get('aoe', 60)
-                            for e2 in self.enemies[:]:
+                            # Audit #179 B.5: SpatialGrid-Query statt linearer Loop.
+                            for e2 in self.enemy_grid.query_radius(
+                                    proj.pos.x, proj.pos.y, aoe):
                                 if e2 is e:
                                     continue
                                 dd = (e2.pos - proj.pos).length()
@@ -4508,7 +4601,9 @@ class Game:
                                 dmg_type = proj.extra.get(
                                     'dmg_type', 'physical')
                                 count = 0
-                                for e2 in self.enemies[:]:
+                                # Audit #179 B.5: SpatialGrid statt linear.
+                                for e2 in self.enemy_grid.query_radius(
+                                        e.pos.x, e.pos.y, splash_r):
                                     if e2 is e or count >= splash:
                                         continue
                                     dd = (e2.pos - e.pos).length()
@@ -4537,7 +4632,9 @@ class Game:
                                 for _ in range(chains):
                                     nearest = None
                                     nd = 240.0
-                                    for e3 in self.enemies:
+                                    # Audit #179 B.5: SpatialGrid statt linear.
+                                    for e3 in self.enemy_grid.query_radius(
+                                            prev_pos.x, prev_pos.y, 240.0):
                                         if id(e3) in hit_chain_ids or e3.dying:
                                             continue
                                         d3 = (e3.pos - prev_pos).length()
@@ -5507,14 +5604,23 @@ class Game:
             # Update #138 (M-21): Color-Grading-Tint cachen für Post-Pass
             _town_grading_tint = weather_mod.town_color_grading(t)
         else:
+            # Update #178: Akt 6/7 Biomes (wound_* + hollow_word) ambient
+            # colors ergaenzt. Sehr dunkles RGB → starke Multiply-Wirkung
+            # mit der Lighting-System darkness-Surface.
             ambient = {
-                'crypt': (8, 6, 12),
-                'frost': (6, 10, 22),
-                'lava':  (14, 4, 4),
-                'desert': (40, 30, 12),
-                'swamp':  (8, 16, 12),
-                'astral': (4, 2, 18),  # tiefes violett
-                'town':   (16, 14, 12),
+                'crypt':        (8, 6, 12),
+                'frost':        (6, 10, 22),
+                'lava':         (14, 4, 4),
+                'desert':       (40, 30, 12),
+                'swamp':        (8, 16, 12),
+                'astral':       (4, 2, 18),       # tiefes violett
+                'town':         (16, 14, 12),
+                # Akt 6 Wounds — Lore-mood-spezifisch
+                'wound_salt':   (12, 10, 8),      # salzige Daemmerung
+                'wound_ash':    (16, 6, 4),       # verbrannt-rotglut
+                'wound_hollow': (4, 4, 14),       # void-purple
+                # Akt 7 Hollow-Word
+                'hollow_word':  (12, 8, 16),      # bronze-Aether
             }.get(self.biome, (8, 6, 12))
             self.lighting.ambient_alpha = 130
         self.lighting.render(self.screen, ambient_color=ambient)
@@ -6528,41 +6634,76 @@ class Game:
             center=(x + w // 2, y + h - 18)))
 
     # Setting-Keys in genau der Reihenfolge, in der sie im Modal erscheinen.
-    _SETTING_KEYS = [
-        'music_vol', 'sfx_vol', 'screen_shake', 'particle_density',
-        'photosensitive', 'rim_light', 'high_contrast_aoe',
-        'tactical_reduce', 'minimap_rotate', 'colorblind_ailments',
-        # Update #141 (Motion-Sickness-Fix): Camera-Toggles als
-        # Accessibility-Options.  Cursor-Lean ist Default OFF.
-        'camera_lookahead', 'camera_cursor_lean',
-        # Update #168: AI-Sprite-Master-Switch (alle Assets aus -> procedural).
-        'ai_sprites',
-        'frame_cap', 'fullscreen',
+    # Update #178: Settings-Modal in Kategorien gruppiert + 2-Spalten-
+    # Layout.  Reihenfolge in der Liste = Render-Reihenfolge in der Spalte.
+    # `None` = Trennlinie/Spacer zwischen Sub-Gruppen ohne eigenen Header.
+    _SETTING_CATEGORIES = [
+        # (Spalten-Index, Kategorie-Titel, [setting-keys])
+        (0, 'AUDIO', ['music_vol', 'sfx_vol']),
+        (0, 'ANZEIGE', ['fullscreen', 'frame_cap', 'render_scale']),
+        (0, 'GRAFIK', ['screen_shake', 'particle_density', 'rim_light',
+                        'bloom', 'heat_distortion', 'crt_filter']),
+        (1, 'KAMERA', ['camera_lookahead', 'camera_cursor_lean',
+                        'camera_combat_zoom']),
+        (1, 'BARRIEREFREIHEIT', ['photosensitive', 'high_contrast_aoe',
+                                   'tactical_reduce', 'colorblind_ailments',
+                                   'minimap_rotate']),
+        (1, 'SYSTEM', ['ai_sprites', 'multi_threading']),
     ]
+    _SETTING_KEYS = [k for _, _, ks in _SETTING_CATEGORIES for k in ks]
     _FRAME_CAP_OPTIONS = [30, 60, 120, 144, 0]  # 0 = unlimited
     # P-04 (Update #97): Render-Scale-Optionen, cyclable im Settings-Modal.
     _RENDER_SCALE_OPTIONS = [0.5, 0.7, 0.85, 1.0]
+    _BLOOM_OPTIONS = ['off', 'low', 'high']
+    _CRT_OPTIONS = ['off', 'scanlines', 'dither']
 
     def _settings_layout(self):
-        rows_count = len(self._SETTING_KEYS)
-        w = 540
-        # Höhe dynamisch: 100 Header + N×56 Zeilen + 80 Footer.
-        h = 100 + rows_count * 56 + 80
+        # Update #178: 2-Spalten-Layout. Pro Spalte: Kategorie-Headers
+        # (Höhe 28) + Setting-Rows (Höhe 32 mit 4 px Gap = 36).
+        w = 980
+        col_w = (w - 90) // 2  # 30 padding + 30 gutter + 30 padding
+        row_h = 32
+        row_gap = 4
+        cat_h = 30
+        cat_top_gap = 14  # Abstand über jedem Kategorie-Header
+        # Pro-Spalte-Höhe berechnen
+        col_heights = [0, 0]
+        for ci, _title, keys in self._SETTING_CATEGORIES:
+            col_heights[ci] += cat_top_gap + cat_h
+            col_heights[ci] += len(keys) * (row_h + row_gap)
+        content_h = max(col_heights)
+        header_h = 130  # Update #179: mehr Luft fuer Title + Divider
+        h = header_h + content_h + 70  # Header + content + 70 Footer
         mx = SCREEN_W // 2 - w // 2
         my = SCREEN_H // 2 - h // 2
         rect = pygame.Rect(mx, my, w, h)
-        row_y = my + 100  # nach neuem Header-Divider
         rows = {}
-        for i, key in enumerate(self._SETTING_KEYS):
-            rows[key] = pygame.Rect(mx + 30, row_y + i * 56, w - 60, 44)
-        rows['back'] = pygame.Rect(mx + 30, my + h - 60, w - 60, 44)
-        return rect, rows
+        cats = []  # [(title, rect, col_idx)]
+        # Spalten-X-Positions
+        col_x = [mx + 30, mx + 30 + col_w + 30]
+        # Per-Spalte-Y-Cursor (startet direkt unter dem Header)
+        cur_y = [my + header_h, my + header_h]
+        for ci, title, keys in self._SETTING_CATEGORIES:
+            cur_y[ci] += cat_top_gap
+            cats.append((title, pygame.Rect(col_x[ci], cur_y[ci], col_w, cat_h), ci))
+            cur_y[ci] += cat_h
+            for k in keys:
+                rows[k] = pygame.Rect(col_x[ci], cur_y[ci], col_w, row_h)
+                cur_y[ci] += row_h + row_gap
+        rows['back'] = pygame.Rect(mx + (w - 280) // 2,
+                                     my + h - 56, 280, 42)
+        return rect, rows, cats
+
+    # Update #178: Slider-Layout-Konstanten (Settings-Modal).  Label
+    # nimmt linke Hälfte der Row, Slider+% die rechte.
+    _SLIDER_LABEL_W = 160
+    _SLIDER_PCT_W = 50
 
     def _apply_slider_value(self, key, row_rect, sx):
         """Update #99: Slider-Wert-Setzen aus Maus-X.  Wird sowohl von
         Single-Click als auch Drag-Tick aufgerufen."""
-        slider_x = row_rect.x + 200
-        slider_w = row_rect.w - 240
+        slider_x = row_rect.x + self._SLIDER_LABEL_W
+        slider_w = row_rect.w - self._SLIDER_LABEL_W - self._SLIDER_PCT_W - 12
         rel = (sx - slider_x) / max(1, slider_w)
         rel = max(0.0, min(1.0, rel))
         self.settings[key] = rel
@@ -6574,7 +6715,7 @@ class Game:
     def _handle_settings_drag(self, sx, sy):
         """Update #99: kontinuierliches Drag während LMB-Hold im Settings-
         Modal. Triggert nur für Slider-Reihen unter dem Cursor."""
-        rect, rows = self._settings_layout()
+        rect, rows, _cats = self._settings_layout()
         if not rect.collidepoint(sx, sy):
             return
         for key in ('music_vol', 'sfx_vol'):
@@ -6593,8 +6734,34 @@ class Game:
                         pass
                 return
 
+    # Update #178: Toggle-Keys mit ihren Defaults (für saubere Cycle-
+    # Logik ohne mehrfaches `not self.settings.get(...)`).
+    _TOGGLE_DEFAULTS = {
+        'screen_shake': True,
+        'photosensitive': False,
+        'rim_light': True,
+        'high_contrast_aoe': False,
+        'tactical_reduce': False,
+        'minimap_rotate': False,
+        'colorblind_ailments': False,
+        'camera_lookahead': False,
+        'camera_cursor_lean': False,
+        'camera_combat_zoom': True,
+        'heat_distortion': True,
+        'multi_threading': True,
+    }
+
+    def _cycle_value(self, cur, options):
+        """Helper: return next element in options after `cur` (wraps).
+        Falls cur nicht in options ist, returnt options[0]."""
+        try:
+            i = options.index(cur)
+        except ValueError:
+            return options[0]
+        return options[(i + 1) % len(options)]
+
     def _handle_settings_click(self, sx, sy):
-        rect, rows = self._settings_layout()
+        rect, rows, _cats = self._settings_layout()
         if not rect.collidepoint(sx, sy):
             return
         for key, r in rows.items():
@@ -6606,29 +6773,13 @@ class Game:
                 if key == 'fullscreen':
                     self._toggle_fullscreen()
                     return  # _toggle_fullscreen persistiert selbst
-                if key == 'screen_shake':
-                    self.settings['screen_shake'] = not self.settings['screen_shake']
-                    changed = True
-                elif key == 'photosensitive':
-                    self.settings['photosensitive'] = not self.settings['photosensitive']
-                    changed = True
-                elif key == 'rim_light':
-                    self.settings['rim_light'] = not self.settings.get('rim_light', True)
-                    changed = True
-                elif key == 'high_contrast_aoe':
-                    self.settings['high_contrast_aoe'] = not self.settings.get('high_contrast_aoe', False)
-                    changed = True
-                elif key == 'tactical_reduce':
-                    self.settings['tactical_reduce'] = not self.settings.get('tactical_reduce', False)
-                    changed = True
-                elif key == 'minimap_rotate':
-                    self.settings['minimap_rotate'] = not self.settings.get('minimap_rotate', False)
+                # Simple toggles (Update #178).
+                if key in self._TOGGLE_DEFAULTS:
+                    default = self._TOGGLE_DEFAULTS[key]
+                    self.settings[key] = not self.settings.get(key, default)
                     changed = True
                 elif key == 'ai_sprites':
-                    # Update #168: Master-Switch — toggelt + spiegelt sofort
-                    # an sf.sprites + leert Caches damit Wechsel ohne Restart
-                    # sichtbar wird.
-                    new_val = not self.settings.get('ai_sprites', True)
+                    new_val = not self.settings.get('ai_sprites', False)
                     self.settings['ai_sprites'] = new_val
                     try:
                         from . import sprites as _sp_mod
@@ -6639,30 +6790,29 @@ class Game:
                     changed = True
                 elif key == 'frame_cap':
                     cur = int(self.settings.get('frame_cap', 60))
-                    options = self._FRAME_CAP_OPTIONS
-                    try:
-                        idx = options.index(cur)
-                    except ValueError:
-                        idx = 1  # 60 als Default
-                    self.settings['frame_cap'] = options[(idx + 1) % len(options)]
+                    self.settings['frame_cap'] = self._cycle_value(
+                        cur, self._FRAME_CAP_OPTIONS)
                     changed = True
-                elif key == 'colorblind_ailments':
-                    self.settings['colorblind_ailments'] = not self.settings.get(
-                        'colorblind_ailments', False)
+                elif key == 'render_scale':
+                    cur = float(self.settings.get('render_scale', 1.0))
+                    # Floats brauchen Toleranz fürs Cycle — auf nächsten
+                    # Preset snappen und dann weiterschalten.
+                    opts = self._RENDER_SCALE_OPTIONS
+                    idx = min(range(len(opts)),
+                               key=lambda i: abs(opts[i] - cur))
+                    self.settings['render_scale'] = opts[(idx + 1) % len(opts)]
                     changed = True
-                # Update #141 (Motion-Sickness-Fix): Camera-Toggles
-                elif key == 'camera_lookahead':
-                    self.settings['camera_lookahead'] = not self.settings.get(
-                        'camera_lookahead', True)
+                elif key == 'bloom':
+                    self.settings['bloom'] = self._cycle_value(
+                        self.settings.get('bloom', 'low'),
+                        self._BLOOM_OPTIONS)
                     changed = True
-                elif key == 'camera_cursor_lean':
-                    self.settings['camera_cursor_lean'] = not self.settings.get(
-                        'camera_cursor_lean', False)
+                elif key == 'crt_filter':
+                    self.settings['crt_filter'] = self._cycle_value(
+                        self.settings.get('crt_filter', 'off'),
+                        self._CRT_OPTIONS)
                     changed = True
                 elif key == 'particle_density':
-                    # Cycle Niedrig → Mittel → Hoch → Ultra (siehe fx.DENSITY_PRESETS).
-                    # Wirkt seit C-02 nur noch auf AMBIENT-Layer (Wetter,
-                    # Funken, Dust) — GAMEPLAY/TELEGRAPH bleiben unangetastet.
                     options = [v for _, v in fx.DENSITY_PRESETS]
                     cur = self.settings['particle_density']
                     idx = min(range(len(options)),
@@ -6672,7 +6822,6 @@ class Game:
                 elif key in ('music_vol', 'sfx_vol'):
                     self._apply_slider_value(key, r, sx)
                     changed = True
-                # Update #151: Settings persistieren wenn modifiziert
                 if changed:
                     try:
                         save_mod.save_settings(self)
@@ -6680,114 +6829,236 @@ class Game:
                         pass
                 return
 
+    # Update #178: Setting-Metadaten — Label + Kind (toggle/cycle/slider).
+    # Werte werden zur Render-Zeit aus self.settings gelesen.
+    _SETTING_META = {
+        'music_vol':         ('Musik',                   'slider'),
+        'sfx_vol':           ('SFX',                     'slider'),
+        'fullscreen':        ('Vollbild',                'toggle'),
+        'frame_cap':         ('Frame-Cap',               'cycle'),
+        'render_scale':      ('Render-Skalierung',       'cycle'),
+        'screen_shake':      ('Bildschirm-Wackeln',      'toggle'),
+        'particle_density':  ('Ambient-Partikel',        'cycle'),
+        'rim_light':         ('Spieler-Aura',            'toggle'),
+        'bloom':             ('Bloom',                   'cycle'),
+        'heat_distortion':   ('Hitze-Verzerrung',        'toggle'),
+        'crt_filter':        ('CRT-Filter',              'cycle'),
+        'camera_lookahead':  ('Lookahead',               'toggle'),
+        'camera_cursor_lean':('Cursor-Lean',             'toggle'),
+        'camera_combat_zoom':('Combat-Zoom',             'toggle'),
+        'photosensitive':    ('Photosensitiv',           'toggle'),
+        'high_contrast_aoe': ('AoE: Hoher Kontrast',     'toggle'),
+        'tactical_reduce':   ('Eigene VFX gedaempft',    'toggle'),
+        'colorblind_ailments':('Farbenblind-Ailments',   'toggle'),
+        'minimap_rotate':    ('Minimap rotiert',         'toggle'),
+        'ai_sprites':        ('AI-Sprites',              'toggle'),
+        'multi_threading':   ('Multi-Threading',         'toggle'),
+    }
+
+    _CYCLE_LABELS = {
+        'bloom':      {'off': 'Aus', 'low': 'Niedrig', 'high': 'Hoch'},
+        'crt_filter': {'off': 'Aus', 'scanlines': 'Scanlines', 'dither': 'Dither'},
+    }
+
+    def _setting_value(self, key):
+        """Returnt aktuellen Wert eines Settings.  Fullscreen ist Toplevel-
+        Attribut; alle anderen leben in self.settings."""
+        if key == 'fullscreen':
+            return bool(self.fullscreen)
+        return self.settings.get(key, self._TOGGLE_DEFAULTS.get(key))
+
+    def _setting_display_value(self, key):
+        """Returnt das Anzeige-Label für einen Setting-Wert (für 'cycle')."""
+        if key == 'frame_cap':
+            return self._frame_cap_label()
+        if key == 'particle_density':
+            return self._density_label()
+        if key == 'render_scale':
+            return f'{int(float(self.settings.get("render_scale", 1.0)) * 100)} %'
+        if key in self._CYCLE_LABELS:
+            v = self.settings.get(key, 'off')
+            return self._CYCLE_LABELS[key].get(v, str(v))
+        return str(self.settings.get(key, ''))
+
     def _draw_settings_modal(self):
-        """Velgrad-Tome-Style Settings (Update #30)."""
+        """Velgrad-Tome-Style Settings — 2-Spalten + Kategorien (Update #178)."""
         from . import aspects as _asp
         pal = _asp.aspect_palette(self.player.cls)
-        rect, rows = self._settings_layout()
+        rect, rows, cats = self._settings_layout()
+        # Dunkler Overlay
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 210))
+        overlay.fill((0, 0, 0, 220))
         self.screen.blit(overlay, (0, 0))
-        # Pergament-Page
+        # Pergament-Page mit vertikalem Gradient (Tome-Look)
         page = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
         for py in range(rect.h):
             t = py / max(1, rect.h - 1)
-            rr = int(42 + (28 - 42) * t)
-            gg = int(31 + (22 - 31) * t)
-            bb = int(20 + (16 - 20) * t)
+            rr = int(42 + (26 - 42) * t)
+            gg = int(31 + (20 - 31) * t)
+            bb = int(20 + (14 - 20) * t)
             pygame.draw.line(page, (rr, gg, bb, 252), (0, py), (rect.w, py))
         self.screen.blit(page, rect.topleft)
         bronze = (154, 118, 66)
+        bronze_dim = (96, 72, 42)
         pygame.draw.rect(self.screen, bronze, rect, 2)
         pygame.draw.rect(self.screen, pal['deep'],
                           (rect.x + 4, rect.y + 4,
                            rect.w - 8, rect.h - 8), 1)
-        _asp.draw_filigree_corners(self.screen, rect, bronze, size=22)
+        _asp.draw_filigree_corners(self.screen, rect, bronze, size=24)
         _asp.draw_aspect_watermark(self.screen, rect,
-                                    self.player.cls, alpha=18)
+                                    self.player.cls, alpha=16)
         # Header
         eyebrow = self.font_small.render(
-            '— DIE TÜREN DES ATEMS —', True, (180, 140, 80))
+            '— DIE TUEREN DES ATEMS —', True, (180, 140, 80))
         self.screen.blit(eyebrow,
                           (rect.centerx - eyebrow.get_width() // 2,
                            rect.y + 14))
+        # Update #179: Settings-Title bekommt eigenen kleineren Font
+        # damit er nicht das Modal sprengt + nicht ueber den Divider /
+        # Kategorie-Header laeuft.  Nutzt den gleichen Display-Font-Stack
+        # wie font_big (Cinzel/Trajan/Georgia) damit das Tome-Feel bleibt.
+        if not hasattr(self, '_settings_title_font'):
+            try:
+                df = pygame.font.match_font(
+                    'cinzel,trajanpro,georgia,times', bold=True)
+                if df:
+                    self._settings_title_font = pygame.font.Font(df, 42)
+                else:
+                    self._settings_title_font = pygame.font.SysFont(
+                        'georgia,times', 42, bold=True)
+            except Exception:
+                self._settings_title_font = pygame.font.SysFont(
+                    'georgia,times', 42, bold=True)
+        tf = self._settings_title_font
+        max_title_w = rect.w - 120
         title_text = 'E I N S T E L L U N G E N'
-        title = self.font_big.render(title_text, True, pal['halo'])
-        title_sh = self.font_big.render(title_text, True, (10, 6, 4))
+        title = tf.render(title_text, True, pal['halo'])
+        if title.get_width() > max_title_w:
+            title_text = 'EINSTELLUNGEN'
+            title = tf.render(title_text, True, pal['halo'])
+        title_sh = tf.render(title_text, True, (10, 6, 4))
+        title_y = rect.y + 42
         self.screen.blit(title_sh,
                           (rect.centerx - title.get_width() // 2 + 2,
-                           rect.y + 36 + 2))
+                           title_y + 2))
         self.screen.blit(title,
                           (rect.centerx - title.get_width() // 2,
-                           rect.y + 36))
+                           title_y))
+        # Divider sitzt unter dem Title — title_y + title_h + 8
+        divider_y = title_y + title.get_height() + 6
         _asp.draw_ornament_divider(
-            self.screen, rect.x + 20, rect.y + 82,
+            self.screen, rect.x + 20, divider_y,
             rect.w - 40, bronze)
 
-        # Renderer pro Zeile
-        items = [
-            ('music_vol',        f'Musik-Lautstaerke', 'slider', self.settings['music_vol']),
-            ('sfx_vol',          f'SFX-Lautstaerke',   'slider', self.settings['sfx_vol']),
-            ('screen_shake',     f'Bildschirm-Wackeln', 'toggle', self.settings['screen_shake']),
-            ('particle_density', f'Ambient-Partikel',   'cycle',  self._density_label()),
-            ('photosensitive',   f'Photosensitive-Modus', 'toggle', self.settings['photosensitive']),
-            ('rim_light',        f'Spieler-Aura (Rim)',  'toggle', self.settings.get('rim_light', True)),
-            ('high_contrast_aoe',f'AoE: Hoher Kontrast', 'toggle', self.settings.get('high_contrast_aoe', False)),
-            ('tactical_reduce',  f'Eigene VFX gedämpft', 'toggle', self.settings.get('tactical_reduce', False)),
-            ('minimap_rotate',   f'Minimap rotiert',    'toggle', self.settings.get('minimap_rotate', False)),
-            ('colorblind_ailments', f'Colorblind: Ailments', 'toggle', self.settings.get('colorblind_ailments', False)),
-            # Update #141 (Motion-Sickness-Fix): Camera-Toggles als
-            # Accessibility-Options.
-            ('camera_lookahead', f'Camera: Lookahead',  'toggle', self.settings.get('camera_lookahead', True)),
-            ('camera_cursor_lean', f'Camera: Cursor-Lean (kann Übelkeit)', 'toggle', self.settings.get('camera_cursor_lean', False)),
-            # Update #168: Master-Switch
-            ('ai_sprites',       f'AI-Sprites (alle Assets)', 'toggle', self.settings.get('ai_sprites', True)),
-            ('frame_cap',        f'Frame-Cap',          'cycle',  self._frame_cap_label()),
-            ('fullscreen',       f'Vollbild',           'toggle', self.fullscreen),
-        ]
-        for key, label, kind, val in items:
-            r = rows[key]
-            # Slot-Hintergrund
+        # Vertikaler Spalten-Divider in der Mitte (unter Header-Bereich)
+        col_div_x = rect.centerx
+        for y in range(rect.y + 130, rect.y + rect.h - 70, 4):
+            self.screen.set_at((col_div_x, y), bronze_dim)
+
+        # Kategorie-Header
+        for title_str, crect, _ci in cats:
+            # Subtiler Hintergrund-Streifen
+            stripe = pygame.Surface((crect.w, crect.h), pygame.SRCALPHA)
+            stripe.fill((58, 42, 22, 180))
+            self.screen.blit(stripe, crect.topleft)
+            # Bronze-Underline
+            pygame.draw.line(
+                self.screen, bronze,
+                (crect.x, crect.bottom - 1),
+                (crect.right, crect.bottom - 1), 1)
+            # Linker Ornament-Diamant
+            cy = crect.centery
+            pygame.draw.polygon(
+                self.screen, bronze,
+                [(crect.x + 8, cy), (crect.x + 14, cy - 4),
+                 (crect.x + 20, cy), (crect.x + 14, cy + 4)])
+            ts = self.font_small.render(title_str, True, GOLD_BRIGHT)
+            self.screen.blit(ts, (crect.x + 30,
+                                    crect.y + (crect.h - ts.get_height()) // 2))
+
+        # Rows
+        for key, r in rows.items():
+            if key == 'back':
+                continue
+            meta = self._SETTING_META.get(key)
+            if meta is None:
+                continue
+            label, kind = meta
+            # Slot-Hintergrund (subtil)
             bgb = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
-            bgb.fill((30, 24, 16, 240))
+            bgb.fill((26, 20, 12, 200))
             self.screen.blit(bgb, r.topleft)
-            pygame.draw.rect(self.screen, (90, 70, 50), r, 1)
+            pygame.draw.rect(self.screen, (74, 56, 38), r, 1)
             ls = self.font_small.render(label, True, TEXT)
             self.screen.blit(ls, (r.x + 14, r.y + (r.h - ls.get_height()) // 2))
             if kind == 'slider':
-                slider_x = r.x + 200
-                slider_y = r.centery - 4
-                slider_w = r.w - 240
+                val = float(self.settings.get(key, 0.0))
+                slider_x = r.x + self._SLIDER_LABEL_W
+                slider_y = r.centery - 3
+                slider_w = r.w - self._SLIDER_LABEL_W - self._SLIDER_PCT_W - 12
                 pygame.draw.rect(self.screen, (60, 50, 36),
-                                  (slider_x, slider_y, slider_w, 8))
+                                  (slider_x, slider_y, slider_w, 6))
                 fill_w = int(slider_w * val)
                 pygame.draw.rect(self.screen, GOLD,
-                                  (slider_x, slider_y, fill_w, 8))
-                # Knob
+                                  (slider_x, slider_y, fill_w, 6))
                 knob_x = slider_x + fill_w
                 pygame.draw.circle(self.screen, GOLD_BRIGHT,
-                                    (knob_x, slider_y + 4), 8)
+                                    (knob_x, slider_y + 3), 7)
+                pygame.draw.circle(self.screen, (60, 42, 20),
+                                    (knob_x, slider_y + 3), 7, 1)
                 pct = self.font_small.render(f'{int(val * 100)}%', True, GOLD_BRIGHT)
-                self.screen.blit(pct, (r.right - 50, r.y + (r.h - pct.get_height()) // 2))
+                self.screen.blit(pct, (r.right - pct.get_width() - 10,
+                                        r.y + (r.h - pct.get_height()) // 2))
             elif kind == 'toggle':
-                text = 'AN' if val else 'AUS'
-                col = (140, 220, 140) if val else (200, 100, 80)
-                vs = self.font_small.render(text, True, col)
-                self.screen.blit(vs, (r.right - vs.get_width() - 16,
-                                       r.y + (r.h - vs.get_height()) // 2))
+                val = bool(self._setting_value(key))
+                self._draw_toggle_pill(r, val)
             elif kind == 'cycle':
-                vs = self.font_small.render(str(val), True, GOLD_BRIGHT)
-                self.screen.blit(vs, (r.right - vs.get_width() - 16,
-                                       r.y + (r.h - vs.get_height()) // 2))
+                val_label = self._setting_display_value(key)
+                arrow_l = self.font_small.render('<', True, bronze)
+                arrow_r = self.font_small.render('>', True, bronze)
+                vs = self.font_small.render(val_label, True, GOLD_BRIGHT)
+                # Rechtsbuendig mit Pfeilen rechts/links
+                vx = r.right - vs.get_width() - 22
+                vy = r.y + (r.h - vs.get_height()) // 2
+                self.screen.blit(arrow_l,
+                                  (vx - arrow_l.get_width() - 6, vy))
+                self.screen.blit(vs, (vx, vy))
+                self.screen.blit(arrow_r, (vx + vs.get_width() + 6, vy))
 
-        # Back
+        # Back-Button (zentriert unten)
         br = rows['back']
         bgb = pygame.Surface((br.w, br.h), pygame.SRCALPHA)
         bgb.fill((40, 30, 14, 240))
         self.screen.blit(bgb, br.topleft)
         pygame.draw.rect(self.screen, GOLD, br, 2)
-        ls = self.font_med.render('Zurueck (ESC)', True, GOLD_BRIGHT)
+        # Kleine Filigree an Back-Button-Ecken
+        for cx, cy in ((br.x, br.y), (br.right - 1, br.y),
+                        (br.x, br.bottom - 1), (br.right - 1, br.bottom - 1)):
+            pygame.draw.circle(self.screen, bronze, (cx, cy), 2)
+        ls = self.font_med.render('ZURUECK (ESC)', True, GOLD_BRIGHT)
         self.screen.blit(ls, ls.get_rect(center=br.center))
+
+    def _draw_toggle_pill(self, r, val):
+        """Update #178: Toggle als Pill-Switch (rechtsbuendig in Row).
+        Ersetzt den schlichten Text-AN/AUS — klarer + thematischer."""
+        pill_w, pill_h = 56, 22
+        px = r.right - pill_w - 12
+        py = r.y + (r.h - pill_h) // 2
+        # Track
+        track_col = (60, 100, 56) if val else (70, 36, 28)
+        border_col = (140, 220, 140) if val else (170, 88, 70)
+        track = pygame.Rect(px, py, pill_w, pill_h)
+        pygame.draw.rect(self.screen, track_col, track, border_radius=pill_h // 2)
+        pygame.draw.rect(self.screen, border_col, track, 1,
+                          border_radius=pill_h // 2)
+        # Knob
+        knob_r = pill_h // 2 - 2
+        knob_x = px + pill_w - knob_r - 3 if val else px + knob_r + 3
+        knob_y = py + pill_h // 2
+        knob_col = (230, 220, 170) if val else (160, 140, 110)
+        pygame.draw.circle(self.screen, knob_col, (knob_x, knob_y), knob_r)
+        pygame.draw.circle(self.screen, (40, 28, 14),
+                            (knob_x, knob_y), knob_r, 1)
 
     def _draw_decals(self):
         """Rendert AoE-Telegraph-Decals (PLAN C-05/C-07).
@@ -8785,8 +9056,17 @@ class Game:
             f'State: {getattr(self, "state", "?")}',
             f'Render-Scale: {rscale}',
             f'Hardcore: {getattr(self, "hardcore", False)}',
-            f'F3=Toggle  F12=BugReport',
+            f'F3=Toggle  F8=Restore  F12=BugReport',
         ]
+        # Audit #179 C.13: Frame-Time-Sections (avg ms ueber 60 Frames).
+        try:
+            frame_summary = _profiler_mod.frame_summary()
+            if frame_summary:
+                lines.append('-- Frame-Time --')
+                for sec, ms in list(frame_summary.items())[:5]:
+                    lines.append(f'  {sec}: {ms:.2f} ms')
+        except Exception:
+            pass
         line_h = font.get_height() + 1
         box_w = 280
         box_h = len(lines) * line_h + 12
@@ -8804,6 +9084,31 @@ class Game:
             ls = font.render(line, True, col)
             self.screen.blit(ls, (x + 8, cy))
             cy += line_h
+
+    def _try_apply_crash_recovery(self):
+        """Audit #179 C.8: F8 → Autosave-Recovery anwenden.
+
+        Wird gerufen wenn der User F8 drueckt und ein pending Autosave
+        vorhanden ist. Zeigt Toasts fuer Erfolg/Fehler. Konsumiert den
+        Pending-Marker, damit der Hint-Toast nicht weiter erscheint.
+        """
+        rec = getattr(self, 'pending_autosave_recovery', None)
+        if rec is None:
+            self.toast('Kein Autosave-Recovery verfügbar.',
+                       (200, 184, 136))
+            return
+        try:
+            ok = save_mod.apply_autosave_recovery(self)
+        except Exception:
+            ok = False
+        if ok:
+            self.toast(
+                f'✓ Autosave (Slot {rec["slot"]}) wiederhergestellt.',
+                (140, 220, 140))
+        else:
+            self.toast('⚠ Autosave-Recovery fehlgeschlagen.',
+                       (220, 150, 100))
+        self.pending_autosave_recovery = None
 
     def _write_bug_report(self):
         """Update #139 (AA-09): F12 → Bug-Report-Snapshot.
@@ -11228,13 +11533,20 @@ class Game:
     # ---------- Main loop ----------
     def run(self):
         pygame.mouse.set_visible(False)
+        # Audit #179 C.13: section() context-manager misst pro Frame
+        # update/draw/handle_events. Wird im F3-Overlay aggregiert (avg
+        # ueber 60 Frames). Overhead pro Section <0.001 ms.
+        _section = _profiler_mod.section
         while self.running:
             # P-05 (Update #52): Frame-Cap aus Settings (0 = unlimited)
             cap = int(self.settings.get('frame_cap', FPS) or 0)
             dt = min(0.05, self.clock.tick(cap if cap > 0 else 0) / 1000)
-            self.handle_events()
-            self.update(dt)
-            self.draw()
+            with _section('events'):
+                self.handle_events()
+            with _section('update'):
+                self.update(dt)
+            with _section('draw'):
+                self.draw()
         pygame.quit()
 
 

@@ -48,6 +48,458 @@
       "duration_sec": 0.2,
       "status": "success",
       "error": null
+    },
+    {
+      "timestamp": "2026-05-24T00:58:50.470573+00:00",
+      "workflow": "animation_frames",
+      "workflow_label": "Sprite Animation Frames (8-Frame Cycle)",
+      "args": {
+        "target": "monk",
+        "anim": "walk",
+        "direction": "left",
+        "category": "class"
+      },
+      "outputs": [
+        "assets/sprites/classes/monk_anims/walk/left.png"
+      ],
+      "cost_estimate_eur": 0.32,
+      "scenario_inference_ids": [
+        "job_HezggBs4cQv984pjpzmNnGGd",
+        "job_GodjSsoDS74k6N64UGt9sWHb",
+        "job_L7Bjq4zUixNHcXJn1Z1nUkoo",
+        "job_QNdaxZNYkYbQq75wadr7GEXs",
+        "job_EMQbWwSP2XnpB2KtvekqMxXN",
+        "job_iGGpWBe3Kcx2bKMvMAWhn2yV",
+        "job_w59onBRdLRam1KEC3uA3yF6h",
+        "job_zLRjSdNP5HJyGwtjycbHL6kc"
+      ],
+      "duration_sec": 67.2,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T00:59:44.542726+00:00",
+      "workflow": "animation_frames",
+      "workflow_label": "Sprite Animation Frames (8-Frame Cycle)",
+      "args": {
+        "target": "monk",
+        "anim": "walk",
+        "direction": "right",
+        "category": "class"
+      },
+      "outputs": [
+        "assets/sprites/classes/monk_anims/walk/right.png"
+      ],
+      "cost_estimate_eur": 0.32,
+      "scenario_inference_ids": [
+        "job_oqsnKRdD23E1BrPmEd2H7EAx",
+        "job_A8LVdmsrBL3FnkJpMJuhbGiC",
+        "job_fTS8x13MTUFQTUJWC2bNFreV",
+        "job_HLG4h2mzMK3i6ZYw41js23rY",
+        "job_31Rd2cJdsenxZqjZk9XyfeEK",
+        "job_wm87eWhYR1djLYdBkv1dsDXn",
+        "job_Q6Vtp4bouAbn3tDh2V66b5Hx",
+        "job_eA42jH44BrYnnBntAkppE3rF"
+      ],
+      "duration_sec": 54.1,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T01:23:09.894497+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "astral",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/astral/astral_mask_00.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_01.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_02.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_03.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_04.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_05.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_06.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_07.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_08.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_09.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_10.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_11.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_12.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_13.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_14.png",
+        "assets/sprites/tiles/masks/astral/astral_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.3,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T01:23:09.973089+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "crypt",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/crypt/crypt_mask_00.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_01.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_02.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_03.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_04.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_05.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_06.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_07.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_08.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_09.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_10.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_11.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_12.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_13.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_14.png",
+        "assets/sprites/tiles/masks/crypt/crypt_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.1,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T01:23:10.055972+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "desert",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/desert/desert_mask_00.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_01.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_02.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_03.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_04.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_05.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_06.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_07.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_08.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_09.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_10.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_11.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_12.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_13.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_14.png",
+        "assets/sprites/tiles/masks/desert/desert_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.1,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T01:23:10.141293+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "frost",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/frost/frost_mask_00.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_01.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_02.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_03.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_04.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_05.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_06.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_07.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_08.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_09.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_10.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_11.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_12.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_13.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_14.png",
+        "assets/sprites/tiles/masks/frost/frost_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.1,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T01:23:10.231886+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "hollow_word",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_00.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_01.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_02.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_03.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_04.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_05.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_06.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_07.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_08.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_09.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_10.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_11.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_12.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_13.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_14.png",
+        "assets/sprites/tiles/masks/hollow_word/hollow_word_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.1,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T01:23:10.320405+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "lava",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/lava/lava_mask_00.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_01.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_02.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_03.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_04.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_05.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_06.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_07.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_08.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_09.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_10.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_11.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_12.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_13.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_14.png",
+        "assets/sprites/tiles/masks/lava/lava_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.1,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T01:23:10.407330+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "swamp",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/swamp/swamp_mask_00.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_01.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_02.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_03.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_04.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_05.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_06.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_07.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_08.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_09.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_10.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_11.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_12.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_13.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_14.png",
+        "assets/sprites/tiles/masks/swamp/swamp_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.1,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T01:23:10.482168+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "town",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/town/town_mask_00.png",
+        "assets/sprites/tiles/masks/town/town_mask_01.png",
+        "assets/sprites/tiles/masks/town/town_mask_02.png",
+        "assets/sprites/tiles/masks/town/town_mask_03.png",
+        "assets/sprites/tiles/masks/town/town_mask_04.png",
+        "assets/sprites/tiles/masks/town/town_mask_05.png",
+        "assets/sprites/tiles/masks/town/town_mask_06.png",
+        "assets/sprites/tiles/masks/town/town_mask_07.png",
+        "assets/sprites/tiles/masks/town/town_mask_08.png",
+        "assets/sprites/tiles/masks/town/town_mask_09.png",
+        "assets/sprites/tiles/masks/town/town_mask_10.png",
+        "assets/sprites/tiles/masks/town/town_mask_11.png",
+        "assets/sprites/tiles/masks/town/town_mask_12.png",
+        "assets/sprites/tiles/masks/town/town_mask_13.png",
+        "assets/sprites/tiles/masks/town/town_mask_14.png",
+        "assets/sprites/tiles/masks/town/town_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.1,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T01:23:10.564095+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "wound_ash",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_00.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_01.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_02.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_03.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_04.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_05.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_06.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_07.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_08.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_09.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_10.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_11.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_12.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_13.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_14.png",
+        "assets/sprites/tiles/masks/wound_ash/wound_ash_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.1,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T01:23:10.656956+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "wound_hollow",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_00.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_01.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_02.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_03.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_04.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_05.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_06.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_07.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_08.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_09.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_10.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_11.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_12.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_13.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_14.png",
+        "assets/sprites/tiles/masks/wound_hollow/wound_hollow_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.1,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T01:23:10.749518+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "wound_salt",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_00.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_01.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_02.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_03.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_04.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_05.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_06.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_07.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_08.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_09.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_10.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_11.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_12.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_13.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_14.png",
+        "assets/sprites/tiles/masks/wound_salt/wound_salt_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.1,
+      "status": "success",
+      "error": null
+    },
+    {
+      "timestamp": "2026-05-24T09:47:51.506194+00:00",
+      "workflow": "texture_tiler",
+      "workflow_label": "Texture Tiler (16-Mask Modular)",
+      "args": {
+        "biome": "town",
+        "mode": "procedural",
+        "cell_size": 128
+      },
+      "outputs": [
+        "assets/sprites/tiles/masks/town/town_mask_00.png",
+        "assets/sprites/tiles/masks/town/town_mask_01.png",
+        "assets/sprites/tiles/masks/town/town_mask_02.png",
+        "assets/sprites/tiles/masks/town/town_mask_03.png",
+        "assets/sprites/tiles/masks/town/town_mask_04.png",
+        "assets/sprites/tiles/masks/town/town_mask_05.png",
+        "assets/sprites/tiles/masks/town/town_mask_06.png",
+        "assets/sprites/tiles/masks/town/town_mask_07.png",
+        "assets/sprites/tiles/masks/town/town_mask_08.png",
+        "assets/sprites/tiles/masks/town/town_mask_09.png",
+        "assets/sprites/tiles/masks/town/town_mask_10.png",
+        "assets/sprites/tiles/masks/town/town_mask_11.png",
+        "assets/sprites/tiles/masks/town/town_mask_12.png",
+        "assets/sprites/tiles/masks/town/town_mask_13.png",
+        "assets/sprites/tiles/masks/town/town_mask_14.png",
+        "assets/sprites/tiles/masks/town/town_mask_15.png"
+      ],
+      "cost_estimate_eur": 0.0,
+      "scenario_inference_ids": [],
+      "duration_sec": 0.2,
+      "status": "success",
+      "error": null
     }
   ]
 }

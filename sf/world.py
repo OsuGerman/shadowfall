@@ -734,6 +734,27 @@ def draw_decor(screen, t, sp, biome):
     biome_data = BIOMES[biome]
     sx, sy = int(sp[0]), int(sp[1])
 
+    # Prio-Pass HOCH (VELGRAD_SPRITE_BIBEL §XI): wenn fuer t.kind ein AI-
+    # Decor-Sprite in assets/sprites/decor/<kind>.png liegt, render das
+    # statt der Procedural-Form.  Anchor: Fuesse bei (sx, sy) — Sprite
+    # wird mit Shadow + nach oben gezeichnet wie Mobs/Bosse.
+    from . import sprites as _sp
+    ai_decor = _sp.get_decor_sprite(t.kind)
+    if ai_decor is not None:
+        target_h = max(28, int(getattr(t, 'size', 0) or 64))
+        ah0, aw0 = ai_decor.get_height(), ai_decor.get_width()
+        if ah0 > 0:
+            scale = target_h / ah0
+            new_w = max(1, int(aw0 * scale))
+            try:
+                scaled = pygame.transform.smoothscale(
+                    ai_decor, (new_w, target_h))
+            except Exception:
+                scaled = ai_decor
+            _decor_shadow(screen, sx, sy, w=min(80, new_w), alpha=110)
+            screen.blit(scaled, (sx - new_w // 2, sy - target_h))
+        return
+
     if t.kind == 'stone':
         alpha = int(80 * t.shade)
         s = int(t.size)
@@ -1612,24 +1633,32 @@ def _resolve_quest_target_pos(game):
         tracked = active[tracked_qid]
         # Move tracked to front of states list
         states = [tracked] + [s for s in states if s is not tracked]
+    # Update #161 (ROADMAP Engine-Lücke „Quest-Compass durchgängig"):
+    # Helper für „nächstes Element in der Welt" — Player-Position
+    # als Referenz für Distanz-Sort.
+    p = getattr(game, 'player', None)
+    ppos = getattr(p, 'pos', None) if p else None
+    px = getattr(ppos, 'x', 0.0) if ppos else 0.0
+    py = getattr(ppos, 'y', 0.0) if ppos else 0.0
     for qstate in states:
         st = qstate.stage
         if st is None:
             continue
         target = st.get('target') or {}
-        # NPC-Target
+        # 1. NPC-Target — Update #161: funktioniert in BEIDEN Areas
+        # (town und dungeon — z.B. escort-NPCs, spawn_quest_npc).
         npc_name = target.get('npc_name')
-        if npc_name and game.area == 'town':
+        if npc_name:
             for npc in getattr(game, 'npcs', ()):
                 if npc.name == npc_name:
                     return (npc.pos.x, npc.pos.y)
-        # Biome-Target → Dungeon-Portal in Town
+        # 2. Biome-Target → Dungeon-Portal in Town
         biome = target.get('biome')
         if biome and game.area == 'town':
             for dp in getattr(game, 'dungeon_portals', ()):
                 if getattr(dp, 'biome', None) == biome:
                     return (dp.pos.x, dp.pos.y)
-        # Boss-Room → Center des letzten Raums
+        # 3. Boss-Room → Center des letzten Raums
         if target.get('boss_room') and game.area == 'dungeon':
             grid = getattr(game, 'grid', None)
             if grid is not None and getattr(grid, 'rooms', None):
@@ -1638,6 +1667,58 @@ def _resolve_quest_target_pos(game):
                 cy_g = room.y + room.h // 2
                 wx, wy = grid.cell_to_world_center(cx_g, cy_g)
                 return (wx, wy)
+        # 4. NEW (Update #161): INTERACT decor_kind →
+        # nächstes passendes Decor in der aktuellen Map.
+        decor_kind = target.get('decor_kind')
+        if decor_kind:
+            best = None
+            for t in getattr(game, 'tiles', ()):
+                if getattr(t, 'kind', None) != decor_kind:
+                    continue
+                # Bereits-gelesene lore_tablets ignorieren
+                if getattr(t, 'lore_read', False):
+                    continue
+                d = (t.x - px) ** 2 + (t.y - py) ** 2
+                if best is None or d < best[0]:
+                    best = (d, t)
+            if best is not None:
+                return (best[1].x, best[1].y)
+        # 5. NEW (Update #161): KILL bestiary_key →
+        # nächstes passendes lebendes Enemy.
+        bkey = target.get('bestiary_key')
+        if bkey and game.area == 'dungeon':
+            best = None
+            for e in getattr(game, 'enemies', ()):
+                if getattr(e, 'bestiary_key', None) != bkey:
+                    continue
+                if getattr(e, 'dying', False) or getattr(e, 'hp', 0) <= 0:
+                    continue
+                d = (e.pos.x - px) ** 2 + (e.pos.y - py) ** 2
+                if best is None or d < best[0]:
+                    best = (d, e)
+            if best is not None:
+                return (best[1].pos.x, best[1].pos.y)
+        # 6. NEW (Update #161): COLLECT item_kind='gem' →
+        # nächste gem-Loot in der Welt.
+        item_kind = target.get('item_kind')
+        if item_kind == 'gem':
+            best = None
+            for loot in getattr(game, 'loot', ()):
+                if getattr(loot, 'kind', None) != 'gem':
+                    continue
+                d = (loot.pos.x - px) ** 2 + (loot.pos.y - py) ** 2
+                if best is None or d < best[0]:
+                    best = (d, loot)
+            if best is not None:
+                return (best[1].pos.x, best[1].pos.y)
+        # 7. NEW (Update #161): ESCORT destination tuple →
+        # explicit world-coords; ergänzt das npc_name-Lookup oben.
+        dest = target.get('destination')
+        if dest is not None and game.area == 'town':
+            try:
+                return (float(dest[0]), float(dest[1]))
+            except (TypeError, ValueError, IndexError):
+                pass
     return None
 
 

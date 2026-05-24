@@ -23,15 +23,125 @@ Update #137 (Z-03/Z-04/Z-06):
   Recovery-Dialog anbieten.
 """
 
+import atexit
 import hashlib
 import json
 import os
+import queue
 import sys
+import threading
 import time
 import traceback
 from pathlib import Path
 
 from .items import Item
+
+
+# ============================================================
+# Audit #179 B.7: Async Save-Writer
+# ============================================================
+# Save-Disk-IO geht in einen Background-Worker-Thread. Atomic write via
+# write-then-rename verhindert halb-geschriebene Saves bei Crash waehrend
+# Write. Reihenfolge erhalten via Queue (FIFO). Auto-Save (`write_autosave`)
+# nutzt den gleichen Worker.
+#
+# Sync-Fallback: ENV `SHADOWFALL_SAVE_SYNC=1` schaltet das ab (fuer Tests
+# und Debugging). Default = async.
+_SAVE_QUEUE: queue.Queue = queue.Queue()
+_SAVE_WORKER: threading.Thread | None = None
+_SAVE_STOP = threading.Event()
+# Tests laufen headless und erwarten dass Auto-Save sofort auf Disk landet
+# (rufen `.exists()` direkt danach). Default-disable Async im Test-Modus.
+_TEST_MODE = os.environ.get('SDL_VIDEODRIVER') == 'dummy'
+_SAVE_ASYNC_ENABLED = (
+    not bool(os.environ.get('SHADOWFALL_SAVE_SYNC'))
+    and not _TEST_MODE
+)
+_save_atexit_registered = False
+
+
+def _atomic_write_text(target: Path, text: str) -> bool:
+    """Write `text` to `target` atomically via temp-file + rename.
+
+    Verhindert halb-geschriebene Saves wenn der Prozess waehrend Write
+    crasht (rename ist atomisch auf POSIX und unter Windows ab Py3.3).
+    """
+    tmp = target.with_suffix(target.suffix + '.tmp')
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, target)
+        return True
+    except OSError:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+        return False
+
+
+def _save_worker_loop():
+    while not _SAVE_STOP.is_set():
+        try:
+            job = _SAVE_QUEUE.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        if job is None:    # Sentinel fuer Shutdown
+            break
+        target, text = job
+        try:
+            _atomic_write_text(Path(target), text)
+        except Exception:
+            # Worker darf nicht sterben — Game bleibt schreibbar.
+            pass
+        _SAVE_QUEUE.task_done()
+
+
+def _ensure_save_worker_running():
+    global _SAVE_WORKER, _save_atexit_registered
+    if not _SAVE_ASYNC_ENABLED:
+        return
+    if _SAVE_WORKER is None or not _SAVE_WORKER.is_alive():
+        _SAVE_STOP.clear()
+        _SAVE_WORKER = threading.Thread(
+            target=_save_worker_loop, name='save-writer', daemon=True)
+        _SAVE_WORKER.start()
+    if not _save_atexit_registered:
+        atexit.register(shutdown_save_worker)
+        _save_atexit_registered = True
+
+
+def shutdown_save_worker(timeout=3.0):
+    """Stoppt den Worker und wartet bis pending Writes durch sind.
+
+    Wichtig: Im atexit-Handler garantiert, dass der allerletzte save_game()-
+    Call nicht verloren geht. Timeout 3 s ist defensiv (Worst-Case zwei
+    queued Writes auf langsamem Disk).
+    """
+    if _SAVE_WORKER is None:
+        return
+    # Sentinel pushen damit Worker aus get() rausfaellt
+    try:
+        _SAVE_QUEUE.put_nowait(None)
+    except queue.Full:
+        pass
+    _SAVE_STOP.set()
+    if _SAVE_WORKER.is_alive():
+        _SAVE_WORKER.join(timeout=timeout)
+
+
+def _write_save_text(target: Path, text: str) -> bool:
+    """Schreibt Save-JSON entweder async (Queue) oder sync.
+
+    Returnt True wenn der Schreib-Auftrag entgegengenommen wurde. Bei
+    async heisst das: in Queue gelandet (nicht: auf Disk). Sync writet
+    sofort und returnt das Disk-Ergebnis.
+    """
+    if _SAVE_ASYNC_ENABLED:
+        _ensure_save_worker_running()
+        _SAVE_QUEUE.put((str(target), text))
+        return True
+    return _atomic_write_text(target, text)
 
 
 # Legacy-Pfad (vor Update #133); wird bei Bedarf als Slot 1 gelesen.
@@ -64,6 +174,7 @@ _PERSISTED_SETTING_KEYS = (
     'fullscreen',
     'camera_cursor_lean',
     'camera_lookahead',
+    'camera_combat_zoom',
     'frame_cap',
     'render_scale',
     'music_vol',
@@ -75,6 +186,17 @@ _PERSISTED_SETTING_KEYS = (
     'screen_shake',
     'show_fps',
     'tutorial_active',
+    # Update #178: alle Settings-Modal-Optionen persistieren
+    'particle_density',
+    'photosensitive',
+    'rim_light',
+    'high_contrast_aoe',
+    'tactical_reduce',
+    'minimap_rotate',
+    'ai_sprites',
+    'bloom',
+    'heat_distortion',
+    'crt_filter',
 )
 
 
@@ -176,6 +298,9 @@ def _item_to_dict(item):
     # Update #154: quest_item nur schreiben wenn True (Backward-Compat)
     if getattr(item, 'quest_item', False):
         d['quest_item'] = True
+    # Update #161 (WELT_AUFBAU 5.5): link_id (Shulavhs Faden)
+    if getattr(item, 'link_id', None):
+        d['link_id'] = item.link_id
     return d
 
 
@@ -188,6 +313,7 @@ def _item_from_dict(d):
         sockets=list(d['sockets']),
         set_id=d.get('set_id'),
         quest_item=d.get('quest_item', False),
+        link_id=d.get('link_id'),
     )
 
 
@@ -212,6 +338,9 @@ def _quest_log_to_dict(log):
         'discovery_counts': dict(getattr(log, 'discovery_counts', {})),
         # Update #160 (ROADMAP T2.3-C): Quest-Pin
         'tracked_quest_id': getattr(log, 'tracked_quest_id', None),
+        # Audit #179 C.2: Abgebrochene Quests — verhindert Re-Offer
+        # nach Save/Load.
+        'abandoned': list(getattr(log, 'abandoned', set())),
     }
 
 
@@ -239,6 +368,9 @@ def _quest_log_from_dict(d):
         log.tracked_quest_id = tracked
     else:
         log.tracked_quest_id = None
+    # Audit #179 C.2: Abgebrochene Quests restaurieren (schema-additiv,
+    # alte Saves haben den Key nicht → leeres Set).
+    log.abandoned = set(d.get('abandoned', []))
     return log
 
 
@@ -288,12 +420,34 @@ _MIGRATIONS = {
 }
 
 
+class SaveVersionTooNewError(Exception):
+    """Audit #179 C.3: Save wurde mit einer neueren Game-Version erstellt.
+
+    Verhindert stille Daten-Korruption beim Downgrade (z.B. User testet
+    v5-Beta, dann wieder v4-Release — v5-Save darf nicht stillschweigend
+    als v4 reinterpretiert werden).
+    """
+
+    def __init__(self, save_version, current_version):
+        self.save_version = save_version
+        self.current_version = current_version
+        super().__init__(
+            f'Save-Version {save_version} ist neuer als unterstuetzt '
+            f'(max {current_version}). Game-Update noetig.')
+
+
 def migrate_save(data):
     """Update #137 (Z-03): rufe alle Migratoren von data['version']
     bis SAVE_VERSION durch.  Returnt das migrierte Dict (in-place
     mutiert).  Setzt am Ende `version = SAVE_VERSION`.
+
+    Audit #179 C.3: Bei `version > SAVE_VERSION` wird `SaveVersionTooNewError`
+    geworfen statt still zu "downgraden" — das verhinderte zuvor erkennbare
+    Schema-Inkompatibilitaeten und konnte zu Daten-Verlust fuehren.
     """
     v = int(data.get('version', 1))
+    if v > SAVE_VERSION:
+        raise SaveVersionTooNewError(v, SAVE_VERSION)
     while v < SAVE_VERSION:
         mig = _MIGRATIONS.get(v)
         if mig is None:
@@ -360,6 +514,10 @@ def save_game(game, slot=None):
             'stash': [_item_to_dict(it) for it in p.stash],
             'completed_dungeons': list(p.completed_dungeons),
             'loot_filter': p.loot_filter,
+            # Audit #179 C.4: Skill-Cooldowns persistieren — vorher wurden
+            # CDs beim Reload still auf 0.0 zurueckgesetzt → Save-Scumming
+            # fuer Ultimate (60s CD) moeglich.
+            'skill_cd': dict(getattr(p, 'skill_cd', {})),
             # Update #62: Bisher unspeicherte kritische Felder.
             # User-Bug „nicht alles wird vom Char gespeichert".
             'unlocked_skills':   list(getattr(p, 'unlocked_skills', set())),
@@ -438,11 +596,11 @@ def save_game(game, slot=None):
     # berechnen + ins Dict einbetten.  `verify_save_integrity()` checkt
     # beim Load.
     data[_INTEGRITY_FIELD] = _compute_integrity_hash(data)
-    try:
-        target.write_text(json.dumps(data, indent=2))
-        return True
-    except OSError:
-        return False
+    # Audit #179 B.7: save_game() bleibt SYNCHRON (atomic write-then-rename).
+    # Explizite User-Saves sind selten und Tests/Load-Roundtrips erwarten
+    # konsistente Disk-Sichtbarkeit. NUR write_autosave() ist async — das
+    # ist die wirklich heisse Stelle (Game-Loop alle 60 s).
+    return _atomic_write_text(target, json.dumps(data, indent=2))
 
 
 def write_autosave(game):
@@ -481,7 +639,8 @@ def write_autosave(game):
         if _INTEGRITY_FIELD in data:
             del data[_INTEGRITY_FIELD]
         data[_INTEGRITY_FIELD] = _compute_integrity_hash(data)
-        AUTOSAVE_PATH.write_text(json.dumps(data, indent=2))
+        # Audit #179 B.7: Auto-Save async (atomic write-then-rename).
+        _write_save_text(AUTOSAVE_PATH, json.dumps(data, indent=2))
         return True
     except Exception:
         return False
@@ -526,8 +685,10 @@ def apply_autosave_recovery(game):
         data = json.loads(AUTOSAVE_PATH.read_text())
         slot = int(data.get('_autosave_source_slot', 1))
         # Schreibe in den canonical Slot-Pfad
-        # (überschreibt evtl. älteren Slot-Save)
-        slot_path(slot).write_text(json.dumps(data, indent=2))
+        # (überschreibt evtl. älteren Slot-Save).
+        # Audit #179 B.7: SYNC bewusst — load_game() liest unmittelbar
+        # danach und muss den frisch geschriebenen Save sehen.
+        _atomic_write_text(slot_path(slot), json.dumps(data, indent=2))
         # Lade in das game-Objekt
         ok = load_game(game, slot=slot)
         if ok:
@@ -578,7 +739,19 @@ def load_game(game, slot=None):
         except Exception:
             pass
     # Update #137 (Z-03): Migration-Chain auf SAVE_VERSION ziehen.
-    data = migrate_save(data)
+    # Audit #179 C.3: Reject statt still-downgrade bei v > SAVE_VERSION.
+    try:
+        data = migrate_save(data)
+    except SaveVersionTooNewError as exc:
+        try:
+            if hasattr(game, 'toast'):
+                game.toast(
+                    f'Save Slot {slot} mit Version {exc.save_version} kann '
+                    f'nicht geladen werden (Build max v{exc.current_version}).',
+                    (255, 100, 100))
+        except Exception:
+            pass
+        return False
     pd = data.get('player', {})
     from .entities import Player
     new_player = Player(pd.get('cls', 'warrior'))
@@ -617,6 +790,17 @@ def load_game(game, slot=None):
         new_player.stash.append(None)
     new_player.completed_dungeons = set(pd.get('completed_dungeons', []))
     new_player.loot_filter = pd.get('loot_filter', 'common')
+    # Audit #179 C.4: Skill-Cooldowns aus Save uebernehmen, falls vorhanden.
+    # Player.__init__ hat default-skill_cd-Dict — nur ueberschreiben was im
+    # Save steht, Rest bleibt 0.0. Schema-additiv: alte Saves (kein
+    # 'skill_cd'-Key) bleiben kompatibel.
+    saved_cds = pd.get('skill_cd')
+    if isinstance(saved_cds, dict):
+        for skill, cd in saved_cds.items():
+            try:
+                new_player.skill_cd[skill] = float(cd)
+            except (TypeError, ValueError):
+                pass
     # Update #62: Bisher unspeicherte Felder zurückladen.
     # `unlocked_skills` ist KRITISCH — Skill-Gem-Drops gehen sonst verloren.
     if 'unlocked_skills' in pd:

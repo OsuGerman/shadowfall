@@ -63,6 +63,11 @@ DEFAULT_MODELS = {
     #    seamless POE2-Material-Textures.
     'tile':       'model_ySKF8HKAzhQneW5ZQF6w3DDk',  # Hand-Painted Textures
     'item_icon':  'model_FHNbZENXLkay9bUNwMxo8e77',  # Fantasy Blades
+    # Prio-Pass HOCH (VELGRAD_SPRITE_BIBEL §XI/§XII/§XIII):
+    #   decor      → El Diablo (gothic prop aesthetic, lore-aligned with mobs)
+    #   status_icon→ Fantasy Blades (small painterly icon style)
+    'decor':       'model_a2dvNsgst7PCnpiucRY7bEHW',  # El Diablo
+    'status_icon': 'model_FHNbZENXLkay9bUNwMxo8e77',  # Fantasy Blades
 }
 
 
@@ -258,7 +263,7 @@ SPRITE_CATEGORIES = {
         out_dir='items',
         size=(128, 128),
         steps=20,
-        targets=[],  # Wird aus VELGRAD_ITEMS_UNIQUE_BIBEL.md geparst
+        targets=[],  # Wird aus VELGRAD_SPRITE_BIBEL.md §XII (U1..U50) geparst
     ),
     'tile': dict(
         out_dir='tiles',
@@ -271,6 +276,23 @@ SPRITE_CATEGORIES = {
             # Akt 6/7 Biomes (neu)
             'wound_salt', 'wound_ash', 'wound_hollow', 'hollow_word',
         ],
+    ),
+    # Prio-Pass HOCH (VELGRAD_SPRITE_BIBEL §XI) — 17 Decor-Props
+    'decor': dict(
+        out_dir='decor',
+        size=(256, 256),
+        steps=25,
+        targets=[],  # Wird aus VELGRAD_SPRITE_BIBEL.md §XI (D1..D17) geparst
+    ),
+    # Prio-Pass HOCH (VELGRAD_SPRITE_BIBEL §XIII) — 15 Status-Effect-Icons
+    # Note: Scenario.gg verlangt min. 128px width — wir generieren 128×128,
+    # die Engine skaliert zur Laufzeit auf 12×12 (smoothscale-Cache in
+    # sf/sprites.py._STATUS_ICON_SCALED).
+    'status_icon': dict(
+        out_dir='status',
+        size=(128, 128),
+        steps=20,
+        targets=[],  # Wird aus VELGRAD_SPRITE_BIBEL.md §XIII (S1..S15) geparst
     ),
 }
 

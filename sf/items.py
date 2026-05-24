@@ -42,10 +42,17 @@ class Item:
                  # Lore-Anker: Mahnmal-Marke VII, Tintendolch-von-Im-Nesh,
                  # Helst-Pakt-Stein u.a. — narrative Anker dürfen nicht
                  # versehentlich vernichtet werden.
-                 'quest_item')
+                 'quest_item',
+                 # Update #161 (WELT_AUFBAU 5.5, ROADMAP Engine-Lücke
+                 # „Set-Linking"): „Shulavhs Faden" — bindet zwei
+                 # Items zu einem Paar.  Zwei Items mit gleichem
+                 # `link_id` und beide equipped geben einen Set-Bonus
+                 # (verwaltet via `aggregate_stats`).
+                 'link_id')
 
     def __init__(self, slot, rarity, name, affixes, ilvl=1, sockets=None,
-                 set_id=None, music_mute=None, quest_item=False):
+                 set_id=None, music_mute=None, quest_item=False,
+                 link_id=None):
         self.slot = slot
         self.rarity = rarity
         self.name = name
@@ -59,6 +66,7 @@ class Item:
         # Multiplikator auf Music-Volume während Item equipped.
         self.music_mute = music_mute
         self.quest_item = bool(quest_item)
+        self.link_id = link_id   # None oder str (Shulavh-Faden-Paar-ID)
 
     def display_lines(self):
         """Mehrzeilige Tooltip-Beschreibung."""
@@ -92,6 +100,11 @@ class Item:
             lines.append(
                 ('Quest-Item — kann nicht verkauft oder zerlegt werden.',
                  'dim'))
+        # Update #161 (WELT_AUFBAU 5.5): Shulavh-Faden Link-Hint
+        if getattr(self, 'link_id', None):
+            lines.append(
+                ('🪡 Shulavhs Faden — gebunden an ein zweites Item.',
+                 'affix'))
         return lines
 
     def gem_affixes(self):
@@ -231,4 +244,87 @@ def aggregate_stats(player):
             target = ASPEKT_AFFIX_FOLD[asp_key]
             if target in out:
                 out[target] += out[asp_key]
+    # Update #161 (WELT_AUFBAU 5.5): Shulavh-Faden Set-Linking.
+    # Zähle equipped Items pro link_id; sobald 2 Items mit derselben
+    # link_id getragen werden, greift ein Faden-Bonus: +15% dmg_pct
+    # +10% cdr (Shulavhs Faden bindet Aktion + Atem).
+    link_counts = {}
+    for item in player.equipment.values():
+        if item is None:
+            continue
+        lid = getattr(item, 'link_id', None)
+        if lid:
+            link_counts[lid] = link_counts.get(lid, 0) + 1
+    paired_links = sum(1 for c in link_counts.values() if c >= 2)
+    if paired_links:
+        # Pro getragenes Faden-Paar ein Bonus-Set (stapelbar)
+        out['dmg_pct'] += 15 * paired_links
+        out['cdr'] += 10 * paired_links
     return out
+
+
+# ============================================================
+# Set-Linking API (Shulavhs Faden, WELT_AUFBAU 5.5)
+# ============================================================
+def link_items(item_a, item_b):
+    """Update #161: Bindet zwei Items zu einem Shulavh-Faden-Paar.
+
+    Generiert eine eindeutige `link_id` (4-Byte hex) und setzt sie auf
+    beiden Items.  Returnt die link_id oder None bei Fehler.
+
+    Regeln:
+      - Beide Items müssen existieren und Item-Instanzen sein
+      - Items dürfen vorher nicht bereits gelinkt sein (würde sonst
+        einen vorher etablierten Pair-Partner ohne Update zurücklassen)
+      - Selbstreferenz nicht erlaubt (a is b)
+    """
+    if item_a is None or item_b is None:
+        return None
+    if item_a is item_b:
+        return None
+    if getattr(item_a, 'link_id', None) or getattr(item_b, 'link_id', None):
+        return None
+    import secrets
+    lid = 'shulavh_' + secrets.token_hex(4)
+    item_a.link_id = lid
+    item_b.link_id = lid
+    return lid
+
+
+def unlink_item(item, all_items_iter=None):
+    """Update #161: Löst die Faden-Bindung am Item.
+
+    Wenn `all_items_iter` übergeben wird (z.B. iter über inventory +
+    equipment), wird ALLE Items mit derselben link_id ent-linked — so
+    bleibt kein „orphan partner" zurück.  Sonst nur das eine Item.
+
+    Returnt die ehemalige link_id oder None.
+    """
+    if item is None:
+        return None
+    lid = getattr(item, 'link_id', None)
+    if not lid:
+        return None
+    item.link_id = None
+    if all_items_iter is not None:
+        for other in all_items_iter:
+            if other is None or other is item:
+                continue
+            if getattr(other, 'link_id', None) == lid:
+                other.link_id = None
+    return lid
+
+
+def linked_partner(item, all_items_iter):
+    """Returnt das Partner-Item desselben Faden-Paares oder None."""
+    if item is None:
+        return None
+    lid = getattr(item, 'link_id', None)
+    if not lid:
+        return None
+    for other in all_items_iter:
+        if other is None or other is item:
+            continue
+        if getattr(other, 'link_id', None) == lid:
+            return other
+    return None

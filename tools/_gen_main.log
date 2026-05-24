@@ -1,0 +1,158 @@
+============================================================
+SPRITE-GEN — START
+============================================================
+  Targets im Manifest:  127
+  Pending (Filter):      17
+  Variants pro Target:    1
+  Total API-Calls:       17
+  Plan-Budget/Monat:   5000 Bilder (0.3 %)
+  Pro Kategorie:
+    decor         17 targets
+============================================================
+  [  1/17] decor      mahnmal_stele                    inf_id=job_srnYoz… ok (9.6s)
+  [  2/17] decor      pier_post                        inf_id=job_QkJq5Q… ok (6.2s)
+  [  3/17] decor      anvil                            inf_id=job_PgCpxX… ok (6.4s)
+  [  4/17] decor      brassweir_barrel                 inf_id=job_EygXpn… ok (6.1s)
+  [  5/17] decor      mahnmal_pyre                     inf_id=job_djRrDb… ok (6.3s)
+  [  6/17] decor      shulavh_loom                     inf_id=job_4UzKhG… ok (6.2s)
+  [  7/17] decor      echo_glass_shard                 inf_id=job_dZ3DmR… ok (6.1s)
+  [  8/17] decor      salt_spire                       inf_id=job_Mdb4S4… ok (6.2s)
+  [  9/17] decor      velharn_mirror                   inf_id=job_JRb6Ww… ok (6.2s)
+  [ 10/17] decor      bonewitch_skull_altar            inf_id=job_mgFFAY… ok (6.4s)
+  [ 11/17] decor      caravan_wagon                    inf_id=job_37was9… ok (8.9s)
+  [ 12/17] decor      mahnmal_chain                    inf_id=job_UAZx3b… ok (6.2s)
+  [ 13/17] decor      seedbearer_torch                 inf_id=job_GzeYmL… ok (6.2s)
+  [ 14/17] decor      drowned_idol                     inf_id=job_rxQwSV… ok (9.6s)
+  [ 15/17] decor      inquisitor_pyre_stake            inf_id=job_7U8PyL… ok (6.2s)
+  [ 16/17] decor      monk_meditation_bell             inf_id=job_tQBz7V… ok (6.2s)
+  [ 17/17] decor      forgotten_obelisk                inf_id=job_vbxTzA… ok (32.3s)
+============================================================
+  Done:   17
+  Failed: 0
+  Output: C:\Users\Circleguard\Downloads\hier\assets\sprites
+  Registry: C:\Users\Circleguard\Downloads\hier\sf\sprite_registry.py
+============================================================
+============================================================
+SPRITE-GEN — START
+============================================================
+  Targets im Manifest:  127
+  Pending (Filter):      50
+  Variants pro Target:    1
+  Total API-Calls:       50
+  Plan-Budget/Monat:   5000 Bilder (1.0 %)
+  Pro Kategorie:
+    item_icon     50 targets
+============================================================
+  [  1/50] item_icon  kharns_geduld                    inf_id=job_CWhCJo… ok (12.9s)
+  [  2/50] item_icon  aschen_ankunft                   inf_id=job_rpwMFx… ok (6.2s)
+  [  3/50] item_icon  letzter_hammer_von_velhost       inf_id=job_2feZ2b… ok (6.1s)
+  [  4/50] item_icon  der_schweigende                  inf_id=job_wqn4K6… ok (6.2s)
+  [  5/50] item_icon  wachturm_faust                   inf_id=job_coGAh6… ok (6.1s)
+  [  6/50] item_icon  echo_klinge                      inf_id=job_qkGPRT… ok (6.3s)
+  [  7/50] item_icon  verbrannte_treue                 inf_id=job_TsGow3… ok (6.2s)
+  [  8/50] item_icon  senatorin_stahl                  inf_id=job_cQH4VF… ok (6.4s)
+  [  9/50] item_icon  der_erste_eid                    inf_id=job_xqAMoo… ok (6.3s)
+  [ 10/50] item_icon  wurzelschlitzer                  inf_id=job_LxqmDZ… ok (6.3s)
+  [ 11/50] item_icon  saatkind_beil                    inf_id=job_gJj9Lb… ok (19.9s)
+  [ 12/50] item_icon  brassweir_schaedelbrecher        inf_id=job_pdsT2h… ok (6.6s)
+  [ 13/50] item_icon  vossharils_bruder                submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 14/50] item_icon  hohle_zunge                      submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 15/50] item_icon  tintendolch_von_im_nesh          submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 16/50] item_icon  der_zweite_atem                  submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 17/50] item_icon  tameris_suchender                submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 18/50] item_icon  zhar_eth_mondbinder              submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 19/50] item_icon  faden_spitze                     submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 20/50] item_icon  der_sechzehnte                   submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 21/50] item_icon  sturmspeer_von_veh               submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 22/50] item_icon  drei_pagoden                     submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 23/50] item_icon  der_atemzaehler                  submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 24/50] item_icon  schlafsplitter                   submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 25/50] item_icon  bambus_des_schweigens            submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 26/50] item_icon  letzter_schritt                  submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 27/50] item_icon  saatwaechter                     submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 28/50] item_icon  erinnerungs_bogen_von_saath      submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 29/50] item_icon  tannenbein                       submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 30/50] item_icon  der_unbeschriebene               submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 31/50] item_icon  mahnmal_marke_vii                submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 32/50] item_icon  korvens_wahrheit                 submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 33/50] item_icon  der_letzte_hauch                 submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 34/50] item_icon  verraten_sieben                  submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 35/50] item_icon  eisenfaust_repetier              submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 36/50] item_icon  funken_fluch                     submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 37/50] item_icon  asche_aspekt                     submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 38/50] item_icon  tintenfeder_von_im_nesh          submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 39/50] item_icon  bischof_schwur                   submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 40/50] item_icon  spirit_anker                     submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 41/50] item_icon  hohlauges_erbe                   submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 42/50] item_icon  sieben_atem_stab                 submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 43/50] item_icon  glasgoldener_zepter_stab         submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 44/50] item_icon  wurzelmark_stuetze               submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 45/50] item_icon  vergessens_brand                 submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 46/50] item_icon  drei_tier_anhaenger              submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 47/50] item_icon  baerenhirten_kette               submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 48/50] item_icon  wolfsmond_amulett                submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 49/50] item_icon  kharns_traene                    submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+  [ 50/50] item_icon  der_achte                        submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+============================================================
+  Done:   12
+  Failed: 38
+  Output: C:\Users\Circleguard\Downloads\hier\assets\sprites
+  Registry: C:\Users\Circleguard\Downloads\hier\sf\sprite_registry.py
+============================================================
+============================================================
+SPRITE-GEN — START
+============================================================
+  Targets im Manifest:  127
+  Pending (Filter):       1
+  Variants pro Target:    1
+  Total API-Calls:        1
+  Plan-Budget/Monat:   5000 Bilder (0.0 %)
+  Pro Kategorie:
+    boss_plate     1 targets
+============================================================
+  [  1/1] boss_plate nicht_gott                       submit HTTP 429: {'error': '{"reason":"You have reached your plan\'s limit. Please upgrade your plan to continue using this feature.","na
+FAIL
+============================================================
+  Done:   0
+  Failed: 1
+  Output: C:\Users\Circleguard\Downloads\hier\assets\sprites
+  Registry: C:\Users\Circleguard\Downloads\hier\sf\sprite_registry.py
+============================================================

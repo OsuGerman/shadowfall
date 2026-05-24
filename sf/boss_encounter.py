@@ -608,6 +608,27 @@ def _trigger_phase(game, boss, phase, enc):
     # Speed/Damage-Buff pro Phase
     boss.speed *= 1.15
     boss.att_cd *= 0.85
+    # O-21 (Update #168): Boss-Phase-Transformation-Anim.
+    # 0.8 s Roar mit Scale-Pulse + Aspekt-Color-Aura-Burst + extra
+    # Camera-Shake + Slow-Mo-Beat 0.35.  Visualisiert das Phase-Tick.
+    boss._phase_transform_left = 0.8
+    boss._phase_transform_color = color
+    boss.phase_idx = phase - 1   # 0-indexed fuer Lighting U-08
+    try:
+        game.slow_mo_left = max(getattr(game, 'slow_mo_left', 0.0), 0.35)
+        game.shake = max(getattr(game, 'shake', 0), 18)
+        # Aura-Burst: 36 Particles radial, life 1.0, gravity neg.
+        import math as _m
+        for k in range(36):
+            ang = _m.tau * k / 36
+            vx = _m.cos(ang) * 280
+            vy = _m.sin(ang) * 280
+            game.particles_push(
+                boss.pos.x, boss.pos.y,
+                vx, vy,
+                color, 1.0, 7, gravity=-30)
+    except Exception:
+        pass
 
     # Phase 3: Adds spawnen — Boss-Kennung bestimmt den Add-Typ.
     # Update #110: bevorzugt `spawn_adds_key`/`spawn_adds_count` aus
