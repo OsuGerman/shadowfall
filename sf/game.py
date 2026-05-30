@@ -25,9 +25,26 @@ from .inventory import InventoryUI
 from .crafting import CraftingUI
 from .shop import ShopUI
 from .stash import StashUI
-from .ui import TitleUI, SkillTreeUI, RuneChoiceUI
+from .ui import TitleUI, SkillTreeUI, RuneChoiceUI, AtlasUI
 from .spatial_grid import SpatialGrid
 from . import profiler as _profiler_mod
+
+
+# Update #194: vsync-Setting muss VOR self.settings-Init geladen werden,
+# weil display.set_mode der erste Schritt im Constructor ist.
+def _preload_vsync_setting() -> bool:
+    """Liest vsync-Flag aus dem Settings-File (display.set_mode wird vor
+    self.settings-Init aufgerufen, deshalb direkter File-Load).
+    Update #195: Default False — damit der 360er-Frame-Cap greifen kann
+    (vsync wuerde sonst bei der Monitor-Refresh-Rate kappen).  Bestehende
+    Saves behalten ihren gespeicherten Wert.
+    """
+    try:
+        from . import save as _save_mod
+        s = _save_mod.load_settings()
+        return bool(s.get('vsync', False))
+    except Exception:
+        return False
 
 
 # ============================================================
@@ -50,9 +67,13 @@ class Game:
             try:
                 from . import gl_post as _glp
                 if _glp.is_available():
+                    # Update #194: vsync pre-load aus Save-File (settings
+                    # noch nicht da, deshalb direkt save.load_settings()).
+                    # Default False = unlocked, User cycelt im ESC-Menue.
+                    _vs = 1 if _preload_vsync_setting() else 0
                     self.screen = pygame.display.set_mode(
                         (SCREEN_W, SCREEN_H),
-                        pygame.OPENGL | pygame.DOUBLEBUF, vsync=1)
+                        pygame.OPENGL | pygame.DOUBLEBUF, vsync=_vs)
                     if _glp.install(SCREEN_W, SCREEN_H):
                         self.gl_post = _glp.get_active()
                         # Off-Screen-Render-Surface fuer alle Game-Draws
@@ -74,8 +95,9 @@ class Game:
             # Logische Welt-Größe bleibt SCREEN_W × SCREEN_H (1600×900) —
             # nur die Ausgabe ist crisp.
             try:
+                _vs = 1 if _preload_vsync_setting() else 0
                 self.screen = pygame.display.set_mode(
-                    (SCREEN_W, SCREEN_H), pygame.SCALED, vsync=1)
+                    (SCREEN_W, SCREEN_H), pygame.SCALED, vsync=_vs)
             except (pygame.error, TypeError):
                 # Fallback wenn SCALED nicht supported (sehr alte SDL)
                 self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
@@ -127,9 +149,11 @@ class Game:
             'cormorantgaramond,ebgaramond,georgia,times', bold=False)
         if display_font:
             self.font_big   = pygame.font.Font(display_font, 72)
+            self.font_title = pygame.font.Font(display_font, 48)
             self.font_med   = pygame.font.Font(display_font, 24)
         else:
             self.font_big   = pygame.font.SysFont('georgia,times', 72, bold=True)
+            self.font_title = pygame.font.SysFont('georgia,times', 48, bold=True)
             self.font_med   = pygame.font.SysFont('georgia,times', 26, bold=True)
         if body_font:
             self.font_small = pygame.font.Font(body_font, 18)
@@ -143,6 +167,8 @@ class Game:
         self.title_ui = TitleUI(self.font_big, self.font_med, self.font_small)
         self.inv_ui = InventoryUI(self.font_small, self.font_med, self.font_dmg)
         self.tree_ui = SkillTreeUI(self.font_med, self.font_small)
+        # Update #184: POE2-Atlas — neue View ersetzt tree_ui beim modal
+        self.atlas_ui = AtlasUI(self.font_med, self.font_small)
         self.craft_ui = CraftingUI(self.font_small, self.font_med, self.font_dmg)
         self.rune_ui = RuneChoiceUI(self.font_med, self.font_small)
         self.shop_ui = ShopUI(self.font_small, self.font_med)
@@ -189,6 +215,13 @@ class Game:
             pass
         self._vignette = ui_mod.make_vignette()
         self.lighting = lighting.LightingSystem(ambient_alpha=130)
+        # Update #201 (FPS-Optimierung): Cache fuer fullscreen-Overlay-
+        # Surfaces. Vorher allokierte _draw_world bis zu 9 Stueck pro
+        # Frame (damage_flash, lowhp-vignette, boss_flash, time_freeze,
+        # sandstorm, icestorm, ashrain, miasma, cosmic_pulse,
+        # town_color_grading) — jeweils ~5.76 MB SRCALPHA. Heap-Churn
+        # killte Combat-FPS. Dict<key, Surface> reused alle.
+        self._overlay_surf_cache = {}
 
         self.running = True
         self.state = 'title'
@@ -386,9 +419,19 @@ class Game:
             # `ai_sprites` Default jetzt False — Settings-Toggle bleibt als
             # Opt-In falls jemand experimentell wieder PNGs einliefert.
             'ai_sprites': False,
-            # P-05 (Update #52): Frame-Cap (30/60/120/144/0=unlimited).
-            # 60 ist der Lore-/Briefing-Default; 0 = uncapped für Speedrunner.
-            'frame_cap': 60,
+            # P-05 (Update #52): Frame-Cap (30/60/120/144/240/360/0=unlim).
+            # Update #202 (User-Request "FPS standardmaessig unlocked"):
+            # Default jetzt 0 = komplett ungekappt.  Vorher 360.
+            # WICHTIG: vsync muss AUS sein damit >Refresh-Rate erreicht wird
+            # (vsync kappt sonst bei der Monitor-Frequenz, egal was hier
+            # steht) — deswegen unten vsync-Default ebenfalls auf False.
+            'frame_cap': 0,
+            # Update #194/#195: VSync on/off — wenn off, FPS bis frame_cap
+            # (kein Refresh-Rate-Kappen).  Default jetzt False damit der
+            # 360er-Cap ueberhaupt greifen kann.  Bei Screen-Tearing:
+            # Settings → ANZEIGE → VSync wieder an.  Take-effect bei
+            # naechstem Start (display.set_mode laeuft im Constructor).
+            'vsync': False,
             # P-08 (Update #61): Colorblind-Ailment-Farben (kein rot↔grün-
             # Konflikt — Poison wird lila, Burn orange, Frost cyan).
             'colorblind_ailments': False,
@@ -508,7 +551,7 @@ class Game:
         self.camera_shake_offset = (0, 0)
 
     def start_game(self, mode='adventure', load=False, slot=None,
-                    hardcore=False):
+                    hardcore=False, persist_new=False):
         """Startet ein neues Spiel oder lädt ein Save.
 
         Update #133 (Z-01/Z-02):
@@ -547,9 +590,31 @@ class Game:
                 self.toast(short, (215, 200, 175))
         except Exception:
             pass
+        # Update #194: Breath-SFX-Varianten im Hintergrund vorgenerieren,
+        # damit der erste Atemzug im Combat keinen Main-Thread-Hitch
+        # ausloest (Synthese ~370ms/Variant). Nicht-blockierend.
+        try:
+            snd.prewarm_breath_cache()
+        except Exception:
+            pass
         # Update #121: Survival-Mode entfernt; alle Spiele starten als
         # Adventure (Brassweir → Akt-Welten via Dungeon-/Outpost-Portale).
         self.enter_town()
+        # User-Bug („neue Chars verschwinden, nur Krieger bleibt"): Ein
+        # frisch erstelltes Spiel wurde bisher erst beim ersten Dungeon-
+        # Roundtrip / Autosave auf die Platte geschrieben — wer vorher
+        # beendete, dessen Slot blieb leer (und Slot 1 fiel auf den alten
+        # Legacy-Save zurueck). Neues Spiel jetzt sofort in seinen Slot
+        # persistieren — aber NUR vom echten Neue-Char-Einstieg aus
+        # (`persist_new`), nicht wenn start_game als Test-/Init-Helper
+        # aufgerufen und danach ein Save drueber-geladen wird.
+        if not load and persist_new:
+            try:
+                # Slot explizit durchreichen (nicht nur via active_slot —
+                # so landet der Save garantiert im gewaehlten Slot).
+                save_mod.save_game(self, slot=slot)
+            except Exception:
+                pass
 
     # ---------- Area-Wechsel ----------
     def enter_town(self):
@@ -568,11 +633,12 @@ class Game:
         # Update #36: ein kompakter Tutorial-Toast statt 3 gestapelter.
         # Update #37: nur Erstbesuch, kürzere Lifetime (kein Carry-Over
         # in den Dungeon).
+        # Update #201: Controls-Hint-Toast entfernt (Clutter-Reduktion,
+        # User „zu viel gleichzeitig") — die Steuerung steht bereits in der
+        # persistenten Hinweiszeile unten. _seen_town bleibt fuer andere
+        # Erstbesuch-Logik gesetzt.
         if not getattr(self, '_seen_town', False):
             self._seen_town = True
-            self.toast_queue.append([
-                'H: Hilfe  ·  F: Sprechen  ·  K: Talente  ·  O: Memorial',
-                (220, 200, 140), 5.0])
 
         # Akt-1-Story-Intro (User-Wahl Update #22: Salzwunde-Quest).
         # Lore-Bibel 10.1: Spieler strandet in Brassweir, Korven Vor
@@ -679,7 +745,12 @@ class Game:
         from .entities import OutpostPortal as _OPortal
         from .entities import Decor as _DecorCls
         self.outpost_portals = []
-        unlocked = set(_op.unlocked_outposts(self.player))
+        # Update #183 (WELT_AUFBAU §10): quest_log durchreichen damit
+        # Quest-Flag-Gating greift (z.B. akt1_salzwunde completed -> Akt-2-
+        # Outposts entsperren).  Backward-compat: fehlende quest_log -> nur
+        # Dungeon-Count-Heuristik wie vorher.
+        unlocked = set(_op.unlocked_outposts(
+            self.player, quest_log=getattr(self, 'quest_log', None)))
         # Update #180 (User-Request): NUR freigeschaltete Outposts werden
         # gerendert.  Vorher (#143) waren auch locked-Portale mit 🔒-Label
         # sichtbar — gab visuelle UI-Last + Banner-Kollision bei 7+ Portalen
@@ -1314,6 +1385,9 @@ class Game:
             elif ev.type == pygame.MOUSEBUTTONDOWN:
                 if ev.button == 1:
                     self._handle_mousedown(*ev.pos)
+                elif ev.button == 2 and self.modal == 'skilltree':
+                    # Update #184: Atlas-UI Middle-Mouse-Pan
+                    self.atlas_ui.begin_drag(*ev.pos)
                 elif ev.button == 3:
                     self._handle_rightclick(*ev.pos)
             elif ev.type == pygame.MOUSEBUTTONUP:
@@ -1326,6 +1400,13 @@ class Game:
                         save_mod.save_settings(self)
                     except Exception:
                         pass
+                elif ev.button == 2 and self.modal == 'skilltree':
+                    # Update #184: Atlas-UI Pan-End
+                    self.atlas_ui.end_drag()
+            elif ev.type == pygame.MOUSEMOTION:
+                # Update #184: Atlas-UI Pan-Drag fortsetzen
+                if self.modal == 'skilltree' and getattr(self.atlas_ui, '_dragging', False):
+                    self.atlas_ui.update_drag(*ev.pos)
             elif ev.type == pygame.MOUSEWHEEL:
                 # Update #58: Fullmap Mouse-Wheel-Zoom (User-Wunsch).
                 # Scroll-Up zoom in, Scroll-Down zoom out.  Andere Modals
@@ -1333,8 +1414,9 @@ class Game:
                 if self.modal == 'fullmap':
                     self._fullmap_wheel_zoom(ev.y)
                 # PLAN H-16 (Update #96): Skill-Tree Mouse-Wheel-Zoom.
+                # Update #184: route auf Atlas-UI
                 elif self.modal == 'skilltree':
-                    self.tree_ui.wheel_zoom(ev.y)
+                    self.atlas_ui.wheel_zoom(ev.y)
             # S-07 (Update #79): Controller-Hot-Plug
             elif ev.type == pygame.JOYDEVICEADDED:
                 self._joy_on_added(ev.device_index)
@@ -1426,7 +1508,7 @@ class Game:
             return
         if self.state == 'title':
             if ev.key in (pygame.K_RETURN, pygame.K_SPACE):
-                self.start_game('adventure')
+                self.start_game('adventure', persist_new=True)
             elif ev.key == pygame.K_LEFT:
                 self._cycle_class(-1)
             elif ev.key == pygame.K_RIGHT:
@@ -1465,8 +1547,15 @@ class Game:
             return
         if ev.key == pygame.K_k:
             self.modal = None if self.modal == 'skilltree' else 'skilltree'
+            # Update #184: Atlas-View beim Oeffnen auf Klassen-Start zentrieren
+            if self.modal == 'skilltree':
+                self.atlas_ui.open(self)
             return
         if ev.key == pygame.K_c:
+            # Update #184: Im Atlas-Modal centriert C auf Klassen-Start.
+            if self.modal == 'skilltree':
+                self.atlas_ui._center_on_start(self)
+                return
             self.modal = None if self.modal == 'crafting' else 'crafting'
             return
         # Update #43: Skill-Rebind-Modus — wenn aktiv, nächster Tastendruck
@@ -1677,23 +1766,105 @@ class Game:
 
     def _toggle_fullscreen(self):
         self.fullscreen = not self.fullscreen
-        if self.fullscreen:
-            self.screen = pygame.display.set_mode(
-                (SCREEN_W, SCREEN_H),
-                pygame.FULLSCREEN | pygame.SCALED, vsync=1)
-        else:
-            # Update #151: Windowed-Mode auch mit SCALED für Sharpness
-            # auf High-DPI-Monitoren.
+        # Update #201: GL-Mode-aware. Vorheriger Bug: in gl_post-Mode
+        # rief der Toggle set_mode(SCALED) ohne OPENGL-Flag auf — das
+        # zerstoerte den GL-Context und naechster gl_post.present()
+        # crashte auf glClearColor (GL_INVALID_OPERATION 1282).
+        # Fix: in GL-Mode immer mit OPENGL|DOUBLEBUF erneuern + GL-
+        # Resources neu installieren (shader/VAO/VBO/textures liegen
+        # zusammen mit dem Context im GPU-Memory und sind dahin).
+        if self.use_gl_post:
+            from . import gl_post as _glp
+            _vs = 1 if self.settings.get('vsync', True) else 0
+            flags = pygame.OPENGL | pygame.DOUBLEBUF
+            if self.fullscreen:
+                flags |= pygame.FULLSCREEN
             try:
+                # Update #201: uninstall VOR set_mode, damit teardown
+                # die Resources im noch lebendigen alten Context
+                # freigeben kann.  Set_mode danach erstellt einen
+                # frischen Context, in dem wir wieder neu installieren.
+                _glp.uninstall()
                 self.screen = pygame.display.set_mode(
-                    (SCREEN_W, SCREEN_H), pygame.SCALED, vsync=1)
+                    (SCREEN_W, SCREEN_H), flags, vsync=_vs)
+                if _glp.install(SCREEN_W, SCREEN_H):
+                    self.gl_post = _glp.get_active()
+                else:
+                    # GL-Re-Init schlug fehl → fallback auf SCALED-Pfad.
+                    self.use_gl_post = False
+                    self.gl_post = None
+                    self._render_surface = None
+                    self.screen = pygame.display.set_mode(
+                        (SCREEN_W, SCREEN_H),
+                        (pygame.FULLSCREEN if self.fullscreen else 0)
+                        | pygame.SCALED, vsync=_vs)
             except (pygame.error, TypeError):
-                self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+                # Worst-Case: GL-Mode komplett deaktivieren.
+                self.use_gl_post = False
+                self.gl_post = None
+                self.screen = pygame.display.set_mode(
+                    (SCREEN_W, SCREEN_H),
+                    (pygame.FULLSCREEN if self.fullscreen else 0)
+                    | pygame.SCALED, vsync=_vs)
+        else:
+            if self.fullscreen:
+                self.screen = pygame.display.set_mode(
+                    (SCREEN_W, SCREEN_H),
+                    pygame.FULLSCREEN | pygame.SCALED, vsync=1)
+            else:
+                # Update #151: Windowed-Mode auch mit SCALED für Sharpness
+                # auf High-DPI-Monitoren.
+                try:
+                    self.screen = pygame.display.set_mode(
+                        (SCREEN_W, SCREEN_H), pygame.SCALED, vsync=1)
+                except (pygame.error, TypeError):
+                    self.screen = pygame.display.set_mode(
+                        (SCREEN_W, SCREEN_H))
         # Update #151: Vollbild-Toggle persistieren
         try:
             save_mod.save_settings(self)
         except Exception:
             pass
+
+    def _apply_vsync_setting(self):
+        """Update #201: Live-Apply von settings['vsync'].
+
+        SDL kann VSync nicht ohne set_mode-Recreate umschalten. Wir
+        ruefen mit selbem flag-Pattern wie _toggle_fullscreen erneut
+        set_mode auf — in GL-Mode mit OPENGL|DOUBLEBUF und Re-Install
+        des GLPostProcessors (Shader/VAO/VBO/Texturen liegen im
+        GL-Context und sind nach set_mode weg).
+
+        Bei Fehler wird KEIN Toast geworfen — der Caller in
+        _handle_settings_click wirft selbst den Fail-Toast.
+        """
+        _vs = 1 if self.settings.get('vsync', True) else 0
+        if self.use_gl_post:
+            from . import gl_post as _glp
+            flags = pygame.OPENGL | pygame.DOUBLEBUF
+            if self.fullscreen:
+                flags |= pygame.FULLSCREEN
+            _glp.uninstall()
+            self.screen = pygame.display.set_mode(
+                (SCREEN_W, SCREEN_H), flags, vsync=_vs)
+            if _glp.install(SCREEN_W, SCREEN_H):
+                self.gl_post = _glp.get_active()
+            else:
+                # GL-Re-Init fehlgeschlagen → fallback auf SCALED.
+                self.use_gl_post = False
+                self.gl_post = None
+                self._render_surface = None
+                fb_flags = pygame.SCALED
+                if self.fullscreen:
+                    fb_flags |= pygame.FULLSCREEN
+                self.screen = pygame.display.set_mode(
+                    (SCREEN_W, SCREEN_H), fb_flags, vsync=_vs)
+        else:
+            flags = pygame.SCALED
+            if self.fullscreen:
+                flags |= pygame.FULLSCREEN
+            self.screen = pygame.display.set_mode(
+                (SCREEN_W, SCREEN_H), flags, vsync=_vs)
 
     def _handle_mousedown(self, sx, sy):
         if self.state == 'title':
@@ -1737,7 +1908,8 @@ class Game:
             self.inv_ui.handle_click(self, sx, sy)
             return
         if self.modal == 'skilltree':
-            self.tree_ui.handle_click(self, sx, sy)
+            # Update #184: Atlas-UI Linksklick → allokieren
+            self.atlas_ui.handle_left_click(self, sx, sy)
             return
         if self.modal == 'crafting':
             self.craft_ui.handle_click(self, sx, sy)
@@ -2011,13 +2183,14 @@ class Game:
     def _weapon_swap(self):
         """L-08 (Update #71): Tauscht Weapon + Offhand zwischen Set A und Set B.
 
-        - Set A = aktuelle `player.equipment['weapon'/'offhand']`
-        - Set B = `player.weapon_set_b['weapon'/'offhand']`
-        - V-Taste cycelt: aktive Items werden in Storage gepackt, Storage-
-          Items werden aktiv.  Spieler sieht das instant in der Hotbar
-          (Damage-Calc reagiert auf neue Items über `progression.effective`).
-        Lore: „Mahnmal-Pakt" hält 2 Sets bereit (Dual-Spec für Bow vs.
-        Crossbow vs. Spear).
+        Update #193 (User-Bug "Waffen ploetzlich weg aus Inventar"):
+        Vorher hat V den Swap immer ausgefuehrt — wenn Set B leer war,
+        wanderten die equippten Waffen in einen unsichtbaren Slot und der
+        Spieler sah "Item weg" weil die UI nur Set A zeigt.  Sehr leicht
+        per Versehen ausgeloest (V ist neben WASD).
+        Jetzt: wenn Set B leer ist UND Set A Items hat, wird der Swap mit
+        einer Bestaetigungs-Toast verhindert.  Set-up von Dual-Spec
+        funktioniert ueber Shift+V (explizit, akzeptiert leer-werden).
         """
         p = self.player
         # Storage existiert?
@@ -2025,11 +2198,23 @@ class Game:
         if b is None:
             p.weapon_set_b = {'weapon': None, 'offhand': None}
             b = p.weapon_set_b
-        # Swap weapon + offhand
         a_weapon = p.equipment.get('weapon')
         a_offhand = p.equipment.get('offhand')
-        p.equipment['weapon'] = b.get('weapon')
-        p.equipment['offhand'] = b.get('offhand')
+        b_weapon = b.get('weapon')
+        b_offhand = b.get('offhand')
+        # Guard: Set B leer + Set A nicht leer -> kein versehentlicher Swap
+        b_empty = b_weapon is None and b_offhand is None
+        a_has_items = a_weapon is not None or a_offhand is not None
+        shift_held = bool(pygame.key.get_mods() & pygame.KMOD_SHIFT)
+        if b_empty and a_has_items and not shift_held:
+            self.toast(
+                'Set B ist leer — Shift+V haelt drueckt um trotzdem zu '
+                'tauschen (Dual-Spec einrichten).',
+                (240, 200, 100))
+            return
+        # Swap weapon + offhand
+        p.equipment['weapon'] = b_weapon
+        p.equipment['offhand'] = b_offhand
         b['weapon'] = a_weapon
         b['offhand'] = a_offhand
         # Set-Toggle
@@ -2037,11 +2222,20 @@ class Game:
             p.active_weapon_set = 'b'
         else:
             p.active_weapon_set = 'a'
-        # Visual + Audio Feedback
+        # Visual + Audio Feedback — bei leerer Aktiv-Set ein deutlicher
+        # Warn-Toast statt nur "Set X: (leer)" damit der Spieler erkennt
+        # was passiert ist.
         weap = p.equipment.get('weapon')
-        weap_name = weap.name if weap else '(leer)'
-        self.toast(f'Set {p.active_weapon_set.upper()}: {weap_name}',
-                   (220, 200, 130))
+        oh = p.equipment.get('offhand')
+        if weap is None and oh is None:
+            self.toast(
+                f'Set {p.active_weapon_set.upper()}: (leer) — '
+                f'V erneut druecken um Waffen zurueck zu holen.',
+                (255, 180, 80))
+        else:
+            weap_name = weap.name if weap else '(leer)'
+            self.toast(f'Set {p.active_weapon_set.upper()}: {weap_name}',
+                       (220, 200, 130))
         try:
             snd.play('dodge', volume=0.5)
         except Exception:
@@ -2287,7 +2481,7 @@ class Game:
         LB(4)=Dodge, RB(5)=Skill R, Back(6)=Inventory, Start(7)=Pause."""
         if self.state == 'title':
             if button == 0:
-                self.start_game('adventure')
+                self.start_game('adventure', persist_new=True)
             return
         if self.state == 'dead' and button == 0:
             # Update #132 (Y-07): Controller-A = Retry-Default.
@@ -2331,9 +2525,8 @@ class Game:
         if self.modal == 'inventory':
             self.inv_ui.handle_rightclick(self, sx, sy)
         elif self.modal == 'skilltree':
-            # Update #75 H-17: Rechts-Klick refunded Skill-/Class-Punkt
-            # via Orb-of-Regret.
-            self.tree_ui.handle_rightclick(self, sx, sy)
+            # Update #184: Atlas-UI Rechtsklick → refund (Orb-of-Regret).
+            self.atlas_ui.handle_right_click(self, sx, sy)
         elif self.modal == 'crafting':
             # Im Crafting: könnte später was tun
             pass
@@ -2416,6 +2609,41 @@ class Game:
                              life_max=0.8, size_max=6)
         self.shake = max(self.shake, 20)
         snd.play('boss_intro', volume=0.8)
+
+    def _cold_mirror_wave(self, wave):
+        """Update #184: Moench-Keystone „Kalter Spiegel" — verzoegerte
+        zweite/dritte Frostnova-Welle. Mini-Wrapper, nutzt den gespeicherten
+        Snapshot fuer Position/Radius/Schaden."""
+        from . import progression as _prog
+        from . import effects as _fx2
+        p = self.player
+        eff = _prog.effective(p)
+        pos = wave['pos']
+        radius = wave['radius']
+        dmg_mult = wave['dmg_mult']
+        skill_mult = wave['skill_mult']
+        apply_frost = wave['apply_frost']
+        for e in list(self.enemies):
+            d = (e.pos - pos).length()
+            if d > radius or e.dying:
+                continue
+            if self.grid is not None and not self.grid.has_los(
+                    pos.x, pos.y, e.pos.x, e.pos.y):
+                continue
+            dmg = (eff['damage'] * dmg_mult * eff['cold_dmg']
+                   * skill_mult)
+            self.hit_enemy(e, dmg, crit=False, dmg_type='cold')
+            if apply_frost:
+                _fx2.apply(self, e, 'frost', stacks=3)
+            else:
+                e.slow_timer = 2.0
+                e.slow_factor = 0.5
+        for i in range(28):
+            a = (i / 28) * math.tau
+            self.particles_push(pos.x + math.cos(a) * radius * 0.3,
+                                pos.y + math.sin(a) * radius * 0.3,
+                                math.cos(a) * 180, math.sin(a) * 180,
+                                (150, 200, 240), 0.5, 3)
 
     def _innkeeper_dialog(self):
         """Story-Dialog beim Wirt: zeigt Story-Kapitel je Fortschritt.
@@ -2635,6 +2863,8 @@ class Game:
                     self.modal = 'stash'
                 elif npc.kind == 'mystic':
                     self.modal = 'skilltree'
+                    # Update #184: Atlas-View beim NPC-Mystic-Open zentrieren
+                    self.atlas_ui.open(self)
                 elif npc.kind == 'smith':
                     # PLAN J-10: Otreth Hohlauge = Gemcutter, nicht Schmied.
                     # Lore: graviert Uncut-Gems und levelt Skill-Gems.
@@ -2661,28 +2891,56 @@ class Game:
                     self.toast(f'Zurück zum letzten Dungeon', GOLD_BRIGHT)
                     return
         else:
-            # Dungeon: D4-Town-Portal oder Lore-Tafel.
-            # Erst Lore-Tafel in der Nähe?
+            # Update #201 (User-Bug-Fix): Dungeon-F-Resolution mit
+            # Closest-First + Priority statt naivem stele-zuerst-Check.
+            #
+            # Vorher: mahnmal_stele wurde ZUERST gecheckt mit Radius 50.
+            # Problem: Event-Rooms in dungeon_events.py (lore_echo,
+            # treasure_hoard, underworld_rift) platzieren Stelen in
+            # 40-80 px Abstand zu Lore-Tafeln/Truhen/Riss. Der Spieler
+            # drueckte F um zu lesen -> Stele fing ab und teleportierte
+            # ihn zurueck nach Brassweir, weg von Loot/Lore.
+            #
+            # Fix: Beide in Range sammeln + nahesten waehlen, dabei
+            # Lore-Tafel leichte Priority (Read ist destruktionsfrei,
+            # Stele-Teleport ist irreversibel und kostet den Run).
+            candidates = []
+            ppos = self.player.pos
             for t in self.tiles:
-                if getattr(t, 'kind', None) == 'lore_tablet':
-                    dx = self.player.pos.x - t.x
-                    dy = self.player.pos.y - t.y
-                    if dx * dx + dy * dy < 60 * 60:
-                        if not getattr(t, 'lore_read', False):
-                            t.lore_read = True
-                            self.player.lore_fragments += 1
-                            self.toast('+1 Lore-Fragment (N: Codex)',
-                                       (200, 170, 100))
-                            # Quest-Trigger: INTERACT lore_tablet
-                            quests_mod.on_interact_decor(self, t)
-                            # Codex-Discovery
-                            log = getattr(self, 'quest_log', None)
-                            if log is not None and getattr(t, 'lore_text', ''):
-                                log.discovered_lore.add(t.lore_text)
-                        # Vollständigen Lore-Text als Toast (gekürzt)
-                        self.toast(t.lore_text, (220, 200, 160))
-                        self.toast_queue[-1][2] = 8.0  # länger zeigen
-                        return
+                kind = getattr(t, 'kind', None)
+                if kind == 'lore_tablet':
+                    dx = ppos.x - t.x; dy = ppos.y - t.y
+                    d2 = dx * dx + dy * dy
+                    if d2 < 60 * 60:
+                        candidates.append((d2, 0, 'tablet', t))
+                elif kind == 'mahnmal_stele':
+                    dx = ppos.x - t.x; dy = ppos.y - t.y
+                    d2 = dx * dx + dy * dy
+                    if d2 < 50 * 50:
+                        candidates.append((d2, 1, 'stele', t))
+            candidates.sort(key=lambda c: (c[1], c[0]))
+            if candidates:
+                _, _, kind, t = candidates[0]
+                if kind == 'tablet':
+                    if not getattr(t, 'lore_read', False):
+                        t.lore_read = True
+                        self.player.lore_fragments += 1
+                        self.toast('+1 Lore-Fragment (N: Codex)',
+                                   (200, 170, 100))
+                        quests_mod.on_interact_decor(self, t)
+                        log = getattr(self, 'quest_log', None)
+                        if log is not None and getattr(t, 'lore_text', ''):
+                            log.discovered_lore.add(t.lore_text)
+                    self.toast(t.lore_text, (220, 200, 160))
+                    self.toast_queue[-1][2] = 8.0
+                    return
+                if kind == 'stele':
+                    self.toast(
+                        'Die Stele erinnert den Pfad — zurueck nach Brassweir.',
+                        (220, 200, 160))
+                    self.toast_queue[-1][2] = 4.0
+                    self.enter_town()
+                    return
             self._try_enter_portal()
 
     def _auto_sort_inventory(self):
@@ -2944,6 +3202,64 @@ class Game:
                 return
         self._ambient_timer = random.uniform(5.0, 12.0)
 
+    def _update_player_breath(self, dt):
+        """Update #186: Player-Breath-SFX pro Frame ticken.
+
+        Atem-Cycle wird vom Game-State gesteuert:
+          calm     — idle/town/exploration (5-8 s zwischen Atemzuegen)
+          stressed — Aggro-Mob in Range ODER kuerzlich Damage (3-4 s)
+          ragged   — HP < 30 % (1.8-2.6 s, hechelnd)
+
+        Biome-Shape kommt aus self.biome (crypt/frost/lava/desert/...).
+        Wenn Voice-Channel oder Dialog laeuft, skippen wir — Atem soll
+        nicht ueber NPC-Dialog kreischen.
+        """
+        if self.state != 'playing':
+            return
+        # Skip wenn Player tot/im Modal/Cutscene
+        if self.player.hp <= 0:
+            return
+        if getattr(self, 'modal', None) not in (None, 'pause'):
+            return
+        if getattr(self, 'cutscene', None) is not None:
+            return
+        # Skip wenn Voice-Channel (Dialog) busy — Atem ueberlagert sonst
+        try:
+            import pygame as _pg
+            if _pg.mixer.Channel(30).get_busy():
+                return
+        except Exception:
+            pass
+        if not hasattr(self, '_breath_timer'):
+            self._breath_timer = 2.0
+            self._breath_last_intensity = 'calm'
+        self._breath_timer -= dt
+        if self._breath_timer > 0:
+            return
+        # Intensitaet aus Player-State + Combat
+        from . import progression as _prog
+        eff = _prog.effective(self.player)
+        hp_frac = self.player.hp / max(1, eff['hp_max'])
+        in_combat = bool(getattr(self, 'aggro_count', 0)) or any(
+            getattr(e, 'ai_state', None) == 'aggro'
+            for e in getattr(self, 'enemies', ()))
+        if hp_frac < 0.30:
+            intensity = 'ragged'
+            next_delay = random.uniform(1.8, 2.6)
+        elif in_combat:
+            intensity = 'stressed'
+            next_delay = random.uniform(3.0, 4.0)
+        else:
+            intensity = 'calm'
+            next_delay = random.uniform(5.0, 8.0)
+        self._breath_last_intensity = intensity
+        biome = getattr(self, 'biome', 'town')
+        try:
+            snd.play_player_breath(biome, intensity)
+        except Exception:
+            pass
+        self._breath_timer = next_delay
+
     # ---------- Toasts (Achievement/Notify) ----------
     def toast(self, text, color=(255, 220, 80)):
         # Update #37: 3.5s → 2.5s default. Toasts überleben kürzer,
@@ -3112,6 +3428,9 @@ class Game:
         for fp in self.footprints:
             col = FOOT_COLORS.get(fp['biome'], (180, 180, 180))
             sx, sy = self.w2s_xy(fp['x'], fp['y'])
+            # Update #190: Off-Screen-Culling
+            if not (-30 < sx < SCREEN_W + 30 and -30 < sy < SCREEN_H + 30):
+                continue
             # Alpha-Fade letzte 50 % der Lifetime
             t = fp['age'] / fp['life']
             if t < 0.5:
@@ -3711,6 +4030,7 @@ class Game:
                 log.tick(dt, self)
         self._update_music()
         self._update_ambient(dt)
+        self._update_player_breath(dt)
         self._spawn_ambient_motes(dt)
         # Boss-Intro Timer (läuft mit echtem dt)
         if self.boss_intro is not None:
@@ -4220,6 +4540,16 @@ class Game:
             self._meteor_pending['timer'] -= dt
             if self._meteor_pending['timer'] <= 0:
                 self._meteor_strike()
+        # Update #184 / Cold-Mirror Keystone: 2 weitere Frostnova-Wellen
+        if hasattr(self, '_pending_cold_mirror') and self._pending_cold_mirror:
+            for wave in list(self._pending_cold_mirror):
+                wave['delay'] -= dt
+                if wave['delay'] <= 0:
+                    self._cold_mirror_wave(wave)
+                    self._pending_cold_mirror.remove(wave)
+        # Way-of-Wind iframe-window decay
+        if getattr(p, '_way_of_wind_active', 0) > 0:
+            p._way_of_wind_active -= dt
         # Klone (Schurke): timer + minimale AI
         if hasattr(self, 'clones') and self.clones:
             for c in list(self.clones):
@@ -4278,12 +4608,27 @@ class Game:
                     p.moving = False
                     return
                 if p.attack_cd <= 0:
-                    mult, crit = skills._crit_roll(eff)
-                    raw_dmg = eff['damage'] * mult
+                    # Update #184: Atlas-Effekte fuer Melee
+                    atlas_eff_now = eff.get('atlas_effects', set())
+                    iron_palm = 'keystone_iron_palm' in atlas_eff_now
+                    phys_to_lit = 0.0
+                    if 'melee_phys_to_lit_25' in atlas_eff_now:
+                        phys_to_lit = 0.25
+                    if iron_palm:
+                        phys_to_lit = 1.0  # 100% conversion
+                    # Iron Palm: kein Crit auf Melee
+                    if iron_palm:
+                        mult, crit = 1.0, False
+                    else:
+                        mult, crit = skills._crit_roll(eff)
+                    melee_dmg_pct = eff.get('melee_dmg_pct', 0)
+                    raw_dmg = eff['damage'] * mult * (1.0 + melee_dmg_pct)
                     # fn_wall: verlangsamte Ziele erleiden +50% Schaden
                     if p.runes.get('frostnova') == 'fn_wall' and \
                             p.attack_target.slow_factor < 1.0:
                         raw_dmg *= 1.5
+                    # Atlas-Attack-Speed: kuerzere attack_cd
+                    atk_spd = 1.0 + eff.get('attack_speed', 0)
                     # N-05 (Update #51) + Update #53 Fix:
                     # Weapon-Impact-Identity pro Klasse mit Fallback-Chain.
                     # User-Bug „manchmal keine Waffen-Sounds": file-only
@@ -4294,7 +4639,58 @@ class Game:
                     swing_snd, impact_snd = _weapon_sound_pair(
                         cls_pl, heavy=(raw_dmg >= 30 or crit))
                     snd.play_with_fallback(swing_snd, 'hit', volume=0.3)
-                    self.hit_enemy(p.attack_target, raw_dmg, crit=crit)
+                    # Update #184: Iron-Palm / phys-to-lit Konversion
+                    if phys_to_lit >= 1.0:
+                        # Voller Lit-Hit (skaliert mit lit_dmg)
+                        self.hit_enemy(p.attack_target,
+                                       raw_dmg * eff.get('lit_dmg', 1.0),
+                                       crit=crit, dmg_type='lightning')
+                    elif phys_to_lit > 0.0:
+                        phys_part = raw_dmg * (1.0 - phys_to_lit)
+                        lit_part = (raw_dmg * phys_to_lit
+                                    * eff.get('lit_dmg', 1.0))
+                        self.hit_enemy(p.attack_target, phys_part,
+                                       crit=crit, dmg_type='physical')
+                        self.hit_enemy(p.attack_target, lit_part,
+                                       crit=crit, dmg_type='lightning')
+                    else:
+                        self.hit_enemy(p.attack_target, raw_dmg, crit=crit)
+                    # Iron-Palm Chain: 2 weitere Nachbarn werden ebenfalls getroffen
+                    if iron_palm:
+                        from .entities import LightningBolt as _LB
+                        nearby = [e for e in self.enemies
+                                  if e is not p.attack_target and not e.dying
+                                  and (e.pos - p.attack_target.pos).length() < 120]
+                        nearby.sort(key=lambda e: (e.pos - p.attack_target.pos).length())
+                        for ne in nearby[:2]:
+                            chain_dmg = raw_dmg * 0.7 * eff.get('lit_dmg', 1.0)
+                            self.hit_enemy(ne, chain_dmg, crit=False,
+                                           dmg_type='lightning')
+                            self.bolts.append(_LB(
+                                p.attack_target.pos.x, p.attack_target.pos.y,
+                                ne.pos.x, ne.pos.y))
+                    # Cleave (atlas-cleave_total)
+                    cleave = eff.get('cleave', 0)
+                    if cleave > 0 and not iron_palm:
+                        for e in self.enemies:
+                            if e is p.attack_target or e.dying:
+                                continue
+                            if (e.pos - p.attack_target.pos).length() < 80:
+                                self.hit_enemy(e, raw_dmg * cleave,
+                                               crit=False)
+                    # Hundertfaches-Echo: jeder 5. Hit → free Frostnova am Ziel
+                    if 'keystone_hundredfold_echo' in atlas_eff_now:
+                        p._echo_counter = getattr(p, '_echo_counter', 0) + 1
+                        if p._echo_counter >= 5:
+                            p._echo_counter = 0
+                            # Mini-Frostnova um attack_target
+                            tgt = p.attack_target
+                            for e in self.enemies:
+                                if (e.pos - tgt.pos).length() <= 110 and not e.dying:
+                                    fnova_dmg = eff['damage'] * 1.0 * eff['cold_dmg']
+                                    self.hit_enemy(e, fnova_dmg,
+                                                   dmg_type='cold')
+                                    fx.apply(self, e, 'frost', stacks=2)
                     # Material-Impact-Layer: leise zusätzlich
                     if impact_snd:
                         snd.play_with_fallback(impact_snd, 'hit_heavy',
@@ -4307,7 +4703,7 @@ class Game:
                             p.pos.x, p.pos.y - 30,
                             f'+{int(heal)}', (220, 80, 80)))
                         p.vampire_charges -= 1
-                    p.attack_cd = 0.4
+                    p.attack_cd = 0.4 / max(0.5, atk_spd)
                     # Update #165: Animation-Trigger 'attack' (One-Shot,
                     # 6 Frames @ 14fps ≈ 0.43s — matches attack_cd 0.4s).
                     try:
@@ -4728,12 +5124,11 @@ class Game:
                     continue
                 if not getattr(l, '_click_pickup_target', False):
                     continue
-                # Loot-Filter
-                rarity_order = {'common': 0, 'magic': 1, 'rare': 2, 'unique': 3}
-                if p.loot_filter == 'common' and l.item.rarity == 'common':
-                    continue
-                if p.loot_filter == 'magic' and rarity_order[l.item.rarity] < 2:
-                    continue
+                # Update #201: Loot-Filter wird jetzt schon beim Drop
+                # angewandt (combat._item_passes_loot_filter), nicht mehr
+                # beim Pickup. Garantie: was am Boden liegt, ist immer
+                # aufhebbar — kein verwirrender un-pickbarer Clutter mehr,
+                # auch wenn der Spieler den Filter nach dem Drop aendert.
                 placed = False
                 for i, slot in enumerate(p.inventory):
                     if slot is None:
@@ -4984,6 +5379,9 @@ class Game:
                         layer=fx.ParticleLayer.AMBIENT)
             # V-01 (Update #168): Wet-Patches alle ~1.5 s am Player-Umkreis.
             # Pfuetzen-Decals persistieren 8 s — auch nach Regen-Ende.
+            # Update #183 (User-Fix „Kreise gehen durch Waende"):
+            # Walkability-Check vor dem Spawn — Pfuetzen landen nur auf
+            # Floor-Cells, nicht auf Wand- oder Void-Tiles.
             if not hasattr(self, '_rain_puddle_t'):
                 self._rain_puddle_t = 0.0
             self._rain_puddle_t -= dt
@@ -4992,6 +5390,11 @@ class Game:
                 for _ in range(2):
                     rx = self.player.pos.x + random.uniform(-300, 300)
                     ry = self.player.pos.y + random.uniform(-200, 200)
+                    if self.grid is not None and not self.grid.is_walkable_world(rx, ry):
+                        wk = self.grid.find_walkable_near(rx, ry)
+                        if wk is None:
+                            continue
+                        rx, ry = wk
                     try:
                         self.surface_fx.spawn_wet_patch(
                             rx, ry, radius=random.randint(50, 90))
@@ -5294,7 +5697,8 @@ class Game:
             if self.modal == 'inventory':
                 self.inv_ui.draw(self.screen, self)
             elif self.modal == 'skilltree':
-                self.tree_ui.draw(self.screen, self)
+                # Update #184: Atlas-UI ersetzt SkillTreeUI im Modal.
+                self.atlas_ui.draw(self.screen, self)
             elif self.modal == 'crafting':
                 self.craft_ui.draw(self.screen, self)
             elif self.modal == 'shop':
@@ -5474,18 +5878,53 @@ class Game:
     _TALL_DECOR = {'pillar', 'torch', 'sarcophagus', 'broken_wall',
                    'ice_spike', 'frozen_pillar', 'lantern'}
 
+    def _overlay_surf(self, key, alpha=True):
+        """Update #201: Returnt eine cached fullscreen-Surface fuer
+        Per-Frame-Overlays (damage_flash, weather-tints, vignettes).
+
+        Caller MUSS die Surface vor dem Bemalen leeren — fill((0,0,0,0))
+        fuer SRCALPHA oder fill(color) fuer plain Surface. Wir machen das
+        bewusst NICHT hier, damit das single-pass `fill((r,g,b,a))` aus
+        dem alten Code unveraendert weiterwerkelt.
+
+        Wahnsinnig viel Heap-Churn gespart: 5.76 MB SRCALPHA-Alloc fuer
+        eine 1600x900-Surface, bis zu 9x pro Frame in dichtem Combat.
+        """
+        cached = self._overlay_surf_cache.get(key)
+        if cached is None:
+            flags = pygame.SRCALPHA if alpha else 0
+            cached = pygame.Surface((SCREEN_W, SCREEN_H), flags)
+            self._overlay_surf_cache[key] = cached
+        return cached
+
     def _draw_world(self):
         # 1) Boden: Dungeon-Grid wenn vorhanden, sonst Biom-Kachelung
+        # Update #183 (User-Fix „Kreise gehen ueber Waende"): Surface-FX
+        # (Wet/Ice/Scorched/Glass) werden jetzt ZWISCHEN Floor und Walls
+        # gerendert.  Vorher kamen sie nach Lighting/Walls und konnten
+        # so ueber Wand-Sprites bleeden.  Tradeoff: leichtes Darkening
+        # durch das Lighting-Overlay — passt aber zur Lore (nasser
+        # Boden ist natuerlich etwas dunkler).
         if self.grid is not None:
             world.draw_dungeon_floor(self.screen, self.grid, self.biome,
                                       self.w2s_xy, self.camera)
+            try:
+                self.surface_fx.draw(self, self.screen)
+            except Exception:
+                pass
             world.draw_dungeon_walls(self.screen, self.grid, self.biome,
                                       self.w2s_xy, self.camera)
             world.draw_traps(self.screen, self.grid, self.w2s_xy, self.camera)
         else:
             world.draw_floor(self.screen, self.biome, self.camera)
-        # 1.5) Parallax-Hintergrund (Wolken/Nebel)
-        self.weather.draw_parallax(self.screen, None)
+            try:
+                self.surface_fx.draw(self, self.screen)
+            except Exception:
+                pass
+        # 1.5) (Update #187) Wolken NICHT mehr hier — sie wurden ganz frueh
+        # gezeichnet und von Decor/Entities/Fog/Lighting ueberdeckt, der
+        # Spieler sah sie "unter der Map".  Jetzt: zusammen mit dem Fog
+        # spaet als atmosphaerischer Overlay (siehe weiter unten).
         # 1.6) Blut-Pfützen direkt auf Boden
         for bp in self.blood_pools:
             sx, sy = self.w2s_xy(bp.x, bp.y)
@@ -5502,9 +5941,11 @@ class Game:
             if -150 < sx < SCREEN_W + 150 and -150 < sy < SCREEN_H + 150:
                 world.draw_decor(self.screen, t, (sx, sy), self.biome)
 
-        # 3) Loot (am Boden)
+        # 3) Loot (am Boden) — Update #190: Off-Screen-Culling
         for l in self.loot:
-            self._draw_loot(l)
+            sx, sy = self.w2s(l.pos)
+            if -100 < sx < SCREEN_W + 100 and -100 < sy < SCREEN_H + 100:
+                self._draw_loot(l)
         # Update #136 (O-23): Flying-Pickup-Animationen (über Loot, vor Entities)
         if self._loot_animations:
             self._draw_loot_animations()
@@ -5514,34 +5955,47 @@ class Game:
             self._draw_arena_features()
 
         # 4) Stehende Objekte Y-sortiert (Pillars, Gegner, Spieler, Portale)
+        # Update #190: Off-Screen-Culling fuer Enemies/NPCs/Portale.
+        # Vorher wurden alle 35 Mobs durch die volle Sprite-Pipeline
+        # geschickt, auch wenn off-screen. ~10-15ms Draw-Zeit gespart
+        # bei dichten Raeumen.
         tall = []
+        # Cull-Box: 200 px Rand fuer grosse Sprites (Bosse, Decor mit
+        # Crest etc.); kleiner als der Sprite-Half-Diagonal-Bounds.
+        cull_pad = 200
+        in_view = (lambda sx, sy:
+                   -cull_pad < sx < SCREEN_W + cull_pad
+                   and -cull_pad < sy < SCREEN_H + cull_pad)
         for t in self.tiles:
             if t.kind in self._TALL_DECOR:
-                # Sichtfeld-Check
                 sx, sy = self.w2s_xy(t.x, t.y)
-                if -150 < sx < SCREEN_W + 150 and -150 < sy < SCREEN_H + 150:
+                if in_view(sx, sy):
                     tall.append((t.y, 'decor', t, sx, sy))
         for e in self.enemies:
             sx, sy = self.w2s(e.pos)
-            tall.append((e.pos.y, 'enemy', e, sx, sy))
+            if in_view(sx, sy):
+                tall.append((e.pos.y, 'enemy', e, sx, sy))
         for portal in self.portals:
             sx, sy = self.w2s(portal.pos)
-            tall.append((portal.pos.y, 'portal', portal, sx, sy))
+            if in_view(sx, sy):
+                tall.append((portal.pos.y, 'portal', portal, sx, sy))
         for npc in self.npcs:
             sx, sy = self.w2s(npc.pos)
-            tall.append((npc.pos.y, 'npc', npc, sx, sy))
+            if in_view(sx, sy):
+                tall.append((npc.pos.y, 'npc', npc, sx, sy))
         for dp in self.dungeon_portals:
             sx, sy = self.w2s(dp.pos)
-            tall.append((dp.pos.y, 'dportal', dp, sx, sy))
-        # Update #113: Outpost-Portale (Brassweir → Akt-Vorposten) +
-        # Return-Portal (Vorposten → Brassweir).
+            if in_view(sx, sy):
+                tall.append((dp.pos.y, 'dportal', dp, sx, sy))
         for op in self.outpost_portals:
             sx, sy = self.w2s(op.pos)
-            tall.append((op.pos.y, 'oportal', op, sx, sy))
+            if in_view(sx, sy):
+                tall.append((op.pos.y, 'oportal', op, sx, sy))
         if self.outpost_return_portal is not None:
             rp = self.outpost_return_portal
             sx, sy = self.w2s(rp.pos)
-            tall.append((rp.pos.y, 'oportal', rp, sx, sy))
+            if in_view(sx, sy):
+                tall.append((rp.pos.y, 'oportal', rp, sx, sy))
         psx, psy = self.w2s(self.player.pos)
         tall.append((self.player.pos.y, 'player', self.player, psx, psy))
 
@@ -5557,11 +6011,13 @@ class Game:
                 sprites.draw_npc_at(self.screen, obj, sx, sy)
                 # Quest-Marker über NPC: '!' = neue Quest, '?' = Stage-Return.
                 # Update #145: player-aware → locked Quests zeigen kein „!"
+                # Update #200: y-Offset von -64 auf -130 angepasst (neuer
+                # NPC-Sprite ist 124px hoch, vorher 38px).
                 log = getattr(self, 'quest_log', None)
                 if log is not None:
                     mark = log.npc_marker(obj.name, player=self.player)
                     if mark:
-                        self._draw_npc_quest_marker(sx, sy - 64, mark)
+                        self._draw_npc_quest_marker(sx, sy - 130, mark)
             elif kind == 'dportal':
                 sprites.draw_dungeon_portal_at(self.screen, obj, sx, sy)
                 # Update #151: Quest-driven Portal-Highlighting — der
@@ -5632,7 +6088,7 @@ class Game:
         if _town_grading_tint is not None:
             tr, tg, tb = _town_grading_tint
             if tr != 255 or tg != 255 or tb != 255:
-                tint = pygame.Surface((SCREEN_W, SCREEN_H))
+                tint = self._overlay_surf('town_grading', alpha=False)
                 tint.fill((tr, tg, tb))
                 self.screen.blit(tint, (0, 0),
                                   special_flags=pygame.BLEND_RGB_MULT)
@@ -5665,16 +6121,31 @@ class Game:
             fog_col, base_alpha = fcfg
             rain_boost = int(40 * getattr(self, 'rain_intensity', 0.0))
             t_s = pygame.time.get_ticks() / 1000.0
+            # Update #186: camera + biome-wind weiterreichen damit der Fog
+            # parallaxiert + organisch driftet (statt am Screen zu kleben).
+            wind_vec = getattr(self.weather, 'wind_vector', (1.0, 0.0))
             self.lighting.render_fog(
-                self.screen, fog_col, base_alpha + rain_boost, t_s)
+                self.screen, fog_col, base_alpha + rain_boost, t_s,
+                camera=self.camera, wind=wind_vec)
+        # Update #190 (User-Fix "alles klebt an der Camera"):  Wolken
+        # werden NICHT mehr als Screen-Overlay gerendert.  Egal wie sie
+        # sich bewegen (screen-anchored / world-anchored), sie werden als
+        # separater Layer ueber dem Dungeon wahrgenommen — das war das
+        # Kern-Problem aller Iterationen #184..#189.
+        #
+        # Wenn Wolken-Schatten zurueck sollen: muessen sie IN den Floor-
+        # Pass integriert werden (z.B. als dunkle Patches in world.draw_
+        # dungeon_floor), nicht als separater spaeter Overlay-Draw.  So
+        # sind sie buchstaeblich Teil des Bodens, kein eigener Layer.
+        #
+        # weather.set_biome() pre-baked die Sprites weiterhin (billig);
+        # sie werden nur nicht mehr gezeichnet.  Stars (Astral) und
+        # Partikel-Wetter (Regen/Schnee) bleiben aktiv via andere Pfade.
 
-        # V-01..V-04 (Update #168): Surface-FX-Decals (Wet/Ice/Scorched/Glass)
-        # AUF dem Boden aber UNTER Entities — gerendert nach Lighting damit
-        # sie spuerbar sind (sonst durchs Dunkel-Overlay verschluckt).
-        try:
-            self.surface_fx.draw(self, self.screen)
-        except Exception:
-            pass
+        # V-01..V-04 (Update #168 / #183): Surface-FX-Decals werden jetzt
+        # in _draw_world() zwischen Floor und Walls gerendert (siehe oben).
+        # Damit bleeden Wet/Ice/Scorched-Patches nicht mehr ueber die
+        # Wand-Sprites hinweg.  Hier kein zweiter Pass mehr noetig.
 
         # V-08 Cloth-Sim Banner — gerendert spaet damit sie ueber dem Boden
         # liegen aber unter Entities/Particles.
@@ -5857,7 +6328,7 @@ class Game:
         flash_mult = 0.3 if self.settings.get('photosensitive', False) else 1.0
         # 8) Schaden-Bildschirm-Blitz
         if self._damage_flash > 0:
-            flash = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            flash = self._overlay_surf('damage_flash')
             flash.fill((255, 30, 30, int(80 * self._damage_flash * flash_mult)))
             self.screen.blit(flash, (0, 0))
         # Update #136 (M-11): Low-HP-Vignette + Chromatic-Aberration-Approx.
@@ -5880,7 +6351,8 @@ class Game:
             intensity = (1.0 - hp_pct / 0.25)  # 0..1, voll bei 0% HP
             base_a = int((50 + 80 * beat) * intensity * flash_mult)
             # Vignette: weicher Rot-Radial-Fade von außen
-            vig = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            vig = self._overlay_surf('lowhp_vignette')
+            vig.fill((0, 0, 0, 0))   # SRCALPHA reset, Layer schreiben rect
             # 4 Layer für sanften Falloff
             for k in range(4):
                 t_k = k / 3.0
@@ -5904,19 +6376,19 @@ class Game:
                 self.screen.blit(ca_bot, (-2, SCREEN_H - 4))
         # Boss-Death-Cinematic-Flash
         if self.boss_flash > 0:
-            flash = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            flash = self._overlay_surf('boss_flash')
             flash.fill((255, 240, 200, int(200 * self.boss_flash * flash_mult)))
             self.screen.blit(flash, (0, 0))
         # Time-Freeze: blauer Tint + dezenter Rand-Effekt
         if self.time_freeze_left > 0:
-            tint = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            tint = self._overlay_surf('time_freeze')
             tint.fill((140, 200, 255, 50))
             self.screen.blit(tint, (0, 0))
             pygame.draw.rect(self.screen, (200, 230, 255),
                               (0, 0, SCREEN_W, SCREEN_H), 6)
         # Wetter-Event-Overlays
         if self.sandstorm_left > 0:
-            tint = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            tint = self._overlay_surf('sandstorm_tint')
             tint.fill((220, 180, 100, 70))
             self.screen.blit(tint, (0, 0))
             # Sand-Streifen die diagonal scrollen
@@ -5926,7 +6398,7 @@ class Game:
                 pygame.draw.line(self.screen, (240, 200, 130),
                                   (x, y), (x + 20, y + 3), 1)
         if self.icestorm_left > 0:
-            tint = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            tint = self._overlay_surf('icestorm_tint')
             tint.fill((180, 220, 255, 55))
             self.screen.blit(tint, (0, 0))
             # Schneeflocken zusätzlich
@@ -5935,7 +6407,7 @@ class Game:
                 y = (pygame.time.get_ticks() // 10 + k * 30) % SCREEN_H
                 pygame.draw.circle(self.screen, (240, 250, 255), (x, y), 2)
         if self.ashrain_left > 0:
-            tint = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            tint = self._overlay_surf('ashrain_tint')
             tint.fill((180, 80, 30, 60))
             self.screen.blit(tint, (0, 0))
             for k in range(20):
@@ -5943,11 +6415,11 @@ class Game:
                 y = (pygame.time.get_ticks() // 8 + k * 40) % SCREEN_H
                 pygame.draw.circle(self.screen, (255, 140, 60), (x, y), 2)
         if self.miasma_left > 0:
-            tint = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            tint = self._overlay_surf('miasma_tint')
             tint.fill((100, 160, 80, 60))
             self.screen.blit(tint, (0, 0))
         if self.cosmic_pulse_left > 0:
-            tint = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            tint = self._overlay_surf('cosmic_pulse_tint')
             tint.fill((180, 100, 240, 50))
             self.screen.blit(tint, (0, 0))
 
@@ -6640,7 +7112,7 @@ class Game:
     _SETTING_CATEGORIES = [
         # (Spalten-Index, Kategorie-Titel, [setting-keys])
         (0, 'AUDIO', ['music_vol', 'sfx_vol']),
-        (0, 'ANZEIGE', ['fullscreen', 'frame_cap', 'render_scale']),
+        (0, 'ANZEIGE', ['fullscreen', 'vsync', 'frame_cap', 'render_scale']),
         (0, 'GRAFIK', ['screen_shake', 'particle_density', 'rim_light',
                         'bloom', 'heat_distortion', 'crt_filter']),
         (1, 'KAMERA', ['camera_lookahead', 'camera_cursor_lean',
@@ -6651,7 +7123,7 @@ class Game:
         (1, 'SYSTEM', ['ai_sprites', 'multi_threading']),
     ]
     _SETTING_KEYS = [k for _, _, ks in _SETTING_CATEGORIES for k in ks]
-    _FRAME_CAP_OPTIONS = [30, 60, 120, 144, 0]  # 0 = unlimited
+    _FRAME_CAP_OPTIONS = [30, 60, 120, 144, 240, 360, 0]  # 0 = unlimited
     # P-04 (Update #97): Render-Scale-Optionen, cyclable im Settings-Modal.
     _RENDER_SCALE_OPTIONS = [0.5, 0.7, 0.85, 1.0]
     _BLOOM_OPTIONS = ['off', 'low', 'high']
@@ -6749,6 +7221,10 @@ class Game:
         'camera_combat_zoom': True,
         'heat_distortion': True,
         'multi_threading': True,
+        # Update #201 (User-Bug-Fix): vsync war NICHT in _TOGGLE_DEFAULTS.
+        # Folge: der Klick auf "VSync (Restart noetig)" tat gar nichts —
+        # weder den Wert flippen noch den Toast. Default True.
+        'vsync': True,
     }
 
     def _cycle_value(self, cur, options):
@@ -6778,6 +7254,23 @@ class Game:
                     default = self._TOGGLE_DEFAULTS[key]
                     self.settings[key] = not self.settings.get(key, default)
                     changed = True
+                    # Update #201 (User-Bug-Fix): VSync live anwenden via
+                    # display.set_mode mit neuem vsync-Flag. SDL erlaubt
+                    # vsync nur als set_mode-Argument; ein Toggle zur
+                    # Laufzeit erfordert recreate.  Selbe GL-Re-Install-
+                    # Strategie wie _toggle_fullscreen.
+                    if key == 'vsync':
+                        try:
+                            self._apply_vsync_setting()
+                        except Exception:
+                            self.toast(
+                                'VSync-Switch fehlgeschlagen — '
+                                'Restart erforderlich.', (255, 180, 100))
+                        else:
+                            on = self.settings['vsync']
+                            self.toast(
+                                f'VSync: {"AN" if on else "AUS"}',
+                                (200, 220, 255))
                 elif key == 'ai_sprites':
                     new_val = not self.settings.get('ai_sprites', False)
                     self.settings['ai_sprites'] = new_val
@@ -6789,7 +7282,7 @@ class Game:
                         pass
                     changed = True
                 elif key == 'frame_cap':
-                    cur = int(self.settings.get('frame_cap', 60))
+                    cur = int(self.settings.get('frame_cap', 360))
                     self.settings['frame_cap'] = self._cycle_value(
                         cur, self._FRAME_CAP_OPTIONS)
                     changed = True
@@ -6835,6 +7328,7 @@ class Game:
         'music_vol':         ('Musik',                   'slider'),
         'sfx_vol':           ('SFX',                     'slider'),
         'fullscreen':        ('Vollbild',                'toggle'),
+        'vsync':             ('VSync',                   'toggle'),
         'frame_cap':         ('Frame-Cap',               'cycle'),
         'render_scale':      ('Render-Skalierung',       'cycle'),
         'screen_shake':      ('Bildschirm-Wackeln',      'toggle'),
@@ -7159,27 +7653,30 @@ class Game:
         return label
 
     def _frame_cap_label(self):
-        v = int(self.settings.get('frame_cap', 60))
+        v = int(self.settings.get('frame_cap', 360))
         return 'Unbegrenzt' if v == 0 else f'{v} FPS'
 
     def _pause_buttons(self):
-        # Update #132 (Y-08): breiteres Modal — links Buttons, rechts
-        # Build-Snapshot.  Höhe gleich (410).
-        w, h = 720, 470
+        # Update #180: Pause-Layout-Refit — Title bekommt eigene Zone oben,
+        # darunter zwei klar getrennte Spalten (Buttons links, Build rechts),
+        # Currency-Strip unten.  Höher (520) damit nichts überlappt.
+        w, h = 760, 520
         mx = SCREEN_W // 2 - w // 2
         my = SCREEN_H // 2 - h // 2
-        # Buttons-Spalte links (~340 wide)
-        col_w = 280
+        col_w = 300
+        # Title-Zone: my..my+118 (Eyebrow + Title + Divider)
+        # Content-Zone: my+130..my+h-80 (Buttons / Build-Snapshot)
+        btn_top = my + 130
         return {
             'rect': pygame.Rect(mx, my, w, h),
-            'resume':    pygame.Rect(mx + 30, my + 80, col_w, 44),
-            'settings':  pygame.Rect(mx + 30, my + 134, col_w, 44),
-            'town':      pygame.Rect(mx + 30, my + 188, col_w, 44),
-            'title':     pygame.Rect(mx + 30, my + 242, col_w, 44),
-            'quit':      pygame.Rect(mx + 30, my + 296, col_w, 44),
-            # Build-Snapshot rechte Spalte (Render-Region)
-            'snapshot':  pygame.Rect(mx + col_w + 60, my + 80,
-                                       w - col_w - 90, h - 160),
+            'resume':    pygame.Rect(mx + 30, btn_top + 0,   col_w, 44),
+            'settings':  pygame.Rect(mx + 30, btn_top + 54,  col_w, 44),
+            'town':      pygame.Rect(mx + 30, btn_top + 108, col_w, 44),
+            'title':     pygame.Rect(mx + 30, btn_top + 162, col_w, 44),
+            'quit':      pygame.Rect(mx + 30, btn_top + 216, col_w, 44),
+            # Build-Snapshot rechte Spalte (eigene Render-Region)
+            'snapshot':  pygame.Rect(mx + col_w + 60, btn_top,
+                                       w - col_w - 90, h - 130 - 80),
         }
 
     def _handle_pause_click(self, sx, sy):
@@ -7228,20 +7725,27 @@ class Game:
         _asp.draw_aspect_watermark(self.screen, r,
                                     self.player.cls, alpha=18)
 
-        # Eyebrow + Titel
+        # Eyebrow + Titel — eigene Zone ueber den Spalten, mittig
         eyebrow = self.font_small.render(
             '— DER ATEM ZÄHLT —', True, (180, 140, 80))
         self.screen.blit(eyebrow,
-                          (r.centerx - eyebrow.get_width() // 2, r.y + 14))
+                          (r.centerx - eyebrow.get_width() // 2, r.y + 16))
         title_text = 'P A U S E'
-        title = self.font_big.render(title_text, True, pal['halo'])
-        title_sh = self.font_big.render(title_text, True, (10, 6, 4))
+        title = self.font_title.render(title_text, True, pal['halo'])
+        title_sh = self.font_title.render(title_text, True, (10, 6, 4))
         title_x = r.centerx - title.get_width() // 2
-        self.screen.blit(title_sh, (title_x + 2, r.y + 33))
-        self.screen.blit(title, (title_x, r.y + 32))
-        # Ornament-Divider
+        self.screen.blit(title_sh, (title_x + 2, r.y + 41))
+        self.screen.blit(title, (title_x, r.y + 40))
+        # Ornament-Divider direkt unter dem Title
         _asp.draw_ornament_divider(
-            self.screen, r.x + 24, r.y + 80, r.w - 48, bronze)
+            self.screen, r.x + 24, r.y + 110, r.w - 48, bronze)
+        # Update #180: vertikale Spalten-Trennung zwischen Buttons + Build
+        col_div_x = b['snapshot'].x - 14
+        col_top = b['resume'].y - 6
+        col_bot = b['quit'].bottom + 6
+        pygame.draw.line(self.screen, (90, 70, 40),
+                          (col_div_x, col_top),
+                          (col_div_x, col_bot), 1)
 
         # Buttons im Velgrad-Style
         labels = [
@@ -8785,7 +9289,8 @@ class Game:
                     return True
                 hc = bool(getattr(self, '_slot_picker_hardcore', False))
                 self._slot_picker_open = False
-                self.start_game('adventure', slot=slot, hardcore=hc)
+                self.start_game('adventure', slot=slot, hardcore=hc,
+                                persist_new=True)
                 return True
         return False
 
@@ -9363,7 +9868,10 @@ class Game:
         MAX_VISIBLE = 3
         MAX_WIDTH = 600   # Maximale Box-Breite in Pixel
         visible = self.toast_queue[-MAX_VISIBLE:]
-        y = SCREEN_H - 200
+        # User-Fix („untere UI ueberlappt"): Toast-Stack ueber den gesamten
+        # Bottom-HUD-Cluster (Spirit-Bar ~ -182, Globes, Hotbar -150) heben,
+        # damit Toasts nie mehr ueber Hotbar/Globes liegen.
+        y = SCREEN_H - 250
         for text, color, life in reversed(visible):
             alpha = min(1.0, life / 0.6) if life < 0.6 else 1.0
             # Soft-Wrap: zerlege text in Zeilen die in MAX_WIDTH passen
@@ -10300,14 +10808,21 @@ class Game:
         label = getattr(op, 'label', None)
         if label and hasattr(self, 'font_small'):
             ls = self.font_small.render(label, True, (240, 230, 200))
-            bg = pygame.Surface((ls.get_width() + 18, ls.get_height() + 6),
-                                 pygame.SRCALPHA)
+            bg_w = ls.get_width() + 18
+            bg_h = ls.get_height() + 6
+            # Default unter der Stele; aber wenn das ins untere HUD
+            # (Hotbar/Globes ab ~SCREEN_H-200) ragen wuerde, ueber die
+            # Stele klappen — sonst ueberlappt das Label die Hotbar
+            # (User-Report „untere UI ueberlappt").
+            label_y = cy + 44
+            if label_y + bg_h > SCREEN_H - 200:
+                label_y = cy - 58 - bg_h
+            bg = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
             bg.fill((16, 12, 20, 200))
             pygame.draw.rect(bg, (*accent, 200), bg.get_rect(), 1)
-            self.screen.blit(bg, (cx - bg.get_width() // 2,
-                                   cy + 44))
+            self.screen.blit(bg, (cx - bg_w // 2, label_y))
             self.screen.blit(ls, (cx - ls.get_width() // 2 + 9,
-                                   cy + 47))
+                                   label_y + 3))
 
     def _draw_tutorial_portal_arrow(self, sx, sy, label='HIER STARTEN'):
         """Update #130: Hand-Holding für den Spieler — großer pulsierender
@@ -10323,8 +10838,11 @@ class Game:
         bob = int(math.sin(t * 0.004) * 6)
         cx = int(sx)
         # Pfeil-Spitze sitzt über dem Portal-Bogen (~ -100 px relativ zum
-        # Portal-Mittelpunkt, +bob)
-        arrow_tip_y = int(sy) - 90 + bob
+        # Portal-Mittelpunkt, +bob).  User-Fix („untere UI ueberlappt"):
+        # nach oben klemmen, damit Pfeil + Label nicht ins Bottom-HUD
+        # (Hotbar/Globes ab ~SCREEN_H-200) rutschen, wenn das Portal am
+        # unteren Bildrand liegt.
+        arrow_tip_y = min(int(sy) - 90 + bob, SCREEN_H - 300)
 
         # Glow-Halo um die Pfeilspitze
         glow = pygame.Surface((140, 80), pygame.SRCALPHA)
@@ -11021,7 +11539,8 @@ class Game:
             lines.append((role_desc, (210, 200, 180), font))
         # Quest-Hinweis wenn aktive Quest auf diesen NPC zeigt
         log = getattr(self, 'quest_log', None)
-        if log is not None and log.has_quest_for_npc(hovered.name):
+        if log is not None and log.has_quest_for_npc(hovered.name,
+                                                     talk_only=True):
             lines.append(('★ Quest hier', (140, 230, 140), font))
         max_w = max(s[2].size(s[0])[0] for s in lines)
         box_w = max_w + 22
@@ -11385,30 +11904,69 @@ class Game:
                     random.uniform(-10, 10), random.uniform(-40, -20),
                     beam_color, random.uniform(0.6, 1.2),
                     random.uniform(2, 4), gravity=-30))
-        glow = pygame.Surface((48, 48), pygame.SRCALPHA)
+        # Update #205: Loot ~2x skaliert wegen neuer 84x124-Char-Skala.
+        # Vorher waren 4-7px-Items neben 124-px-Chars optisch winzig.
+        glow = pygame.Surface((80, 80), pygame.SRCALPHA)
         for i in range(5, 0, -1):
             alpha = 80 // i
-            pygame.draw.circle(glow, (*l.color, alpha), (24, 24), i * 4)
-        self.screen.blit(glow, (sx - 24, sy - 24))
+            pygame.draw.circle(glow, (*l.color, alpha), (40, 40), i * 7)
+        self.screen.blit(glow, (sx - 40, sy - 40))
         if l.kind == 'gold':
-            pygame.draw.circle(self.screen, l.color, (sx, sy), 4)
-            pygame.draw.circle(self.screen, WHITE, (sx - 1, sy - 1), 1)
+            # Gold-Muenzen-Stack (mehrere Coins)
+            for dy_, r_ in ((0, 9), (-3, 7), (-5, 5)):
+                pygame.draw.circle(self.screen, l.color, (sx, sy + dy_), r_)
+                pygame.draw.circle(self.screen, (10, 6, 4),
+                                    (sx, sy + dy_), r_, 1)
+            # Highlight + Symbol auf Top-Coin
+            pygame.draw.circle(self.screen, (255, 240, 180),
+                                (sx - 3, sy - 7), 2)
+            pygame.draw.line(self.screen, (180, 120, 30),
+                              (sx - 2, sy - 5), (sx + 2, sy - 5), 1)
         elif l.kind == 'vital_orb':
-            # Update #96: Pulsierende rosé Sphäre mit Highlight + Glow.
+            # Update #96: Pulsierende rosé Sphäre, jetzt deutlich groesser
             t = pygame.time.get_ticks() * 0.005
             pulse = 0.7 + 0.3 * math.sin(t + l.bob)
-            r = int(6 + 2 * pulse)
+            r = int(12 + 3 * pulse)
             glow = pygame.Surface((r * 4, r * 4), pygame.SRCALPHA)
             pygame.draw.circle(glow, (*l.color, int(80 * pulse)),
                                 (r * 2, r * 2), r * 2)
             self.screen.blit(glow, (sx - r * 2, sy - r * 2))
             pygame.draw.circle(self.screen, l.color, (sx, sy), r)
+            pygame.draw.circle(self.screen, (10, 6, 4), (sx, sy), r, 1)
+            # Inner Highlight
             pygame.draw.circle(self.screen, (255, 230, 240),
-                                (sx - 2, sy - 2), max(1, r // 3))
+                                (sx - 3, sy - 3), max(2, r // 3))
+            # Inner Core
+            pygame.draw.circle(self.screen, (255, 255, 255),
+                                (sx - 4, sy - 4), 2)
         elif l.kind == 'item':
-            pts = [(sx, sy - 7), (sx + 6, sy), (sx, sy + 7), (sx - 6, sy)]
-            pygame.draw.polygon(self.screen, l.color, pts)
-            pygame.draw.polygon(self.screen, WHITE, pts, 1)
+            # Update #205: Detaillierter Diamant-Item-Marker.
+            # Doppel-Kontur (dunkel innen, hell aussen) fuer Plastizitaet.
+            outer_pts = [(sx, sy - 14), (sx + 12, sy),
+                          (sx, sy + 14), (sx - 12, sy)]
+            inner_pts = [(sx, sy - 10), (sx + 8, sy),
+                          (sx, sy + 10), (sx - 8, sy)]
+            # Schatten unter dem Item
+            sh = pygame.Surface((30, 10), pygame.SRCALPHA)
+            pygame.draw.ellipse(sh, (0, 0, 0, 140), (0, 0, 30, 10))
+            self.screen.blit(sh, (sx - 15, sy + 10))
+            # Outer-Glow-Ring (rarity-color)
+            pygame.draw.polygon(self.screen, l.color, outer_pts)
+            pygame.draw.polygon(self.screen, (10, 6, 4), outer_pts, 2)
+            # Inner-Fill (heller)
+            from .sprites import _shade
+            inner_col = _shade(l.color, 1.35)
+            pygame.draw.polygon(self.screen, inner_col, inner_pts)
+            # Highlight-Glanz (oben links)
+            pygame.draw.polygon(self.screen, (255, 255, 255), [
+                (sx - 5, sy - 4), (sx - 2, sy - 7),
+                (sx, sy - 5), (sx - 3, sy - 2),
+            ])
+            # Cross-Linien (Facetten)
+            pygame.draw.line(self.screen, l.color,
+                              (sx, sy - 10), (sx, sy + 10), 1)
+            pygame.draw.line(self.screen, l.color,
+                              (sx - 8, sy), (sx + 8, sy), 1)
             # Update #57: POE2-Style Ground-Label.  Item-Name + Rarity-Tint
             # über dem Loot wenn Player im 240 px-Radius ist.  Drop-Grace
             # zeigt extra Hint („Klick zum Aufheben").
@@ -11439,28 +11997,71 @@ class Game:
                                           (sx - hint.get_width() // 2,
                                            bg_y - hint.get_height() - 2))
         elif l.kind == 'gem':
-            # Sechseckiger Edelstein
+            # Update #205: Hexagonaler Edelstein, deutlich groesser + Facetten
+            # Schatten
+            sh = pygame.Surface((28, 8), pygame.SRCALPHA)
+            pygame.draw.ellipse(sh, (0, 0, 0, 140), (0, 0, 28, 8))
+            self.screen.blit(sh, (sx - 14, sy + 10))
             pts = []
             for k in range(6):
                 a = k * math.pi / 3 - math.pi / 2
-                pts.append((sx + math.cos(a) * 6, sy + math.sin(a) * 6))
+                pts.append((sx + math.cos(a) * 12, sy + math.sin(a) * 12))
             pygame.draw.polygon(self.screen, l.color, pts)
-            pygame.draw.polygon(self.screen, WHITE, pts, 1)
-            pygame.draw.circle(self.screen, WHITE, (sx - 1, sy - 1), 1)
+            pygame.draw.polygon(self.screen, (10, 6, 4), pts, 2)
+            # Inner-Hex (lighter)
+            from .sprites import _shade
+            inner_col = _shade(l.color, 1.35)
+            inner_pts = []
+            for k in range(6):
+                a = k * math.pi / 3 - math.pi / 2
+                inner_pts.append((sx + math.cos(a) * 8, sy + math.sin(a) * 8))
+            pygame.draw.polygon(self.screen, inner_col, inner_pts)
+            # Facetten-Linien (Center → Vertex)
+            for k in range(6):
+                a = k * math.pi / 3 - math.pi / 2
+                pygame.draw.line(self.screen, l.color,
+                                  (sx, sy),
+                                  (sx + math.cos(a) * 11,
+                                   sy + math.sin(a) * 11), 1)
+            # Highlight oben
+            pygame.draw.circle(self.screen, (255, 255, 255),
+                                (sx - 3, sy - 4), 2)
+            pygame.draw.circle(self.screen, (255, 255, 255),
+                                (sx - 3, sy - 4), 1)
         elif l.kind == 'skill_gem':
-            # Skill-Gem: leuchtender violetter Kristall mit Stern-Pulsation
+            # Update #205: Skill-Gem deutlich groesser + Star-Pulsation
             pulse = abs(math.sin(pygame.time.get_ticks() * 0.005))
-            glow_r = 18 + int(pulse * 4)
+            glow_r = 32 + int(pulse * 6)
             glow_big = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
-            pygame.draw.circle(glow_big, (*l.color, 180), (glow_r, glow_r), glow_r)
+            pygame.draw.circle(glow_big, (*l.color, 180),
+                                (glow_r, glow_r), glow_r)
             self.screen.blit(glow_big, (sx - glow_r, sy - glow_r))
-            # Kristall-Form (Raute hochgestellt)
-            pts = [(sx, sy - 10), (sx + 7, sy), (sx, sy + 10), (sx - 7, sy)]
-            pygame.draw.polygon(self.screen, l.color, pts)
-            pygame.draw.polygon(self.screen, WHITE, pts, 2)
-            # Stern in der Mitte
-            pygame.draw.line(self.screen, WHITE, (sx - 3, sy), (sx + 3, sy), 1)
-            pygame.draw.line(self.screen, WHITE, (sx, sy - 3), (sx, sy + 3), 1)
+            # Schatten
+            sh = pygame.Surface((30, 8), pygame.SRCALPHA)
+            pygame.draw.ellipse(sh, (0, 0, 0, 140), (0, 0, 30, 8))
+            self.screen.blit(sh, (sx - 15, sy + 16))
+            # Outer-Kristall (Raute)
+            outer_pts = [(sx, sy - 18), (sx + 13, sy),
+                          (sx, sy + 18), (sx - 13, sy)]
+            pygame.draw.polygon(self.screen, l.color, outer_pts)
+            pygame.draw.polygon(self.screen, (10, 6, 4), outer_pts, 2)
+            # Inner-Kristall (lighter)
+            from .sprites import _shade
+            inner_col = _shade(l.color, 1.40)
+            inner_pts = [(sx, sy - 12), (sx + 9, sy),
+                          (sx, sy + 12), (sx - 9, sy)]
+            pygame.draw.polygon(self.screen, inner_col, inner_pts)
+            # Highlight-Sheen
+            pygame.draw.polygon(self.screen, (255, 255, 255), [
+                (sx - 7, sy - 4), (sx - 2, sy - 10),
+                (sx + 1, sy - 6), (sx - 4, sy - 1),
+            ])
+            # Stern in der Mitte (mit Glow)
+            for r_, col_ in ((5, l.color), (3, inner_col), (2, (255, 255, 255))):
+                pygame.draw.line(self.screen, col_,
+                                  (sx - r_, sy), (sx + r_, sy), 1)
+                pygame.draw.line(self.screen, col_,
+                                  (sx, sy - r_), (sx, sy + r_), 1)
 
     def _draw_particle(self, p):
         a = 1 - p.age / p.life
@@ -11595,7 +12196,16 @@ def main():
     # dem Game-Constructor nachgereicht für State-Snapshot.
     from . import crash_logger as _crash
     _crash.install()
-    g = Game()
+    # Update #202 (Perf-Fix): GL-Post-Pipeline standardmaessig AUS.
+    # Begruendung: der Hybrid-Pfad lud jede Frame den kompletten
+    # 1600x900-Screen via pygame.image.tostring() (~2.4 ms CPU) in eine
+    # GL-Texture hoch + Shader-Pass + flip — ein fixer Per-Frame-Overhead,
+    # der die "immense Performance-Probleme" mitverursacht hat.  Der
+    # Color-Grade/Vignette/Bloom-Look wird bereits CPU-seitig durch
+    # lighting.render_bloom + self._vignette + town_color_grading geliefert.
+    # SCALED-Pfad (hardware-accel Integer-Scaling) ist der getestete,
+    # scharfe Default.  GL bleibt opt-in via Game(use_gl_post=True).
+    g = Game(use_gl_post=False)
     _crash.install(g)   # game-ref jetzt verfügbar
     # AA-05 (Update #168): Mod-Discovery
     if g.mod_loader is not None:

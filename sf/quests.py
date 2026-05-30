@@ -13,6 +13,23 @@ Architektur:
 from . import quest_data as _qd
 
 
+# ============================================================
+# Audit C.2: Auto-Fail-Timeouts gegen Quest-Soft-Locks
+# ============================================================
+# ESCORT/DEFEND-Stages konnten permanent stuck bleiben:
+#   - DEFEND: Schützling stirbt → Stage wartet ewig auf einen NPC, der
+#     nie wieder lebt.
+#   - ESCORT: Begleiter ist (nach Tod im Dungeon) verschwunden und lässt
+#     sich auch in Town nicht respawnen → Stage hängt.
+# Beide bekommen jetzt einen Patience-Timer (`QuestState.fail_timer`);
+# läuft er ab, wird die Quest via `QuestLog.fail()` sauber gescheitert
+# (Main-Quests werden stattdessen auf Stage 0 zurückgesetzt, damit die
+# Akt-Progression nie bricht). Per-Quest überschreibbar via
+# `stage.target['fail_grace']` (DEFEND) bzw. `['fail_timeout']` (ESCORT).
+DEFEND_FAIL_GRACE_S = 6.0      # Schützling tot für N s → gescheitert
+ESCORT_FAIL_TIMEOUT_S = 240.0  # Begleiter in Town unauffindbar für N s → gescheitert
+
+
 class QuestState:
     """Eine aktive Quest. Tracking via stage_index + current_count.
 
@@ -23,7 +40,8 @@ class QuestState:
         Sequenz-Schritte (PUZZLE)
     """
     __slots__ = ('quest', 'stage_index', 'count', 'completed',
-                 'visible_marker', 'timer', 'puzzle_progress')
+                 'visible_marker', 'timer', 'puzzle_progress',
+                 'fail_timer', 'fail_reason')
 
     def __init__(self, quest_dict):
         self.quest = quest_dict
@@ -33,6 +51,11 @@ class QuestState:
         self.visible_marker = True
         self.timer = 0.0
         self.puzzle_progress = []
+        # Audit C.2: Patience-Timer + Fail-Grund für ESCORT/DEFEND-Timeouts.
+        # `fail_reason != None` signalisiert QuestLog.tick(), dass die Quest
+        # gescheitert ist (gesetzt von tick(), abgearbeitet von QuestLog).
+        self.fail_timer = 0.0
+        self.fail_reason = None
 
     # ---- Stage-Helpers ----
     @property
@@ -100,13 +123,24 @@ class QuestState:
             npc_alive = _npc_is_alive(game, npc_name)
             player_close = _player_near_npc(game, npc_name, radius=200)
             if npc_alive and player_close:
+                self.fail_timer = 0.0
                 self.timer += dt
                 if self.timer >= duration:
                     self.timer = 0.0
                     return True   # → Stage advanced (handled by caller)
-            elif not npc_alive:
-                # NPC tot → Quest scheitert: revert timer
+            elif npc_alive:
+                # NPC lebt, Player nur zu weit weg — kein Fail, Defend-Timer
+                # ruht (kein Fortschritt, aber auch kein Verlust).
+                self.fail_timer = 0.0
+            else:
+                # Audit C.2: NPC tot → Quest scheitert nach Grace-Periode
+                # (vorher: Timer-Reset → Stage wartete ewig auf einen NPC,
+                # der nie wieder lebt = Soft-Lock).
                 self.timer = 0.0
+                self.fail_timer += dt
+                if self.fail_timer >= target.get('fail_grace',
+                                                 DEFEND_FAIL_GRACE_S):
+                    self.fail_reason = 'Der Schützling ist gefallen.'
 
         elif stype == _qd.StageType.TIMED:
             # Zeit läuft ab; wenn limit überschritten → fail_action.
@@ -146,11 +180,24 @@ class QuestState:
                 # den NPC am Stadttor zu spawnen.  Nur in town/outpost,
                 # nie im Dungeon.
                 if _try_spawn_escort_npc(game, npc_name, dest):
+                    self.fail_timer = 0.0
                     return False
-                # Spawn nicht möglich (Dungeon / kein npcs-Container):
-                # still bleiben statt Fail-Toast spam — Stage wartet
-                # bis Spieler zurück in Town ist.
+                # Spawn nicht möglich. Zwei Fälle (Audit C.2):
+                #   - im Dungeon = legitime Pause (Escort wartet, bis der
+                #     Spieler zurück in Town ist) → Timer ruht, kein Fail.
+                #   - in Town aber unspawnbar = echter Broken-State (z.B.
+                #     NPC nach Tod verloren) → nach Timeout sauber failen
+                #     statt ewig zu hängen.
+                if getattr(game, 'area', None) == 'town':
+                    self.fail_timer += dt
+                    if self.fail_timer >= target.get('fail_timeout',
+                                                     ESCORT_FAIL_TIMEOUT_S):
+                        self.fail_reason = 'Der Begleiter ist verschwunden.'
+                else:
+                    self.fail_timer = 0.0
                 return False
+            # NPC lebt → Patience-Timer zurücksetzen.
+            self.fail_timer = 0.0
             if dest is not None:
                 # Distanz NPC↔dest
                 npc_obj = _find_npc(game, npc_name)
@@ -337,6 +384,9 @@ class QuestLog:
         # Audit #179 C.2: Abandoned Quests — verhindert dass die gleiche
         # Quest sofort wieder angeboten wird. Persistiert ueber save/load.
         self.abandoned = set()
+        # Audit C.2: Gescheiterte Quests (ESCORT/DEFEND-Timeout). Wie
+        # `abandoned` blocken sie Re-Offer bis `retake()`. Persistiert.
+        self.failed = set()
 
     def set_tracked(self, qid):
         """Update #160 (T2.3-C): Setze/Toggle die getrackte Quest.
@@ -371,7 +421,7 @@ class QuestLog:
         # re-offered — erst manuell aus `abandoned` entfernen (via re-take
         # vom NPC oder Console-Command).
         if (qid in self.active or qid in self.completed
-                or qid in self.abandoned):
+                or qid in self.abandoned or qid in self.failed):
             return None
         q = _qd.quest_by_id(qid)
         if q is None:
@@ -403,6 +453,41 @@ class QuestLog:
             self.tracked_quest_id = None
         return True
 
+    def fail(self, qid, game):
+        """Audit C.2: Eine aktive Quest als gescheitert markieren.
+
+        Wird von `QuestLog.tick()` aufgerufen, wenn ein ESCORT/DEFEND-
+        Patience-Timer abgelaufen ist (`QuestState.fail_reason` gesetzt).
+
+        Main-Quests werden NICHT hart gescheitert — das würde die Akt-
+        Progression brechen. Stattdessen wird die scheiternde Stage auf
+        den Anfang zurückgesetzt (gleiche Schutzlogik wie `abandon`).
+
+        Returns True wenn die Quest gescheitert wurde, False bei Main-Quest-
+        Revert oder unbekannter qid.
+        """
+        if qid not in self.active:
+            return False
+        st = self.active[qid]
+        reason = getattr(st, 'fail_reason', None) or 'gescheitert'
+        if getattr(st, 'is_main', False):
+            # Main-Quest: Rückschlag statt Permadeath der Quest.
+            st.fail_timer = 0.0
+            st.fail_reason = None
+            st.timer = 0.0
+            st.count = 0
+            st.stage_index = 0
+            if hasattr(game, 'toast'):
+                game.toast(f'„{st.title}": Rückschlag — beginne von vorn.',
+                           (220, 150, 80))
+            return False
+        del self.active[qid]
+        self.failed.add(qid)
+        if self.tracked_quest_id == qid:
+            self.tracked_quest_id = None
+        on_quest_failed(game, qid, st, reason)
+        return True
+
     def retake(self, qid):
         """Audit #179 C.2: Eine abgebrochene Quest wieder annehmbar machen.
 
@@ -411,20 +496,33 @@ class QuestLog:
         ist aber API fuer Console-Commands / Save-Migration.
         """
         self.abandoned.discard(qid)
+        # Audit C.2: auch gescheiterte Quests sind via retake wieder
+        # annehmbar (z.B. Escort erneut versuchen).
+        self.failed.discard(qid)
 
     def ensure_initial(self):
         """Startet die Default-Akt-1-Quests bei Game-Start."""
         for qid in _qd.initial_quests_for_new_game():
             self.offer(qid)
 
-    def has_quest_for_npc(self, npc_name):
-        """Gibt es eine aktive Quest, deren aktuelle Stage diesen NPC braucht?"""
+    def has_quest_for_npc(self, npc_name, talk_only=False):
+        """Gibt es eine aktive Quest, deren aktuelle Stage diesen NPC braucht?
+
+        `talk_only=True`: nur Stages, die durch REDEN voranschreiten
+        (TALK/RETURN). Für Quest-Marker/Hints — verhindert ein „?" über
+        Escort-Begleitern und Defend-Schützlingen, wo `npc_name` nur das
+        Quest-*Subjekt* ist und Reden nichts bewirkt (User-Report:
+        „? oder ! ohne Sinn"). on_talk() bringt nur TALK/RETURN voran.
+        """
+        talk_types = (_qd.StageType.TALK, _qd.StageType.RETURN)
         for st in self.active.values():
             stage = st.stage
             if stage is None:
                 continue
             tgt = stage.get('target', {})
             if tgt.get('npc_name') == npc_name:
+                if talk_only and stage.get('type') not in talk_types:
+                    continue
                 return st
         return None
 
@@ -438,7 +536,11 @@ class QuestLog:
         """
         for q in _qd.quests_offered_by_npc(npc_name):
             qid = q['id']
-            if qid in self.active or qid in self.completed:
+            # active/completed/abandoned/failed sind alle nicht (mehr)
+            # akzeptierbar — konsistent mit offer(). Sonst zeigt der NPC ein
+            # „!", aber Reden bewirkt nichts (User-Report „! ohne Sinn").
+            if (qid in self.active or qid in self.completed
+                    or qid in self.abandoned or qid in self.failed):
                 continue
             # Update #145: Prerequisite-Check
             if player is not None and not self._quest_prerequisite_met(
@@ -484,8 +586,13 @@ class QuestLog:
 
         Update #145: `player` optional für Akt-Gate-Filter — locked
         Quests zeigen kein „!"-Marker.
+
+        Marker-Semantik (klar & sinnvoll):
+          '?' = hier durch Reden eine Quest-Stage abschliessen/voranbringen
+                (nur TALK/RETURN — kein '?' über Escort-/Defend-NPCs).
+          '!' = neue, akzeptierbare Quest verfügbar.
         """
-        if self.has_quest_for_npc(npc_name):
+        if self.has_quest_for_npc(npc_name, talk_only=True):
             return '?'
         if self.npc_has_offer(npc_name, player=player):
             return '!'
@@ -527,11 +634,14 @@ class QuestLog:
         (DEFEND/TIMED/ESCORT) prüfen sich hier selbst — keine externe
         Event-Quelle.
         """
-        for st in list(self.active.values()):
+        for qid, st in list(self.active.items()):
             ok = st.tick(dt, game)
             if ok:
                 # tick() returned True = Stage fertig
                 _advance(st, game, self)
+            elif st.fail_reason is not None:
+                # Audit C.2: ESCORT/DEFEND-Patience-Timer abgelaufen.
+                self.fail(qid, game)
 
 
 # ============================================================
@@ -629,42 +739,70 @@ def on_reach_boss_room(game):
 
 
 def on_talk(game, npc_name):
-    """Player redet mit NPC (Interaktion)."""
+    """Player redet mit NPC (Interaktion).
+
+    Update #202 (User-Report „3x ! hintereinander, talk skippt Quests durch"):
+    Ein Gespraech bringt ALLE TALK/RETURN-Stages bei diesem NPC voran UND
+    nimmt ALLE aktuell verfuegbaren Quests dieses Gebers in EINEM Zug an
+    (vorher: eine Quest pro Druck → das ! blieb fuer die naechsten stehen,
+    und neu angenommene Quests mit „TALK-beim-Geber"-Erststage liessen den
+    Marker `!`↔`?` flackern). Quests deren erste Stage ein TALK beim selben
+    NPC ist, werden sofort abgehakt — man redet ja gerade mit ihm.
+    """
     log = _get_log(game)
     if log is None:
         return False
-    # Erst: Stage-Ziel "talk" / "return" voll-machen
+    talk_types = (_qd.StageType.TALK, _qd.StageType.RETURN)
     progressed = False
+    # 1) Bestehende TALK/RETURN-Stages bei diesem NPC voranbringen.
     for st in list(log.active.values()):
         stage = st.stage
         if stage is None:
             continue
-        tgt = stage.get('target', {})
-        if tgt.get('npc_name') != npc_name:
+        if stage.get('target', {}).get('npc_name') != npc_name:
             continue
-        if stage['type'] in (_qd.StageType.TALK, _qd.StageType.RETURN):
+        if stage['type'] in talk_types:
             _advance(st, game, log)
             progressed = True
-    # Dann: neue Quest anbieten
-    # Update #145: player-aware — Akt-Gate blockt zu-frühe Quests
-    if not progressed:
-        offer = log.npc_has_offer(npc_name,
-                                     player=getattr(game, 'player', None))
-        if offer is not None:
-            log.offer(offer['id'])
-            _play_quest_sound(game, 'quest_accept')
-            # Update #127: NPC-Voice-Line „quest_offer" aus voice_registry
-            # falls vorhanden — Lore-Anker statt nur generic SFX.
-            try:
-                from . import sounds as _snd
-                voice_key = _VOICE_NPC_KEY.get(npc_name)
-                if voice_key:
-                    _snd.play_voice(voice_key, 'quest_offer', volume=0.85)
-            except Exception:
-                pass
-            if hasattr(game, 'toast'):
-                game.toast(f'Neue Quest: {offer["title"]}', (255, 215, 100))
-    return progressed
+    # 2) ALLE aktuell verfuegbaren Quests dieses Gebers annehmen (ein Zug).
+    #    Akt-Gate bleibt aktiv (npc_has_offer ist player-aware, Update #145).
+    player = getattr(game, 'player', None)
+    accepted = []
+    guard = 0
+    while guard < 16:
+        guard += 1
+        offer = log.npc_has_offer(npc_name, player=player)
+        if offer is None:
+            break
+        st = log.offer(offer['id'])
+        if st is None:
+            break
+        accepted.append(offer['title'])
+        # Erste Stage = TALK beim selben Geber? → sofort abhaken (kein
+        # zweiter Talk noetig, kein Marker-Flackern).
+        s0 = st.stage
+        if (s0 is not None and s0.get('type') == _qd.StageType.TALK
+                and s0.get('target', {}).get('npc_name') == npc_name):
+            _advance(st, game, log)
+    # 3) Gesammeltes Feedback (kein Toast-Spam pro Quest).
+    if accepted:
+        _play_quest_sound(game, 'quest_accept')
+        try:
+            from . import sounds as _snd
+            voice_key = _VOICE_NPC_KEY.get(npc_name)
+            if voice_key:
+                _snd.play_voice(voice_key, 'quest_offer', volume=0.85)
+        except Exception:
+            pass
+        if hasattr(game, 'toast'):
+            if len(accepted) == 1:
+                game.toast(f'Neue Quest: {accepted[0]}', (255, 215, 100))
+            else:
+                game.toast(f'{len(accepted)} neue Quests von {npc_name}',
+                           (255, 215, 100))
+                for ti in accepted:
+                    game.toast(f'  • {ti}', (220, 200, 150))
+    return progressed or bool(accepted)
 
 
 # Update #127: zentrales NPC-Name → voice_registry-Key Mapping.
@@ -951,6 +1089,33 @@ def _play_quest_sound(game, key):
     try:
         from . import sounds as _snd
         _snd.play(key, volume=0.8, bus='ui')
+    except Exception:
+        pass
+
+
+def on_quest_failed(game, qid, quest_state, reason):
+    """Audit C.2: Zentrale Reaktion auf eine gescheiterte Quest.
+
+    Wird von `QuestLog.fail()` aufgerufen. Default = UI-Feedback (Toast +
+    Event-Banner), Fail-Sound und (optionale) Telemetrie. Game-Code/Mods
+    können diese Funktion patchen oder erweitern, um eigene Reaktionen
+    anzudocken (z.B. NPC-Dialog-Reaktion, Faction-Rep-Malus).
+    """
+    title = getattr(quest_state, 'title', qid)
+    if hasattr(game, 'toast'):
+        game.toast(f'✗ Quest gescheitert: {title} — {reason}', (220, 80, 60))
+    if hasattr(game, 'push_event_notification'):
+        game.push_event_notification(
+            'quest',
+            f'✗ QUEST GESCHEITERT  {title}',
+            sub=reason,
+            color=(220, 90, 70), duration=5.0)
+    _play_quest_sound(game, 'quest_fail')
+    # Telemetrie (opt-in, rein additiv — fehlt der Hook, passiert nichts).
+    try:
+        from . import telemetry as _tel
+        if hasattr(_tel, 'record_quest_failed'):
+            _tel.record_quest_failed(qid, reason)
     except Exception:
         pass
 

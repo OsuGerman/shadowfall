@@ -91,21 +91,45 @@ vec3 _sample_with_shake(vec2 uv) {
 }
 
 vec3 _bloom(vec2 uv) {
-    // 9-tap blur of bright pixels — light, cheap, decent visual
+    // Update #193: ECHTER additiver Gaussian-Blur (kein /total mehr).
+    // Vorher: sum /= total normierte das Resultat → bei Text gab es
+    // ein helles Echo des Glyphs in Nachbarpixeln = sichtbares Doppel-Bild.
+    // Jetzt: jeder bright pixel addiert seine Helligkeit gewichtet, ohne
+    // Re-Normalisierung — ergibt einen weichen Halo statt einer Kopie.
     vec3 sum = vec3(0.0);
-    float total = 0.0;
-    float radius = 0.004;
-    for (int dx = -1; dx <= 1; dx++) {
-        for (int dy = -1; dy <= 1; dy++) {
-            vec2 off = vec2(float(dx), float(dy)) * radius;
-            vec3 s = texture(u_tex, uv + off + u_shake_offset).rgb;
-            float brightness = max(s.r, max(s.g, s.b));
-            float w = max(0.0, brightness - u_bloom_threshold);
-            sum += s * w;
-            total += w;
-        }
+    float radius = 0.0025;
+    // 9-tap gewichtetes Sample-Kernel (zentriert mehr Gewicht, abnehmend nach aussen)
+    const float w_center = 0.25;
+    const float w_edge   = 0.125;
+    const float w_diag   = 0.0625;
+    // Center
+    {
+        vec3 s = texture(u_tex, uv).rgb;
+        float br = max(s.r, max(s.g, s.b));
+        sum += s * max(0.0, br - u_bloom_threshold) * w_center;
     }
-    if (total > 0.0) sum /= total;
+    // Cardinal (4 taps)
+    vec2 cards[4];
+    cards[0] = vec2( 1.0, 0.0);
+    cards[1] = vec2(-1.0, 0.0);
+    cards[2] = vec2( 0.0, 1.0);
+    cards[3] = vec2( 0.0,-1.0);
+    for (int i = 0; i < 4; i++) {
+        vec3 s = texture(u_tex, uv + cards[i] * radius).rgb;
+        float br = max(s.r, max(s.g, s.b));
+        sum += s * max(0.0, br - u_bloom_threshold) * w_edge;
+    }
+    // Diagonal (4 taps)
+    vec2 diags[4];
+    diags[0] = vec2( 1.0, 1.0);
+    diags[1] = vec2( 1.0,-1.0);
+    diags[2] = vec2(-1.0, 1.0);
+    diags[3] = vec2(-1.0,-1.0);
+    for (int i = 0; i < 4; i++) {
+        vec3 s = texture(u_tex, uv + diags[i] * radius * 1.4).rgb;
+        float br = max(s.r, max(s.g, s.b));
+        sum += s * max(0.0, br - u_bloom_threshold) * w_diag;
+    }
     return sum * u_bloom_strength;
 }
 
@@ -191,9 +215,11 @@ class GLPostProcessor:
         self.vao = 0
         self.vbo = 0
         self.tex = 0
-        self.bloom_strength = 0.5
-        self.bloom_threshold = 0.7
-        self.vignette_strength = 0.35
+        # Update #193: Bloom moderater (war 0.5 → sichtbares Echo bei Text).
+        # Threshold hoch damit nur echte Highlights bluehen, nicht Body-Text.
+        self.bloom_strength = 0.35
+        self.bloom_threshold = 0.85
+        self.vignette_strength = 0.30
 
     # ----------------------------------------------------------------
     def init(self) -> bool:
@@ -276,9 +302,14 @@ class GLPostProcessor:
 
     # ----------------------------------------------------------------
     def upload_surface(self, surf: pygame.Surface) -> None:
-        """Pygame-Surface → GL-Texture-Upload."""
-        # Pygame ist BGRA in memory bei 32-bit; wir convertieren auf RGB
-        data = pygame.image.tostring(surf, 'RGB', True)   # flipped
+        """Pygame-Surface → GL-Texture-Upload.
+
+        Update #192-fix: KEIN Vertical-Flip mehr beim Upload (3. Arg
+        False). Die UV-Koords in _create_fullscreen_quad sind bereits
+        Y-geflippt fuer Pygame's top-down Layout — vorheriger doppel-
+        Flip → Bild stand auf dem Kopf.
+        """
+        data = pygame.image.tostring(surf, 'RGB', False)
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.tex)
         gl.glTexSubImage2D(gl.GL_TEXTURE_2D, 0, 0, 0,
                             self.width, self.height,
@@ -355,14 +386,32 @@ class GLPostProcessor:
 
     # ----------------------------------------------------------------
     def teardown(self) -> None:
+        # Update #201: PyOpenGL erwartet (n, ids)-Signatur fuer
+        # glDeleteBuffers/Textures/VertexArrays.  Vorheriger 1-arg-Call
+        # `glDeleteBuffers([self.vbo])` crashte mit
+        # `requires 2 arguments (n, buffers), received 1`.
+        # Try/except pro Resource damit ein Fehler nicht die anderen
+        # Cleanups blockt (teardown wird beim fullscreen-Toggle aufgerufen).
         if self.tex:
-            gl.glDeleteTextures([self.tex])
+            try:
+                gl.glDeleteTextures(1, [self.tex])
+            except Exception:
+                pass
         if self.vbo:
-            gl.glDeleteBuffers([self.vbo])
+            try:
+                gl.glDeleteBuffers(1, [self.vbo])
+            except Exception:
+                pass
         if self.vao:
-            gl.glDeleteVertexArrays([self.vao])
+            try:
+                gl.glDeleteVertexArrays(1, [self.vao])
+            except Exception:
+                pass
         if self.shader_program:
-            gl.glDeleteProgram(self.shader_program)
+            try:
+                gl.glDeleteProgram(self.shader_program)
+            except Exception:
+                pass
         self.enabled = False
 
 

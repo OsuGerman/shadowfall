@@ -7,6 +7,7 @@ Stereo, Reverb-Annäherung, pre-rendered Music-Loops.
 import array
 import math
 import random
+import threading
 import pygame
 
 
@@ -39,6 +40,22 @@ _SFX_CHANNEL_FIRST = 3      # Channels 0=music, 1=ambient, 2=step
 _SFX_CHANNEL_COUNT = 27     # 32 total - 3 reserved - 2 voice → 27 SFX
 _LAST_PLAY_MS = {}          # sound_name → pygame.time.get_ticks()
 _DEDUP_WINDOW_MS = 40       # Min-Spacing zwischen identischen Sounds
+
+# Update #184 (User-Report „<sound> wird random gespamt"):
+# Per-Sound Dedup-Override.  40 ms global ist zu kurz fuer lange,
+# aggressive Mob-/AoE-Sounds — wenn 3-5 Mobs gleichzeitig aggro werden
+# oder mehrere AoE-Telegraphs spawnen, klingt der gleiche Sound wie
+# Spam.  Diese Map setzt explizit hoehere Min-Spacings fuer die laute
+# Klasse von Sounds.
+_DEDUP_WINDOW_OVERRIDES_MS = {
+    'aoe_windup':            700,   # Boss-AoE-Telegraph (Spam-Problem)
+    'ambient_monster_growl': 1500,  # 30s langes Loop-File
+    'monster_howl':          1200,
+    'roar':                   600,
+    'slime_attack':           450,
+    'monster_bite':           300,
+    'hit_heavy':              200,
+}
 
 # Update #129 — VOICE-CHANNEL-RESERVATION + ANTI-OVERLAP
 # (User-Report „viele Voice-Lines werden abgeschnitten oder spielen
@@ -91,7 +108,17 @@ _VOLUME_CAP = {
     'cast_dark':    0.55,    # ↓ war 0.65
     'death':        0.55,    # ↓ war 0.65
     'monster_bite': 0.50,    # ↓ war 0.60
-    'slime_attack': 0.45,    # ↓ war 0.55
+    'slime_attack': 0.40,    # ↓ war 0.45 — User-Report „ballert die Ohren weg"
+    # Update #184 (User-Report „aoe_windup/monster_growl/monster_howl
+    # ballern die Ohren weg"): harte Caps fuer die lautesten Stock-Sounds.
+    # aoe_windup wird pro Mob-AoE-Spawn gespielt — bei mehreren Mobs
+    # gleichzeitig in der Telegraph-Phase wird der Mix erschlagen.
+    'aoe_windup':              0.35,
+    'ambient_monster_growl':   0.20,   # 30s Loop-File, Default war voll
+    'monster_howl':            0.30,
+    # Update #186: Player-Breath subliminal — pro (biome, intensity)
+    # ein eigener Cache-Key.  Wir applyen einen Default-Cap auf das
+    # `_breath_`-Prefix via `_apply_volume_cap` (siehe unten).
     # Update #128 (User-Report „GoT-Sound zu laut"): Quest-Sounds hart
     # gecappt für den Fall dass eine alte Save / ein externer Hook den
     # alten Stock-Sound direkt anspricht.  Mit den PHASE2-Hints landet
@@ -155,14 +182,27 @@ def _check_dedup(name):
     except Exception:
         return True
     last = _LAST_PLAY_MS[name]
-    if now_ms - last < _DEDUP_WINDOW_MS:
+    # Update #184: per-sound override hat Vorrang vor globalem 40ms-Window.
+    # Update #186: `_breath_*`-Prefix bekommt 1200 ms — selbst bei
+    # buggigem Caller darf der Atem nicht spammen.
+    if isinstance(name, str) and name.startswith('_breath_'):
+        window = 1200
+    else:
+        window = _DEDUP_WINDOW_OVERRIDES_MS.get(name, _DEDUP_WINDOW_MS)
+    if now_ms - last < window:
         return False
     _LAST_PLAY_MS[name] = now_ms
     return True
 
 
 def _apply_volume_cap(name, volume):
-    """Multipliziert volume mit dem Per-Sound-Cap (Default 1.0)."""
+    """Multipliziert volume mit dem Per-Sound-Cap (Default 1.0).
+
+    Update #186: Spezial-Prefix `_breath_` (Player-Breath-Cache-Keys)
+    bekommt hart 0.20 — soll subliminal sein, nicht in-your-face.
+    """
+    if isinstance(name, str) and name.startswith('_breath_'):
+        return volume * 0.20
     return volume * _VOLUME_CAP.get(name, 1.0)
 
 # ============================================================
@@ -784,6 +824,35 @@ def _osc_noise(n, rng=None):
     if rng is None:
         rng = random
     return [rng.uniform(-1, 1) for _ in range(n)]
+
+
+def _bandpass(samples, lo_hz, hi_hz):
+    """Cascaded one-pole high-pass + low-pass = simple band-pass.
+
+    Used for naturalistic noise-tone shaping (breath, wind, surf).  Pure
+    Python (no numpy dep) — O(n) single-pass.
+    """
+    n = len(samples)
+    if n == 0:
+        return samples
+    dt = 1.0 / _RATE
+    # Low-pass: alpha_lp = dt / (RC_hi + dt), RC_hi = 1/(2π*hi_hz)
+    rc_hi = 1.0 / (2 * math.pi * max(20.0, hi_hz))
+    a_lp = dt / (rc_hi + dt)
+    # High-pass: alpha_hp = RC_lo / (RC_lo + dt), RC_lo = 1/(2π*lo_hz)
+    rc_lo = 1.0 / (2 * math.pi * max(20.0, lo_hz))
+    a_hp = rc_lo / (rc_lo + dt)
+    # Pass 1 — Low-pass (kill highs above hi_hz)
+    lp = [0.0] * n
+    lp[0] = samples[0] * a_lp
+    for i in range(1, n):
+        lp[i] = lp[i - 1] + a_lp * (samples[i] - lp[i - 1])
+    # Pass 2 — High-pass (kill lows below lo_hz)
+    hp = [0.0] * n
+    hp[0] = lp[0]
+    for i in range(1, n):
+        hp[i] = a_hp * (hp[i - 1] + lp[i] - lp[i - 1])
+    return hp
 
 
 def _osc_fm(carrier_f, mod_f, mod_amp, n):
@@ -1663,6 +1732,307 @@ def _amb_heartbeat():
     return _clamp(out)
 
 
+def _amb_dead_breath():
+    """Update #185 (User-Replace ambient_monster_growl): „Atem der
+    Vergessenen" — lore-konformer Krypta-Ambient.
+
+    Lore: Im Velgrad-System ist Atem Leben (Aspekt-Bibel: „Die Sieben
+    Atemzuege").  Ein Atemzug toter Existenz = paradoxes Echo der
+    Vergessenen.  Klanglich: langsamer Exhale (gefiltertes Rauschen,
+    Decay-Envelope) + sub-harmonischer Sine-Drone (50 Hz) der unter
+    der Schwelle pulst.  Kein Mob-Growl, kein Beast — ein Hauch.
+
+    Dauer 2.2s, geringe Lautstaerke (0.32) — soll sich in den Drip-
+    /Whisper-Pool einfuegen ohne zu dominieren.
+    """
+    n = int(_RATE * 2.2)
+    # 1) Exhale: Rauschen mit langem Attack + langem Release
+    noise = _osc_noise(n)
+    for i in range(n):
+        t = i / n
+        # Glockenkurve: Anfangs leise, Mitte voll, Ende ausklingend
+        env = math.sin(math.pi * t) ** 1.6
+        # Highpass-aehnliche Modulation (verschiebt Energie nach oben)
+        hp = 0.6 + 0.4 * math.sin(2 * math.pi * 5 * i / _RATE)
+        noise[i] *= env * hp * 0.35
+    # 2) Sub-Harmonic Drone: tiefer Sine ~50 Hz mit langsamem Tremolo
+    drone = []
+    for i in range(n):
+        t = i / n
+        f = 50 + 8 * math.sin(2 * math.pi * 0.4 * t)
+        # Drone-Envelope: erst nach 30 % rein, vor 90 % wieder raus
+        if t < 0.3:
+            de = (t / 0.3) ** 1.5
+        elif t > 0.9:
+            de = 1.0 - (t - 0.9) / 0.1
+        else:
+            de = 1.0
+        drone.append(math.sin(2 * math.pi * f * i / _RATE) * de * 0.18)
+    # 3) Mid-Sigh-Layer: kurzer Atemstoss-Akzent bei 60 % der Dauer
+    sigh_start = int(n * 0.55)
+    sigh_len = int(_RATE * 0.45)
+    for k in range(sigh_len):
+        if sigh_start + k >= n:
+            break
+        kt = k / sigh_len
+        sigh_env = math.sin(math.pi * kt) ** 2 * 0.22
+        # Leichtes Aspirations-Rauschen (gefiltert ueber Modulation)
+        a = (math.sin(2 * math.pi * 280 * k / _RATE)
+             * math.sin(2 * math.pi * 7 * k / _RATE))
+        noise[sigh_start + k] += a * sigh_env
+    out = [noise[i] + drone[i] for i in range(n)]
+    return _clamp(_gain(out, 0.32))
+
+
+# ============================================================
+# Update #186 — PLAYER-BREATH-SFX (per Biome + Intensity)
+# ============================================================
+# User-Request: „Charakter sollte auch atmen — passende SFX pro
+# Dungeon (Hoehlen, Wuesten, etc.)".  Ein generischer Breath ist
+# uninteressant; lore-und-mechanik-konform brauchen wir:
+#
+#   - Biome-Shape: Crypt/Cave hat Echo-Tail, Desert ist trocken,
+#     Lava heiss/keuchend, Frost hoarse/kalt, Swamp feucht, Astral
+#     ueberlagerter Harmonics, Town entspannt-neutral.
+#   - Intensity-Shape:
+#       calm     — langsamer Doppel-Cycle (in/out) ~1.6s
+#       stressed — schneller, kuerzer ~1.1s (Combat)
+#       ragged   — flach, abgehackt ~0.9s (HP < 30 %)
+#
+# Lautstaerke ist subliminal (0.15-0.20 effective).  Sound spielt
+# ueber SFX-Bus, nicht Ambient — soll naeher am Kopf wirken (intimate).
+# Update #191 (User-Fix "klingt nach allem nur nicht Atem"):
+# Vorher (#186):
+#   - 280 Hz Sinus-AM als "Vokal-Resonanz" -> klang buzzy/elektronisch
+#   - Sub-Sine-Drone 50-160 Hz als "Brust-Resonanz" -> Synth-Pad-Sound
+#   - Tremolo 6 Hz auf inhale -> wobblig statt stimmlich
+#   - Ungefiltertes weisses Rauschen -> zu schmal/zischend
+#
+# Echtes Atemgeraeusch =  band-pass gefiltertes Rauschen (200..3000 Hz)
+# mit langsamen Huellkurven + leichten Amplituden-Wackelungen.  KEINE
+# reinen Sinus-Toene — die machen es immer elektronisch.
+#
+# Param-Schema (#191): (lp_hz, hp_hz, echo_s, body_dark)
+#   lp_hz     — Treble-Cut (kleiner = dumpfer)
+#   hp_hz     — Rumble-Cut (groesser = duenner)
+#   echo_s    — Cave/Astral-Reverb-Tail
+#   body_dark — extra Tieftonanteil fuer "schwere" Biome (lava): 0..1
+_BREATH_BIOME_PARAMS = {
+    # (lp_hz, hp_hz, echo_s, body_dark)
+    'crypt':   (1600, 280, 0.35, 0.20),  # dumpf + Hoehlen-Echo
+    'frost':   (2600, 420, 0.05, 0.05),  # duenn, kalt, etwas heiser
+    'lava':    (1300, 200, 0.10, 0.55),  # schwer, heiss, tieftonig
+    'desert':  (2800, 520, 0.00, 0.05),  # trocken, hell
+    'swamp':   (1500, 300, 0.18, 0.30),  # feucht, dumpf, leichter Tail
+    'astral':  (2200, 380, 0.55, 0.15),  # ethereal, langer Tail
+    'town':    (2400, 360, 0.04, 0.10),  # neutral
+}
+
+_BREATH_INTENSITY_PARAMS = {
+    # (cycle_dur_s, in_curve, out_curve, jitter, gain_mult)
+    #   cycle_dur — Gesamtdauer (inhale + hold + exhale)
+    #   in_curve  — Inhale-Envelope-Power (groesser = spaeterer Peak)
+    #   out_curve — Exhale-Decay-Power (groesser = laengeres Ausklingen)
+    #   jitter    — Phasen-Rauschen (Unregelmaessigkeit)
+    #   gain_mult — Gain-Skalierung (ragged ist eindringlicher)
+    'calm':     (3.4, 1.6, 2.2, 0.04, 1.00),
+    'stressed': (2.0, 1.2, 1.6, 0.08, 1.15),
+    'ragged':   (1.4, 0.9, 1.1, 0.18, 1.30),
+}
+
+
+def _player_breath(biome, intensity):
+    """Procedural Player-Breath-SFX (Update #191).
+
+    Aufbau pro Cycle:
+      Inhale (~38 %)  band-pass filtered noise (heller, etwas Air),
+                      langsame Glocken-Huelle, leichte Atemzug-Wobble
+      Hold   (~12 %)  Stille (kurze Pause vor Exhale)
+      Exhale (~50 %)  band-pass filtered noise (waermer/dunkler),
+                      sanfter Anschlag + langes Ausklingen, optional
+                      "body_dark" Tieftonanteil (mit Bandpass, kein Sinus)
+      Echo-Tail       gedaempfte Exhale-Kopie mit Delay (Crypt/Astral)
+    """
+    bp = _BREATH_BIOME_PARAMS.get(biome, _BREATH_BIOME_PARAMS['town'])
+    ip = _BREATH_INTENSITY_PARAMS.get(intensity, _BREATH_INTENSITY_PARAMS['calm'])
+    lp_hz, hp_hz, echo_tail, body_dark = bp
+    cycle_dur, in_curve, out_curve, jitter, gain_mult = ip
+    # Jitter macht jeden Atemzug einzigartig
+    cycle_dur *= 1.0 + (random.random() - 0.5) * jitter * 2
+    n_cycle = int(_RATE * cycle_dur)
+    n_in   = int(n_cycle * 0.38)
+    n_hold = int(n_cycle * 0.12)
+    n_out  = n_cycle - n_in - n_hold
+
+    # --- Inhale: band-pass noise, breath ist hier heller (mehr Air) ---
+    inhale_noise = _osc_noise(n_in)
+    inhale = _bandpass(inhale_noise, lo_hz=hp_hz * 1.15, hi_hz=lp_hz * 1.20)
+    for i in range(n_in):
+        t = i / max(1, n_in)
+        # Glocken-Envelope (Peak in der Mitte des Inhale)
+        env = math.sin(math.pi * t) ** in_curve
+        # Subtile Amplituden-Unregelmaessigkeit (~3-4 Hz, klein) — macht
+        # den Atemzug "organisch" ohne wie Tremolo zu klingen.
+        wobble = 0.94 + 0.06 * math.sin(
+            2 * math.pi * (3.0 + 1.5 * jitter * 10) * i / _RATE)
+        inhale[i] *= env * wobble * 0.55
+
+    # --- Hold ---
+    hold = [0.0] * n_hold
+
+    # --- Exhale: band-pass noise, etwas dunkler/warmer als Inhale ---
+    exhale_noise = _osc_noise(n_out)
+    exhale = _bandpass(exhale_noise, lo_hz=hp_hz * 0.85, hi_hz=lp_hz * 0.90)
+    for i in range(n_out):
+        t = i / max(1, n_out)
+        # Sanfter Anschlag (~15 % Attack), langer exponentieller Decay
+        if t < 0.15:
+            attack_env = (t / 0.15) ** 0.85
+        else:
+            attack_env = 1.0
+        decay_env = (1 - (t - 0.15) / 0.85) ** out_curve if t > 0.15 else 1.0
+        decay_env = max(0.0, decay_env)
+        env = attack_env * decay_env
+        wobble = 0.93 + 0.07 * math.sin(2 * math.pi * 2.4 * i / _RATE)
+        exhale[i] *= env * wobble * 0.62
+
+    # --- Body-Dark-Layer: zusaetzlicher Tieftonanteil fuer "schwere"
+    # Biome (lava/swamp).  Auch das ist band-pass-gefiltertes Rauschen,
+    # NICHT ein Sinus — sonst klingt es wieder elektronisch.
+    if body_dark > 0.0:
+        dark_noise = _osc_noise(n_out)
+        dark = _bandpass(dark_noise, lo_hz=80, hi_hz=240)
+        for i in range(n_out):
+            t = i / max(1, n_out)
+            env = math.sin(math.pi * t) ** 1.4
+            exhale[i] += dark[i] * env * body_dark * 0.45
+
+    out = list(inhale) + list(hold) + list(exhale)
+
+    # --- Echo-Tail (Cave / Astral) ---
+    if echo_tail > 0:
+        n_tail = int(_RATE * echo_tail)
+        delay = int(_RATE * (echo_tail * 0.45))
+        tail = [0.0] * (delay + n_tail)
+        copy_n = min(len(exhale), n_tail)
+        for i in range(copy_n):
+            decay = (1 - i / copy_n) ** 1.8 * 0.32
+            tail[delay + i] = exhale[i] * decay
+        full_len = max(len(out), len(tail))
+        if len(out) < full_len:
+            out.extend([0.0] * (full_len - len(out)))
+        for i in range(len(tail)):
+            out[i] += tail[i]
+
+    return _clamp(_gain(out, 0.38 * gain_mult))
+
+
+# Cache pro (biome, intensity) — Build-Cost ist nicht-trivial, wir
+# berechnen jeden Variant nur einmal.  Jitter ist im Cycle eingebacken,
+# daher klingt jeder Replay gleich — fuer Variation pro Replay muesste
+# Cache invalidiert werden, aber bei 0.85-1.7s langen Sounds die alle
+# 3-8 s spielen sind die ~2 Repeats pro Minute akzeptabel.
+_BREATH_CACHE = {}
+
+# Update #194 (User-Bug "extreme FPS Einbrueche"): Die Breath-Synthese
+# (_player_breath + _make) kostet ~370 ms pro Variant.  Vorher lief sie
+# beim ersten Abspielen auf dem MAIN-THREAD -> ein Frame blockierte
+# ~370 ms = sichtbarer Hitch im Combat.  Jetzt: Generation laeuft in
+# einem Daemon-Thread; ist der Variant noch nicht fertig, wird der
+# Atemzug einfach uebersprungen (kommt beim naechsten Cycle, dann
+# gecacht + instant).  Audio-only, kein Gameplay-Impact.
+_BREATH_PENDING = set()
+_BREATH_LOCK = threading.Lock()
+
+
+def _breath_worker(key, volume=0.45):
+    """Background-Worker: synthetisiert + cached einen Breath-Variant."""
+    try:
+        samples = _player_breath(key[0], key[1])
+        snd = _make(samples, volume=volume)
+    except Exception:
+        snd = None
+    with _BREATH_LOCK:
+        _BREATH_CACHE[key] = snd
+        _BREATH_PENDING.discard(key)
+
+
+def prewarm_breath_cache(biomes=None, intensities=None):
+    """Update #194: optionale Vorab-Generierung aller Breath-Varianten in
+    einem Hintergrund-Thread (z.B. nach dem Laden).  Nicht-blockierend.
+    """
+    if not _ENABLED:
+        return
+    biomes = biomes or list(_BREATH_BIOME_PARAMS.keys())
+    intensities = intensities or list(_BREATH_INTENSITY_PARAMS.keys())
+
+    def _bulk():
+        for b in biomes:
+            for it in intensities:
+                k = (b, it)
+                with _BREATH_LOCK:
+                    if k in _BREATH_CACHE or k in _BREATH_PENDING:
+                        continue
+                    _BREATH_PENDING.add(k)
+                _breath_worker(k)
+
+    threading.Thread(target=_bulk, daemon=True).start()
+
+
+def play_player_breath(biome, intensity='calm', volume=1.0):
+    """Update #186: Spielt einen Player-Breath-SFX passend zum Biome.
+
+    `intensity` ∈ {'calm','stressed','ragged'} bestimmt die Atem-Kurve.
+    Biome wird per `_BREATH_BIOME_PARAMS` gemappt; unbekannte Biomes
+    fallen auf 'town' zurueck.  Sound spielt ueber SFX-Bus mit
+    explizitem Volume-Cap fuer 'subliminal' Levels.
+
+    Update #194: Erste Generation eines Varianten laeuft im Background-
+    Thread (siehe oben).  Ist der Variant noch nicht fertig -> Atemzug
+    skippen statt den Main-Thread ~370 ms zu blockieren.
+
+    Returnt True bei Erfolg, False wenn Mixer disabled / nicht bereit.
+    """
+    if not _ENABLED:
+        return False
+    key = (biome or 'town', intensity or 'calm')
+    cache_name = f'_breath_{key[0]}_{key[1]}'
+    with _BREATH_LOCK:
+        cached = key in _BREATH_CACHE
+        snd = _BREATH_CACHE.get(key)
+        pending = key in _BREATH_PENDING
+        if not cached and not pending:
+            # Generation in Background-Thread anstossen, diesen Atemzug
+            # ueberspringen (kommt beim naechsten Cycle, dann gecacht).
+            _BREATH_PENDING.add(key)
+            threading.Thread(
+                target=_breath_worker, args=(key,), daemon=True).start()
+    if not cached or pending:
+        return False
+    if snd is None:
+        return False
+    # Routen ueber play()-Mechanismus mit cache-Name fuer Dedup/Cap.
+    # Da der Sound nicht in _SOUND_CACHE liegt, muessen wir manuell
+    # blitten — wir nehmen einen freien SFX-Channel.
+    # Update #186: Dedup-Override 1200 ms — verhindert Spam bei rapid
+    # Re-Triggern, atmen pro Cycle reicht.
+    if not _check_dedup(cache_name):
+        return False
+    ch = _alloc_sfx_channel()
+    try:
+        if ch is None:
+            ch = snd.play()
+            if ch is None:
+                return False
+        else:
+            ch.play(snd)
+        capped = _apply_volume_cap(cache_name, volume)
+        ch.set_volume(effective_volume('sfx', capped))
+        return True
+    except Exception:
+        return False
+
+
 _AMBIENT_BUILDERS = {
     'drip':         (_amb_drip,         0.40),
     'wind':         (_amb_wind,         0.45),
@@ -1674,6 +2044,10 @@ _AMBIENT_BUILDERS = {
     'sand':         (_amb_sand,         0.40),
     'croak':        (_amb_croak,        0.40),
     'heartbeat':    (_amb_heartbeat,    0.55),
+    # Update #185: Atem der Vergessenen — ersetzt ambient_monster_growl
+    # in der Krypta. Lore-konformer Ambient-SFX statt generischem Mob-
+    # Growl (siehe _amb_dead_breath fuer Details).
+    'dead_breath':  (_amb_dead_breath,  0.45),
     # W-12 (Update #48): Brassweir-Hafen-Ambience (Audio-Bibel 7.7)
     'seagull_cry':  (_amb_seagull_cry,  0.30),
     'wave_crash':   (_amb_wave_crash,   0.40),
@@ -1793,8 +2167,12 @@ BIOME_AMBIENT_POOL = {
     #   - swamp   = Wurzelgrab, Drip + Croak + Knochen-Whisper
     #   - astral  = Spiegelhof, Chime + multiple Whisper (Echo-Schichten)
     #   - town    = Brassweir-Pier, Welle + Möwe + Knarzen
-    'crypt':  ['cave_monster', 'drip', 'drip', 'drip', 'whisper',
-                'creak', 'creak', 'whisper', 'ambient_monster_growl'],
+    # Update #185 (User-Report „ambient_monster_growl wird random gespamt
+    # und ist ohne Grund da"): ersetzt durch lore-konformen `dead_breath`
+    # (Atem der Vergessenen).  Krypta-Pool passt jetzt zum Mahnmal-Lore-
+    # Thema (vergessene Namen, Atem-Echos statt generischem Mob-Growl).
+    'crypt':  ['drip', 'drip', 'drip', 'whisper', 'whisper',
+                'creak', 'creak', 'dead_breath', 'dead_breath'],
     'frost':  ['wind', 'wind', 'wind', 'chime', 'creak', 'whisper',
                 'whisper', 'creak', 'chime'],
     'lava':   ['firewood_burning', 'lava', 'lava', 'lava', 'lava',

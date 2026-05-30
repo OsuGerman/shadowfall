@@ -4437,7 +4437,14 @@ def test_dot_kill_loot_pipeline():
     # Loot-Generation für non-boss-Mob ist optional (drop_chance);
     # entscheidend ist: KEIN AttributeError bei kill_enemy.
 
-    # Direkt-Kill: Elite-Mob → garantiertes Item-Drop
+    # Direkt-Kill: Elite-Mob → garantiertes Item-Drop.
+    # Update #201: Loot-Filter wird jetzt schon beim Drop angewandt
+    # (combat._item_passes_loot_filter). Default-Filter ist 'common' →
+    # ein Elite das ein Common rollt droppt nichts mehr. Dieser Test
+    # prueft die Drop-PIPELINE (kein make_item-Crash nach #121), nicht
+    # den Filter — deshalb Filter hier explizit auf 'off' fuer einen
+    # deterministischen ≥1-Item-Check.
+    g.player.loot_filter = 'off'
     e2 = _en.spawn_enemy('zombie', g.player.pos.x + 200, g.player.pos.y, 1)
     e2.elite = True
     g.enemies.append(e2)
@@ -6109,25 +6116,312 @@ def test_quest_abandon_save_load():
     """Audit #179 C.2: abandoned Set ueberlebt save/load roundtrip."""
     from sf.game import Game
     from sf import save as _save
-    g = Game()
-    g.start_game('adventure', slot=98)
-    side_qid = None
-    for qid, st in g.quest_log.active.items():
-        if not getattr(st, 'is_main', False):
-            side_qid = qid
-            break
-    if side_qid is None:
-        return True
-    g.quest_log.abandon(side_qid)
-    assert _save.save_game(g, slot=98)
-    # Game-Reset
-    g2 = Game()
-    assert _save.load_game(g2, slot=98)
-    assert side_qid in g2.quest_log.abandoned, (
-        f'{side_qid} sollte in abandoned sein nach reload, '
-        f'bekommen {g2.quest_log.abandoned}')
-    # Cleanup
+    # Cleanup vorab — fuer Determinismus auch wenn ein vorheriger Run
+    # abgebrochen ist
     _save.delete_save(slot=98)
+    try:
+        g = Game()
+        g.start_game('adventure', slot=98)
+        side_qid = None
+        for qid, st in g.quest_log.active.items():
+            if not getattr(st, 'is_main', False):
+                side_qid = qid
+                break
+        if side_qid is None:
+            return True
+        g.quest_log.abandon(side_qid)
+        assert _save.save_game(g, slot=98)
+        # Game-Reset
+        g2 = Game()
+        assert _save.load_game(g2, slot=98)
+        assert side_qid in g2.quest_log.abandoned, (
+            f'{side_qid} sollte in abandoned sein nach reload, '
+            f'bekommen {g2.quest_log.abandoned}')
+    finally:
+        _save.delete_save(slot=98)
+    return True
+
+
+class _FakeQuestGame:
+    """Minimaler Game-Stub fuer QuestLog-Fail-Tests (Audit C.2).
+
+    Liefert nur was tick()/on_quest_failed brauchen: `area`, `toast`
+    (sammelt Nachrichten). Bewusst KEIN `npcs`-Attr → _npc_is_alive
+    liefert False und _try_spawn_escort_npc gibt False zurueck (kann
+    nicht spawnen), was den 'broken'-Pfad in Town exakt nachstellt.
+    """
+    def __init__(self, area='town'):
+        self.area = area
+        self.toasts = []
+
+    def toast(self, msg, color=None):
+        self.toasts.append(msg)
+
+
+def test_quest_defend_fail_on_npc_death():
+    """Audit C.2: DEFEND-Stage scheitert sauber wenn der Schuetzling stirbt.
+
+    Vorher: NPC tot → Timer-Reset → Stage wartete ewig (Soft-Lock).
+    Jetzt: nach DEFEND_FAIL_GRACE_S wird die Quest gescheitert (failed-Set),
+    aus active entfernt und on_quest_failed gefeuert.
+    """
+    from sf.game import Game
+    from sf import quest_data as _qd
+    g = Game()
+    g.start_game('adventure')
+    g.enter_outpost('knoten_markt')
+    log = g.quest_log
+    log.offer('akt4_vossharil_ritual')
+    st = log.active['akt4_vossharil_ritual']
+    st.stage_index = 1
+    assert st.stage['type'] == _qd.StageType.DEFEND
+    if st.is_main:
+        return True   # Main-Quests werden separat getestet (revert statt fail)
+    # Schuetzling "stirbt" → aus der NPC-Liste entfernen.
+    name = st.stage['target'].get('npc_name')
+    g.npcs[:] = [n for n in g.npcs if getattr(n, 'name', '') != name]
+    # Grace-Periode (6 s) ueberschreiten.
+    for _ in range(8):
+        log.tick(1.0, g)
+    assert 'akt4_vossharil_ritual' not in log.active, (
+        'Gescheiterte DEFEND-Quest muss aus active entfernt sein')
+    assert 'akt4_vossharil_ritual' in log.failed
+    return True
+
+
+def test_quest_fail_protects_main():
+    """Audit C.2: Main-Quests werden NICHT hart gescheitert (Akt-Progression).
+
+    fail() setzt die Main-Quest stattdessen auf Stage 0 zurueck und laesst
+    sie aktiv.
+    """
+    from sf import quests as _q
+    from sf import quest_data as _qd
+    q = {
+        'id': '_t_main_fail', 'title': 'Test-Main', 'is_main': True,
+        'stages': [
+            {'type': _qd.StageType.DEFEND, 'text': 'a',
+             'target': {'npc_name': 'Ghost'}, 'count': 1},
+            {'type': _qd.StageType.RETURN, 'text': 'b', 'count': 1},
+        ],
+    }
+    log = _q.QuestLog()
+    st = _q.QuestState(q)
+    st.stage_index = 1
+    st.count = 4
+    st.fail_reason = 'Test'
+    log.active['_t_main_fail'] = st
+    g = _FakeQuestGame()
+    failed = log.fail('_t_main_fail', g)
+    assert failed is False, 'Main-Quest darf nicht hart gescheitert werden'
+    assert '_t_main_fail' in log.active, 'Main-Quest muss aktiv bleiben'
+    assert '_t_main_fail' not in log.failed
+    assert st.stage_index == 0 and st.count == 0, 'Main-Quest muss reverten'
+    return True
+
+
+def test_quest_escort_pause_vs_fail():
+    """Audit C.2: ESCORT pausiert im Dungeon (kein Fail), failt in Town.
+
+    - Dungeon: Begleiter unspawnbar = legitime Pause → fail_timer ruht,
+      Quest bleibt aktiv (kein Soft-Lock-Fail bei langem Dungeon-Run).
+    - Town: Begleiter unspawnbar = echter Broken-State → nach fail_timeout
+      gescheitert.
+    """
+    from sf import quests as _q
+    from sf import quest_data as _qd
+
+    def _make_escort_log():
+        q = {
+            'id': '_t_escort', 'title': 'Test-Escort', 'is_main': False,
+            'stages': [{
+                'type': _qd.StageType.ESCORT, 'text': 'fuehre',
+                'target': {'npc_name': 'Guide', 'destination': None,
+                           'biome': None, 'fail_timeout': 2.0},
+                'count': 1,
+            }],
+        }
+        log = _q.QuestLog()
+        log.active['_t_escort'] = _q.QuestState(q)
+        return log
+
+    # Dungeon: viele Sekunden ticken → KEIN Fail (legitime Pause).
+    log_d = _make_escort_log()
+    g_dungeon = _FakeQuestGame(area='dungeon')
+    for _ in range(20):
+        log_d.tick(1.0, g_dungeon)
+    assert '_t_escort' in log_d.active, 'ESCORT darf im Dungeon nicht failen'
+    assert '_t_escort' not in log_d.failed
+
+    # Town: nach fail_timeout (2 s) → gescheitert.
+    log_t = _make_escort_log()
+    g_town = _FakeQuestGame(area='town')
+    for _ in range(3):
+        log_t.tick(1.0, g_town)
+    assert '_t_escort' not in log_t.active, 'ESCORT muss in Town nach Timeout failen'
+    assert '_t_escort' in log_t.failed
+    return True
+
+
+def test_quest_fail_offer_block_and_save():
+    """Audit C.2: failed-Set blockt Re-Offer, retake() reaktiviert, persistiert."""
+    from sf.game import Game
+    from sf import save as _save
+    _save.delete_save(slot=97)
+    try:
+        g = Game()
+        g.start_game('adventure', slot=97)
+        log = g.quest_log
+        side_qid = None
+        for qid, st in log.active.items():
+            if not getattr(st, 'is_main', False):
+                side_qid = qid
+                break
+        if side_qid is None:
+            return True
+        # In failed verschieben (simuliert Timeout-Fail).
+        del log.active[side_qid]
+        log.failed.add(side_qid)
+        # Re-Offer blockiert.
+        assert log.offer(side_qid) is None, 'failed-Quest darf nicht re-offered werden'
+        # Save/Load-Roundtrip.
+        assert _save.save_game(g, slot=97)
+        g2 = Game()
+        assert _save.load_game(g2, slot=97)
+        assert side_qid in g2.quest_log.failed, 'failed-Set muss persistieren'
+        # retake reaktiviert.
+        g2.quest_log.retake(side_qid)
+        assert side_qid not in g2.quest_log.failed
+        assert g2.quest_log.offer(side_qid) is not None, 'Nach retake offerbar'
+    finally:
+        _save.delete_save(slot=97)
+    return True
+
+
+def test_atlas_class_arms_complete():
+    """Skill-Atlas: alle 8 Klassen haben einen echten Arm (kein leerer Stub);
+    Nicht-Monk-Stat-Nodes wirken via aggregate_stats + lassen sich refunden.
+    """
+    from sf import skill_atlas as A
+    for cls, start in A.CLASS_STARTS.items():
+        assert start in A.ATLAS_NODES, f'{cls}: Start-Node fehlt'
+        cls_nodes = [nid for nid, n in A.ATLAS_NODES.items()
+                     if n.get('class_') == cls]
+        assert len(cls_nodes) >= 9, (
+            f'{cls}: nur {len(cls_nodes)} Nodes — Arm nicht ausgebaut')
+
+    class _P:
+        pass
+    p = _P()
+    p.cls = 'warrior'
+    p.atlas = A.initial_atlas(p)
+    p.atlas_points = 9
+    p.orbs_of_regret = 3
+    for nid in ('warrior_s2', 'warrior_nB', 'warrior_cap'):
+        assert A.try_allocate(p, nid), f'alloc {nid} fehlgeschlagen'
+    agg = A.aggregate_stats(p)
+    assert agg.get('hp', 0) > 0 and agg.get('melee_dmg_pct', 0) > 0, agg
+    # Blatt-Refund (Capstone) muss Connectivity-Check bestehen
+    assert A.try_refund(p, 'warrior_cap'), 'Capstone-Refund sollte gehen'
+    return True
+
+
+def test_atlas_orphan_id_filtered():
+    """Skill-Atlas: verwaiste Node-IDs (z.B. alte Stubs) werden beim Laden
+    gefiltert + als Atlas-Punkte erstattet (sonst blockt der Connectivity-
+    Check Refunds)."""
+    from sf.game import Game
+    from sf import save as _save
+    _save.delete_save(slot=95)
+    try:
+        g = Game()
+        g.start_game('adventure', slot=95)
+        p = g.player
+        p.atlas.add('warrior_does_not_exist_xyz')
+        before_pts = p.atlas_points
+        assert _save.save_game(g, slot=95)
+        g2 = Game()
+        assert _save.load_game(g2, slot=95)
+        assert 'warrior_does_not_exist_xyz' not in g2.player.atlas, (
+            'Verwaiste Atlas-ID muss beim Laden gefiltert werden')
+        assert g2.player.atlas_points == before_pts + 1, (
+            'Gefilterte ID muss als Punkt erstattet werden')
+    finally:
+        _save.delete_save(slot=95)
+    return True
+
+
+def test_npc_marker_only_talk_return():
+    """User-Report („? ohne Sinn"): Quest-Marker '?' erscheint nur bei
+    TALK/RETURN-Stages (wo Reden die Quest voranbringt), nicht über
+    Escort-Begleitern / Defend-Schützlingen (npc_name = Subjekt)."""
+    from sf import quests as _q
+    from sf import quest_data as _qd
+
+    def _log_with_stage(stype, npc):
+        q = {'id': '_t_marker', 'title': 'T', 'is_main': False,
+             'stages': [{'type': stype, 'text': 'x',
+                         'target': {'npc_name': npc}, 'count': 1}]}
+        log = _q.QuestLog()
+        log.active['_t_marker'] = _q.QuestState(q)
+        return log
+
+    for stype in (_qd.StageType.TALK, _qd.StageType.RETURN):
+        log = _log_with_stage(stype, '_TestNPC_Talk')
+        assert log.npc_marker('_TestNPC_Talk') == '?', (
+            f'{stype}-Stage sollte ?-Marker geben')
+    for stype in (_qd.StageType.ESCORT, _qd.StageType.DEFEND):
+        log = _log_with_stage(stype, '_TestNPC_Subject')
+        assert log.npc_marker('_TestNPC_Subject') is None, (
+            f'{stype}-NPC darf KEIN ?-Marker bekommen (Reden bewirkt nichts)')
+    return True
+
+
+def test_on_talk_accepts_all_offers_once():
+    """User-Bug („3x ! hintereinander, talk skippt Quests durch"): Ein
+    Gespraech nimmt ALLE verfuegbaren Quests eines Gebers an + klaert den
+    !-Marker — statt eine Quest pro Druck (Marker-Flackern `!`<->`?`)."""
+    from sf.game import Game
+    from sf import quests as _q
+    g = Game()
+    g.title_ui.selected = 'monk'
+    g.start_game('adventure')
+    log = g.quest_log
+    npc = 'Stadtsprecher Eldon'   # bietet mehrere Akt-1-Quests
+    if log.npc_marker(npc, g.player) != '!':
+        return True   # Start-Inhalt kann variieren — nur testen wenn Offer da
+    n_before = len(log.active)
+    _q.on_talk(g, npc)
+    assert len(log.active) > n_before, 'Talk sollte Quest(s) angenommen haben'
+    # Nach EINEM Talk duerfen keine weiteren Offers (!) mehr offen sein.
+    assert log.npc_marker(npc, g.player) != '!', (
+        'Nach einem Gespraech darf kein weiteres !-Offer offen bleiben')
+    return True
+
+
+def test_new_game_persists_immediately():
+    """User-Bug („neue Chars verschwinden, nur Krieger bleibt"): Ein neues
+    Spiel wurde erst beim ersten Dungeon-Roundtrip/Autosave gespeichert —
+    wer vorher beendete, dessen Slot blieb leer. Jetzt sofort persistiert.
+    """
+    from sf.game import Game
+    from sf import save as _save
+    _save.delete_save(slot=94)
+    try:
+        g = Game()
+        g.title_ui.selected = 'monk'
+        # persist_new=True simuliert den echten Neue-Char-Einstieg
+        # (Slot-Picker / Title-Quick-Start).
+        g.start_game('adventure', slot=94, persist_new=True)
+        assert _save.save_exists(slot=94), (
+            'Neues Spiel muss sofort in seinem Slot gespeichert sein')
+        g2 = Game()
+        assert _save.load_game(g2, slot=94)
+        assert g2.player.cls == 'monk', (
+            f'Klasse muss erhalten bleiben (nicht Default-Warrior), '
+            f'war {g2.player.cls}')
+    finally:
+        _save.delete_save(slot=94)
     return True
 
 
@@ -6149,6 +6443,38 @@ def test_astar_closest_walkable_fallback():
     assert h_last < h_start, (
         f'closest-walkable-Pfad sollte naeher als Start sein: '
         f'h_last={h_last} vs h_start={h_start}')
+    return True
+
+
+def test_world_to_cell_negative_coords():
+    """Update #192: Spieler kann nicht durch left/top-Wand laufen.
+
+    world_to_cell muss math.floor verwenden, nicht int().  int() rundet
+    Richtung Null und gibt fuer wx in (-cell..0) faelschlich Zelle 0
+    zurueck — die ist meist FLOOR -> der Spieler konnte bis zu cell-1
+    px aus dem Dungeon links/oben heraus laufen.
+    """
+    from sf.dungeon_gen import DungeonGrid, FLOOR, VOID, CELL
+    grid = DungeonGrid(10, 10)
+    # Grid mit Floor in Zelle 0..9; Origin bei (0,0)
+    for y in range(10):
+        for x in range(10):
+            grid.tiles[y][x] = FLOOR
+    # Cell-Mapping fuer negative Coords muss negative Cells liefern
+    cx, cy = grid.world_to_cell(-1, -1)
+    assert cx == -1 and cy == -1, (
+        f'world_to_cell(-1,-1) gab {(cx,cy)}, erwartet (-1,-1) '
+        f'— int() statt math.floor() trunkiert Richtung Null')
+    cx, cy = grid.world_to_cell(-CELL + 1, -CELL + 1)
+    assert cx == -1 and cy == -1, (
+        f'world_to_cell(-{CELL-1},-{CELL-1}) gab {(cx,cy)}, erwartet (-1,-1)')
+    # Negative-Cell sollte VOID sein -> nicht walkable
+    assert not grid.is_walkable_world(-1, -1), (
+        '(-1, -1) muss NICHT walkable sein, sonst kann der Spieler '
+        'durch die linke/obere Wand laufen')
+    # Wand-Collision-Check: ein Punkt knapp links der Map muss kollidieren
+    assert grid.collide_circle(-1, 100, 14), (
+        'collide_circle(-1, 100, 14) muss True liefern (links der Map = Wand)')
     return True
 
 
@@ -6195,7 +6521,19 @@ TESTS = [
     ('quest_abandon_api',          test_quest_abandon_api),
     ('quest_abandon_protects_main', test_quest_abandon_protects_main),
     ('quest_abandon_save_load',    test_quest_abandon_save_load),
+    # Audit C.2: ESCORT/DEFEND-Timeout → Auto-Fail + on_quest_failed-Hook
+    ('quest_defend_fail_npc_death', test_quest_defend_fail_on_npc_death),
+    ('quest_fail_protects_main',   test_quest_fail_protects_main),
+    ('quest_escort_pause_vs_fail', test_quest_escort_pause_vs_fail),
+    ('quest_fail_offer_block_save', test_quest_fail_offer_block_and_save),
+    # Skill-Atlas: Klassen-Arme + Orphan-Filter
+    ('atlas_class_arms_complete',  test_atlas_class_arms_complete),
+    ('atlas_orphan_id_filtered',   test_atlas_orphan_id_filtered),
+    ('npc_marker_talk_return',     test_npc_marker_only_talk_return),
+    ('on_talk_accepts_all_once',   test_on_talk_accepts_all_offers_once),
+    ('new_game_persists',          test_new_game_persists_immediately),
     ('astar_closest_walkable',     test_astar_closest_walkable_fallback),
+    ('world_to_cell_neg_coords',   test_world_to_cell_negative_coords),
     ('profiler_section_records',   test_profiler_section_records),
     ('skilltree_filter_cycle',     test_skilltree_filter_cycle),
     ('skilltree_plan_mode',        test_skilltree_plan_mode),

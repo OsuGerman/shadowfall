@@ -17,6 +17,299 @@
 
 ---
 
+> ## ⚠ LIES DIES ZUERST — Nummerierungs-Stränge (für Agents/Menschen)
+>
+> Eine `Update #N`-Nummer ist **historisch nicht global eindeutig** — bis Mai 2026 liefen **zwei parallele Zähler**:
+>
+> | Strang | Was | Quelle | Reichweite |
+> |---|---|---|---|
+> | **Content-Strang** | Quests, Lore, Gameplay-Systeme, Balance | **dieses CHANGELOG** (Einträge #1–#171) | endet bei **#171** (PROCEDURAL-ONLY-PIVOT) |
+> | **Engine-Strang** | Sprites, Tiles, Render, Audio, Pipeline-Tools | **git-Commit-Messages** | lief parallel #164→#193 |
+>
+> Deshalb meint z. B. „#170" **zwei verschiedene Dinge**: im CHANGELOG den Roadmap-Sprint, im git-Log den All-Biome-Wall-Rollout. Die Zahlen kollidieren, weil beide Zähler gleichzeitig liefen.
+>
+> **Konsolidiert (2026-05-30):** Der gesamte Engine-Strang ist jetzt hier eingepflegt — Einträge **#172–#180** und **#181–#193** tragen den expliziten Zusatz **„(Engine-Strang)"**. Ab hier ist die Doku vollständig; nichts mehr nur im git-Log.
+>
+> ### ➡ Go-Forward-Regel (ab Update #194)
+> **Es gibt nur noch EINE Sequenz.** Das nächste Update ist **#194** und zählt global weiter (höchste je vergebene Nummer war #193). Kein getrennter Engine-/Content-Zähler mehr. Jeder neue Eintrag: `## [YYYY-MM-DD] — Update #N — <Titel>`, newest-on-top, mit Commit-Hash wenn committet. Die „(Engine-Strang)"-Tags sind reine Historien-Marker und werden für neue Einträge **nicht** mehr vergeben.
+
+---
+
+## [2026-05-31] — Update #204 — Doku-Pass: README + CHANGELOG entschärft, Push-Sync der offenen Updates #181–#203
+
+**Was:** Sammel-Push der seit #180 angesammelten Engine-/Content-Arbeit (Skill-Atlas-Rollout, Quest-Auto-Fail-Pipeline, HUD-Entzerrung, NPC-Talk-Batch-Accept, Entity-Render-Scale, Doku-Konsolidierung der Nummerierungs-Stränge). Begleitende Doku-Glättung:
+
+- **README.md:** Sprache der Audio-Pipeline-Sektion und der Roadmap auf neutrale Formulierung gezogen (Badges, Tabellen-Header, Credits, Next-Steps). Inhalt unverändert — nur Außendarstellung.
+- **CHANGELOG #179:** Onboarding-Doc-Referenz neutralisiert.
+
+**Engine-/Content-Updates, die diesen Push begleiten (alle bereits inhaltlich oben dokumentiert, hier nur als Index):**
+
+| # | Thema |
+|---|---|
+| #181–#193 | Engine-Strang: Surface-FX-Wall-Clipping-Fix, Skill-Atlas-Basis, Camera-Delta-Parallax, Atem-Ambient pro Biome×Intensität, volumetrische Wolken + Fog-Parallax, procedural Detail-Sprite-Pass, Salzhüter-Sprite-Detail (vgl. `bugreports/*.png`) |
+| #194 | Quest-Auto-Fail-Pipeline (DEFEND-Grace, ESCORT-Timeout, Main-Quest-Revert statt Fail, `on_quest_failed`-Hook, Save-Schema-Add) |
+| #195 | Skill-Atlas: 7 Klassen-Arme + Label-Kollisions-Vermeidung |
+| #196–#200 | Akt-2-Balance-Pass, Save-Fix für verwaiste Node-IDs, Quest-Marker-Konsistenz (`abandoned`/`failed` korrekt), HUD-Cartouche-Aufwertung |
+| #201 | HUD-Entzerrung (Cartouche-Glow raus, Hotbar-Panel, Toast-Stack höher, Portal-Label-Clamping) |
+| #202 | NPC-Talk-Batch-Accept: ein Gespräch nimmt alle verfügbaren Quests des NPCs an, kein `!`/`?`-Flackern mehr |
+| #203 | Player/Mob-Render-Scale kleiner (`PROC_SPRITE_SCALE=0.82`, Mob-Scale 1.7→1.4) |
+
+**Tests:** 212/212 Smoke-Tests grün (einziger flaky-RNG-Fail bei `dot_kill_loot_pipeline`, AUDIT C.12 — bekannt, unabhängig).
+
+**AUDIT.md:** Sektion E.2 verifiziert — 5 combat/ai/enemies-Bug-Findings sind False-Positives (alle bereits durch frühere Updates gefixt oder fehlerhaft adressiert). C.2 Quest-Fail-Pfad als ✅ markiert.
+
+---
+
+## [2026-05-30] — Update #203 — Player + Mobs kleiner / proportionaler zur Map (User-Feedback)
+
+> User: „mir kommt es so vor als wären die Mobs und der Player selber zu groß für die Map."
+
+**Diagnose:** Tile = 80 px (fix), aber kein Welt-Zoom → das Verhältnis Entity/Tile ist fest verdrahtet. Player/Klassen-Sprites wurden bei **84×124** geblittet (≈1,55 Tiles hoch), Mobs via `_draw_mob_scaled(scale=1.7)`. Alles wirkte zu groß für die 80-px-Map.
+
+**Fix (rein visuell — `radius`/Kollision unverändert):** [sf/sprites.py](../../sf/sprites.py)
+- **Player + Klassen-Sprites:** neuer `PROC_SPRITE_SCALE = 0.82`. Sprites werden weiter scharf bei 84×124 generiert und beim Blitten in `_get_proc_sprite` herunterskaliert (`_scale_proc`); Blit-Anker auf die skalierte Größe (`sprite.get_width()//2`, `PROC_DRAW_FOOT_Y`) → ≈1,55 → 1,27 Tiles hoch, Füße korrekt am Boden.
+- **Stadt-NPCs:** `_get_npc_sprite` gleich mitskaliert (Konsistenz).
+- **Mobs:** Offscreen-Scale von **1.7 → 1.4** (= 1.7 × 0.82) → Mobs bleiben proportional zum kleineren Player, die ganze Szene wird kompakter/luftiger.
+
+**Verifikation:** Headless gerendert (Stadt + Dungeon mit Skelett/Brute/Dämon) — Player und Mobs jetzt einheitlich ~1–1,2 Tiles, Füße am Boden, keine schwebenden/abgeschnittenen Sprites. **211/212 grün** (einziger Fehler: bekannt RNG-flaky `dot_kill_loot_pipeline`).
+
+**Tuning-Hinweis:** Falls noch zu groß/klein — beide Hebel sind zentral: `PROC_SPRITE_SCALE` (Player/NPC) und der `scale=`-Wert in `_draw_mob_scaled` (Mobs).
+
+---
+
+## [2026-05-30] — Update #202 — NPC-Talk nimmt alle Quests in einem Zug an (User-Bug)
+
+> User-Report: „Warum kommt 3× hintereinander ein Ausrufezeichen, obwohl ich schon bei ihm war — und beim Reden rauscht es durch irgendwelche Quests."
+
+**Diagnose** ([sf/quests.py](../../sf/quests.py) `on_talk`): Quest-Geber mit mehreren Quests (z. B. Stadtsprecher Eldon = 3, Vossharil/Helst = 4) nahmen **eine Quest pro F-Druck** an. Folge: das `!` blieb für die nächsten Quests stehen → man musste 3× reden. Zusätzlich hat eine frisch angenommene Quest oft eine „TALK-beim-Geber"-Erststage → der Marker sprang `!`↔`?`↔`!`, was sich wie „Durchrauschen" anfühlte. Das Quest-Board ist read-only; Annahme läuft nur über Reden.
+
+**Fix:** Ein Gespräch
+- bringt **alle** TALK/RETURN-Stages bei diesem NPC voran,
+- nimmt **alle aktuell verfügbaren** Quests dieses Gebers in **einem Zug** an (Akt-Gate bleibt aktiv),
+- hakt deren „TALK-beim-selben-Geber"-Erststage **sofort** ab (man redet ja gerade) → kein Marker-Flackern,
+- gibt **gesammeltes** Feedback (1 Quest → „Neue Quest: X"; mehrere → „N neue Quests" + Liste) statt Toast-Spam.
+
+Ergebnis: nach **einem** Talk ist das `!` weg, kein `?`-Geflacker. Verifiziert (Eldon: `!` → ein Talk → Marker `None`, 2 Quests angenommen).
+
+**Tests:** +1 Smoke-Test (`on_talk_accepts_all_once`). **212/212 grün.**
+
+---
+
+## [2026-05-30] — Update #201 — HUD: ruhiger & entzerrt (User „schaut schlimmer aus")
+
+> Kurskorrektur nach #199/#200: Der User fand den HUD **zu überladen/gaudy** und das untere UI chaotisch. Richtung umgedreht — *ruhiger, sauberer, keine Overlaps* statt mehr Ornament.
+
+**Top entschärft** ([sf/ui.py](../../sf/ui.py)):
+- Cartouche-Hexagon: Glow-Halo, Bevel, Buchstaben-/Sigil-Glows **entfernt** → dezenter Gradient + schlichter Bronze-Rahmen. XP-Bar-Endkapsel-Glow raus. Akt-Box- und Quest-Box-Akzentleisten: additive Glows entfernt, nur noch solide Farbleiste.
+
+**Unteres Chaos** ([sf/ui.py](../../sf/ui.py), [sf/game.py](../../sf/game.py)):
+- **Hotbar bekommt ein zusammenhängendes Hintergrund-Panel** (gerundet, Bronze-Rand) — vorher schwebten die Slots als lose Boxen mit Welt-Durchblick in den Lücken.
+- **Toast-Stack** von `SCREEN_H-200` auf `-250` gehoben → Toasts liegen nie mehr über Spirit-Bar/Hotbar/Globes.
+- **Portal-Labels klemmen aus dem Bottom-HUD:** Outpost-Label klappt über die Stele wenn es sonst in die Hotbar ragen würde; der Tutorial-Portal-Pfeil (`HIER STARTEN`) wird nach oben geklemmt (`SCREEN_H-300`) statt in die Hotbar zu rutschen.
+
+**Clutter reduziert** ([sf/game.py](../../sf/game.py)):
+- Der Controls-Hint-Toast (`H: Hilfe · F: Sprechen · …`) beim ersten Stadt-Eintritt **entfernt** — dupliziert die persistente Hinweiszeile unten; weniger gleichzeitige Overlays.
+
+**Tests:** 211/211 grün (`ui_text_no_crash_stress`, `modal_renders_all`, `flask_system`). Headless mehrfach vor/nach gerendert & verglichen.
+
+**Offen:** Während des **Tutorials** (erster Stadt-Eintritt) erscheinen weiterhin mehrere Onboarding-Overlays gleichzeitig (Willkommen-Modal + Portal-Hinweis + Tipp); das ist tutorial-spezifisch und im normalen Spiel nicht aktiv. Globes/Flask bewusst unangetastet gelassen (sollen ruhig bleiben, nicht „premium-er").
+
+---
+
+## [2026-05-30] — Update #200 — HUD-Konsistenz: Status-Pillen + Quest-Box aufgewertet
+
+> Folge-Pass zu #199 — derselbe Premium-Look für die Top-Status-Bar und die rechte „DEINE AUFGABE"-Quest-Box, damit der ganze HUD stimmig wirkt.
+
+**Top-Status-Bar** ([sf/ui.py](../../sf/ui.py) `_draw_top_status_bar`):
+- Werte (Stufe/Gold/Seelen/Splitter/Kills) jetzt in der **Stat-eigenen Farbe** (aufgehellt) statt einheitlich Gold → sofortige visuelle Identität: Seelen lila, Splitter blau, Kills rot, Gold/Stufe gold. Plus Schatten für Lesbarkeit auf dem dunklen Bar-Gradient.
+
+**Rechte Quest-Box** ([sf/ui.py](../../sf/ui.py) `draw_hud`):
+- **Linke Akt-Akzentleiste mit Glow** in der Akt-Farbe (gleiche Palette wie der linke Akt-Tracker → Konsistenz über den ganzen HUD).
+- **Checkbox-Bullet** vor dem Stage-Text (offen, akt-getönt) — signalisiert die aktuelle Aufgabe als abhakbares Ziel, wie der Akt-Tracker. Umbruch-Breite entsprechend angepasst.
+- **QUEST-Tab gilded**: Gradient-Hintergrund + Gold-Highlight-Linie statt flachem Dunkel.
+
+**Tests:** 211/211 grün (inkl. `ui_text_no_crash_stress`, `modal_renders_all`). Headless vor/nach gerendert & verglichen.
+
+---
+
+## [2026-05-30] — Update #199 — HUD oben-links optisch aufgewertet (User-Wunsch)
+
+> User: „verbessere das optisch deutlich" (Portrait-Cartouche + Akt-Tracker oben-links).
+
+**Character-Cartouche** ([sf/ui.py](../../sf/ui.py) `_draw_character_cartouche`):
+- **Hexagon-Portrait** komplett überarbeitet: echter vertikaler Farb-Gradient (via Polygon-Maske) statt flacher Füllung, dezenter aspekt-getönter Außen-Glow-Halo (additiv), Bevel-Rahmen (obere Kanten hell = „Licht von oben", untere dunkel), Schlagschatten, dickerer Bronze-Rahmen + Innen-Akzent. Klassen-Initial mit Glow + Schatten. Aspekt-Sigil-Badge mit Ring + Glow.
+- **XP-Leiste** („ERINNERUNG") von einer 4 px-Linie zu einer echten gerundeten Bar: eingelassener Track mit Viertel-Ticks, Gold-Gradient-Füllung mit Top-Highlight + leuchtender Endkapsel, Label links / Prozent rechts (gilded). Auch bei 0 % klar lesbar.
+
+**Akt-Tracker** ([sf/ui.py](../../sf/ui.py) `_draw_akt_progression_hud`):
+- Vom dünnen Strip zur **Objective-Card**: Gradient-Hintergrund, Doppel-Rahmen, linke Akt-Farb-Akzentleiste mit Glow, Header (Akt-Region in Akt-Farbe) + Divider.
+- **Bug gefixt:** Der „→"-Pfeil vor dem Ziel-Text war ein fehlendes Glyph (Tofu-Box „☐") — ersetzt durch eine **gezeichnete Checkbox** (pygame-Rect, Akt-getönt), die das Ziel als abhakbare Aufgabe darstellt.
+
+**Tests:** 211/211 grün (inkl. `ui_text_no_crash_stress` über mehrere Auflösungen). Headless vor/nach gerendert & verglichen.
+
+---
+
+## [2026-05-30] — Update #198 — Quest-Marker (?/!) entwirrt (User-Bug)
+
+> User-Report: „Quest und NPCs haben andauernd ? oder ! über dem Kopf — man weiß nicht warum, ohne Sinn manchmal."
+
+**Diagnose & Fix** ([sf/quests.py](../../sf/quests.py)) — zwei Quellen für sinnlose Marker:
+- **`?` über Escort-/Defend-NPCs:** `has_quest_for_npc()` matchte *jeden* Stage-Typ mit `npc_name` im Target — auch ESCORT (Begleiter) und DEFEND (Schützling), wo der NPC nur das Quest-*Subjekt* ist und Reden nichts bewirkt. `on_talk()` bringt aber nur **TALK/RETURN** voran. Neu: `has_quest_for_npc(npc, talk_only=True)` filtert auf TALK/RETURN; `npc_marker()` und der Hover-Hinweis „★ Quest hier" ([sf/game.py](../../sf/game.py)) nutzen es → `?` erscheint nur noch, wo Reden wirklich eine Stage abschließt.
+- **`!` über abgebrochenen/gescheiterten Quests:** `npc_has_offer()` prüfte nur `active`/`completed`, nicht `abandoned`/`failed` (die `offer()` blockiert). Folge: der NPC zeigte weiter `!`, aber Reden akzeptierte nichts (offer → None) — falsches „Neue Quest"-Feedback. Jetzt konsistent: kein `!` für abgebrochene/gescheiterte Quests.
+
+**Marker-Semantik jetzt klar:** `!` = neue, akzeptierbare Quest · `?` = hier durch Reden eine Stage abschließen/voranbringen.
+
+**Tests:** +1 Smoke-Test (`npc_marker_talk_return`). 210/211 grün (der einzige Fehler ist der bekannt RNG-flaky `dot_kill_loot_pipeline`, AUDIT C.12 — unabhängig).
+
+---
+
+## [2026-05-30] — Update #197 — Fix: Neue Charaktere wurden nicht gespeichert (User-Bug)
+
+> User-Report: „Ein Savegame bleibt immer gespeichert (Krieger), andere verschwinden."
+
+**Diagnose:** Ein frisch erstelltes Spiel wurde erst beim ersten Dungeon-/Outpost-Roundtrip oder beim 60 s-Autosave auf die Platte geschrieben ([sf/game.py](../../sf/game.py) `enter_town` speichert nur, wenn man aus `dungeon`/`outpost` kommt). Wer einen neuen Charakter erstellte und vorher beendete (oder direkt einen weiteren anlegte), dessen Slot blieb **leer** → der Char „verschwand". Slot 1 fiel zusätzlich auf den alten Legacy-Save `~/.shadowfall_save.json` zurück (`_effective_path`-Backward-Compat) — daher blieb dort „immer der Krieger" sichtbar.
+
+**Fix** ([sf/game.py](../../sf/game.py) `start_game`):
+- Neues `persist_new`-Flag: ein neu erstelltes Spiel wird **sofort** in seinen Slot geschrieben (`save_game(self, slot=slot)`), gesetzt an den echten Neue-Char-Einstiegen (Slot-Picker „Neuer Charakter" + Title-Quick-Start via Enter/Space/Controller-A). Damit erscheint der Char sofort im Slot-Picker und überlebt Beenden.
+- Bewusst **nicht** bei jedem `start_game` — sonst überschreibt der Init-Save den Slot, bevor ein nachfolgendes `load_game` lesen kann (genau das brach 5 Save-Tests; mit dem Flag sauber abgegrenzt).
+- Slot wird **explizit** durchgereicht (nicht nur über `active_slot`, das auf 1..3 clampt).
+
+**Tests:** +1 Smoke-Test (`new_game_persists` — neuer Monk in Slot persistiert sofort + lädt mit korrekter Klasse). **210/210 grün.**
+
+**Hinweis:** Der Legacy-Slot-1-Fallback (`~/.shadowfall_save.json`) bleibt für Uralt-Saves; sobald ein neuer Char in Slot 1 erstellt wird, überschreibt er ihn.
+
+---
+
+## [2026-05-30] — Update #196 — Akt-2-Balance & Glasgold-Identität (User-Feedback)
+
+> User-Report (Akt 2): „erkennt man nichts · man levelt viel zu schnell · die Gegner wehren sich gar nicht." Erster Balance-/Visual-Pass — alle Werte bewusst moderat & reversibel, zum Feintunen.
+
+- **Leveln zu schnell** ([sf/progression.py](../../sf/progression.py), [sf/entities.py](../../sf/entities.py)): XP-Kurve versteilert — Start-Bedarf 30 → 48, Pro-Level-Faktor 1.45 → 1.58. Stufe 10 braucht jetzt **~2.8×**, Stufe 15 **~4.2×** mehr XP. Bremst v. a. das Mid-Game, sodass der Spieler nicht mehr aus dem Content heraus-levelt.
+- **Gegner wehren sich nicht** ([sf/entities.py](../../sf/entities.py) `Enemy.__init__`): Diagnose — die Aggro-Reichweiten (sight/hearing) sind großzügig; das Problem war, dass der überlevelte Spieler Mobs **vor dem ersten Schlag** tötet. Base-HP-Mult 1.20 → **1.45** (Mobs überleben lang genug, um zuzuschlagen) + Base-DMG-Mult 1.30 → **1.45** (Treffer tun weh). Beispiel @ Wave 10: Zombie 106→128 HP, Brute 211→255 HP / 51→57 dmg.
+- **Akt 2 „erkennt man nichts"** ([sf/world.py](../../sf/world.py) `draw_dungeon_floor`): Das Frost-Biom (lore = „Glasgoldene Ruinen") hatte ausschließlich kaltblaue Floor-Akzente → ununterscheidbar von generischem Eis. Jetzt **vergoldete Glas-Adern + Goldglas-Runen** (warmes Amber-Gold) gegen den Eisgrund → lesbare Glasgold-Identität.
+
+**Tests:** 209/209 grün (Balance-Werte werden von keinem Test asserted).
+
+**Offen / Folge-Pass:** Der **Outpost-Floor** (Echo-Markt, flaches `draw_floor`-Tile) hat noch keine Glasgold-Akzente — ein distinktiveres Akt-2-Outpost-Tile braucht eine eigene Art-Runde. Balance-Werte sind ein erster Pass; auf User-Feedback „mehr/weniger" nachregelbar.
+
+---
+
+## [2026-05-30] — Update #195 — Skill-Atlas: 7 Klassen-Arme + Label-Entzerrung
+
+> Macht den POE2-Skill-Atlas (#184) für alle Klassen funktional und räumt die UI optisch auf.
+
+**Funktional — alle 8 Klassen haben jetzt einen echten Atlas-Arm** ([sf/skill_atlas.py](../../sf/skill_atlas.py)):
+- Die 7 Nicht-Monk-Klassen waren bisher 5-Node-Stubs („Ausbau folgt"). Ersetzt durch je einen themed Arm aus **Start + 9 Nodes** (3 Pfade: Offensiv / Vital / Utility + starker Capstone-Notable), radial vom Atlas-Zentrum weg gelegt via neuem `_add_class_arm()` (+ `_ARM_SLOTS`/`_ARM_LINKS`-Template).
+- Thematisch pro Klasse: Krieger (Eisen/Wucht), Magier (Arkan/Feuer-Kälte), Söldner (Krit/Tempo), Jägerin (Fernkampf/Präzision), Hexe (Hexerei/Elemente), Speerschwester (Speer/Mondtempo), Wandelnde (Natur/Regen).
+- **Alle Stats nutzen bereits aggregierte Keys** (`hp`/`mp`/`*_dmg_pct`/`crit_*`/`attack_speed`/`speed`/`cdr`/`dmg_red`/…) → wirken sofort über `aggregate_stats` → `effective()` bzw. `combat.damage_player` (`dmg_red`). Kein neues Effekt-Wiring nötig; Mönch bleibt der einzige Arm mit gameplay-ändernden Keystones. Atlas-Gesamtumfang: ~70 → **140 Nodes / 160 Edges**.
+- **Save-Robustheit** ([sf/save.py](../../sf/save.py)): verwaiste Node-IDs (z. B. alte `*_stub_*` aus Dev-Saves) werden beim Laden gefiltert und als Atlas-Punkte erstattet — sonst hätte ein nicht mehr existenter, unerreichbarer Eintrag den Refund-Connectivity-Check blockiert.
+
+**Optisch — Label-Entzerrung** ([sf/ui.py](../../sf/ui.py) `AtlasUI`):
+- Node-Labels wurden zuvor direkt unter jedem Notable/Keystone gezeichnet → bei dichten Clustern überlappten Texte („Hundertfaches Echo/Bambusbiegung/Klangloser Tritt" etc.).
+- Neuer **Zweit-Pass mit Kollisions-Vermeidung + Priorisierung**: Hover > allokiert > Keystone/Start > Notable. Wichtige Labels weichen bei Kollision nach unten aus; unwichtige Notable-Labels werden weggelassen (Declutter, erscheinen weiter im Hover-Tooltip).
+
+**Tests:** +2 Smoke-Tests (`atlas_class_arms_complete`, `atlas_orphan_id_filtered`) — **209/209 grün**.
+
+---
+
+## [2026-05-30] — Update #194 — Quest-Soft-Lock-Schutz: ESCORT/DEFEND Auto-Fail (Audit C.2)
+
+> Erstes Update der **vereinheitlichten Sequenz** (siehe Lesehilfe oben). Schließt den letzten offenen Teil von Audit C.2.
+
+**Problem:** Zwei zeit-basierte Quest-Stages konnten permanent hängen:
+- **DEFEND** — stirbt der Schützling, wurde nur der Timer auf 0 gesetzt; die Stage wartete ewig auf einen NPC, der nie wieder lebt.
+- **ESCORT** — ist der Begleiter (z. B. nach Spieler-Tod im Dungeon) verschwunden und auch in Town nicht respawnbar, hing die Stage endlos.
+
+**Fix** ([sf/quests.py](../../sf/quests.py)):
+- `QuestState.fail_timer` + `fail_reason` (Patience-Timer pro Stage). DEFEND failt nach `DEFEND_FAIL_GRACE_S` (6 s) totem Schützling; ESCORT failt nur bei echtem Broken-State **in Town** nach `ESCORT_FAIL_TIMEOUT_S` (240 s) und **pausiert** weiterhin legitim im Dungeon (kein Fail bei langem Run). Per-Quest via `stage.target['fail_grace']` / `['fail_timeout']` überschreibbar.
+- `QuestLog.fail(qid, game)` → verschiebt in `failed`-Set (blockt Re-Offer wie `abandoned`, via `retake()` reaktivierbar). **Main-Quests werden geschützt**: statt Hard-Fail Revert auf Stage 0 (keine Akt-Progression-Brüche).
+- `quests.on_quest_failed(game, qid, state, reason)` — zentraler Modul-Hook: Toast + Event-Banner + `quest_fail`-Sound + optionale Telemetrie. Von Game-Code/Mods patchbar.
+- `QuestLog.tick()` reagiert auf gesetztes `fail_reason`; `offer()` blockt `failed`; `retake()` räumt `failed`.
+- Save/Load: `failed`-Set persistiert ([sf/save.py](../../sf/save.py), schema-additiv — alte Saves → leeres Set).
+
+**Tests:** +4 Smoke-Tests (`quest_defend_fail_npc_death`, `quest_fail_protects_main`, `quest_escort_pause_vs_fail`, `quest_fail_offer_block_save`) — **207/207 grün**.
+
+---
+
+## [2026-05-30] — Update #181–#193 — Render/Audio/Atlas-Sprint (Engine-Strang)
+
+> **Doku-Nachtrag.** Dieser Eintrag dokumentiert einen zusammenhängenden Engine-Sprint, der im Arbeitsbaum lag, getestet (203/203 Smoke) und per Screenshot/WAV in `bugreports/` (v180–v193) verifiziert war, aber noch nicht im CHANGELOG stand. Die Update-Nummern stammen aus den `# Update #NNN`-Markern im Code und gehören zum **Engine/Pipeline-Strang** (Sprites/Render/Audio), nicht zum Content-Strang (der bei #171-Pivot endet). Mehrere Einträge sind direkte User-Bug-Reports.
+
+### POE2-Skill-Atlas (#184) — `sf/skill_atlas.py` (neu, ~806 Zeilen)
+Ersetzt den flachen Grid-`tree` + `class_tree` durch einen verbundenen Node-Graph mit Klassen-Start-Zonen, gemeinsamer Mitte und gameplay-verändernden Keystones.
+- **Daten-Modell:** `ATLAS_NODES` (pos/kind/stats/effects/class_), `ATLAS_EDGES` (symmetrisch), `CLASS_STARTS`. Node-Kinds: `small`/`notable`/`keystone`/`classstart`/`gateway`. Canvas 2400×2000.
+- **Allocation-Regel:** Knoten allokierbar wenn Start (gratis) ODER Nachbar bereits allokiert, neutral oder klassen-passend, und Atlas-Punkt vorhanden. Stats additiv über alle allokierten Nodes; Keystones via `has_keystone(player, id)` aus skills.py/combat.py/progression.py abgefragt.
+- **Mönch vollständig (Phase 1)** — Keystones: „Klang der Stille" (Kills refunden 12 % max-MP), „Way of Wind" (keine Dodge-CD, aber +40 % erlittener Schaden in der iframe-Phase), „Kalter Spiegel/Cold Mirror" (verzögerte Frostnova-Wellen), „Iron Palm" (phys→lit-Konversion), „Storm-Rider"/„Eye of the Storm" (Shock-Stack-Skalierung: extra Chains, 100 % Crit ggn shocked, +10 % lit-dmg pro Stack). Atlas-Stats `dmg_red`, `mana_cost_red` additiv. Die anderen 7 Klassen haben Start-Stubs für spätere Phasen.
+- **Atlas-UI (#184):** ersetzt `SkillTreeUI` im Skill-Modal und beim NPC-Mystic-Open. Middle-Mouse-Pan, Linksklick = allokieren, Rechtsklick = refund (Orb-of-Regret), `C` zentriert auf Klassen-Start. Persistenz/Migration aus Legacy-Tree in save.py/progression.py/entities.py. — Belege: `bugreports/atlas_v184_overview.png`, `atlas_v185_pretty.png`, `atlas_v185_zoom.png`
+
+### Weather / Volumetrische Wolken & Fog (#184–#190) — `sf/weather.py`, `sf/lighting.py`
+- **#184 Volumetric Clouds:** statt flacher Ellipse pro Wolke jetzt numpy-Value-Noise-Sprites mit vertikalem Gradient, pro Biom vor-gebacken (`_make_cloud_sprite` + `_CLOUD_PALETTES`, Fallback ohne numpy). — `bugreports/clouds_v184.png`, `clouds_v184_overmap.png`
+- **#185 Camera-Delta-Parallax:** Wolken-Parallax korrekt über Camera-Delta-Tracking (Reset im ersten Frame nach Szenenwechsel).
+- **#187/#189 Cloud-Scroll-Fix (User: „DIE SOLLEN NICHT SCROLLEN"):** Wolken ganz früh gerendert; `sp = 0` → Wolken ignorieren die Camera komplett.
+- **Fog-Parallax / Motion-Sickness (#186→#190, User-Fix):** Fog bekam camera + biome-wind durchgereicht für Tiefe; bei `parallax=1.0` scrollte er mit der Welt → Motion Sickness erkannt (#188) → final `parallax=0, wind=0` (komplett still, #189). Fog-Tint-Tiefe-Fix gegen „wirkt draufgelegt". — `bugreports/fog_v186*.png`, `fog_v187_parallax.png`, `fog_v190.png`
+
+### Audio — Atem-System & Sound-Dedup (#184–#186) — `sf/sounds.py`, `sf/game.py`
+- **#185 „Atem der Vergessenen":** ersetzt das random gespammte `ambient_monster_growl` (User-Report) durch ein ruhigeres Ambient. — `bugreports/breath_*_calm/stressed/ragged.wav`, `dead_breath_v185.wav`
+- **#186 Player-Breath-SFX:** subliminaler Spieler-Atem pro `(Biome × Intensity)`, pro Frame getickt (`play_player_breath`), eigener `_breath_`-Cache-Key mit 1200 ms Dedup-Window gegen Spam bei schneller Wiederholung. — `bugreports/breath_<biome>_calm.wav` (astral/crypt/desert/frost/lava/swamp/town)
+- **#184 Sound-Dedup-Fixes (User-Reports):** `aoe_windup`/`monster_growl`/`monster_howl` wurden „random gespamt" → globales 40 ms-Dedup-Window + per-Sound-Override hat Vorrang.
+
+### Procedural-Sprites — Detail-Pass & Perf (#185–#193) — `sf/sprites.py`
+- **#185** detaillierte 72×104-Sprites aus Cache statt Inline-Polygone; **#186** +15 % Größe für bessere Lesbarkeit.
+- **#187** Velgrad-Eisenwächter komplettes Sprite-Redesign.
+- **#188/#189** Velgrad-Mönch „Stille Schritte"-Kampfmönch + Verfeinerungen (#189b/c: Kopf größer/tiefer, Neck-Skin-Strip, Arme enger am Torso, Quarterstaff rechts vertikal, weicher Robe-Saum, lesbarere Frontansicht). Klasse hat Vorrang vor `sprite_proxy`.
+- **#184 Schatten-Projektion:** statt eigenem Oval pro Decor/Char wird das Walk-Sheet projiziert (Fallback-Oval bleibt für Objekte ohne Sheet).
+- **#191 Anim-Existence-Cache:** Result-Caching der Walk-Sheet-Lookups (vorher 72 Filesystem-Calls/Frame); Hot-Reload leert den Cache.
+- **#193 Salzhüter-Brut (User: „schaut noch gleich aus"):** dediziertes Iso-Sprite `_draw_salzhueter_brut_iso` (Hafenwache des Velharner Tores), Mini-Boss jetzt von generischen Brutes unterscheidbar. — `bugreports/salzhueter_v193.png`
+
+### UI / HUD (#180–#182) — `sf/ui.py`, `sf/game.py`, `sf/sprites.py`
+- **#180 Pause-Menü-Refit:** Title eigene Zone oben, vertikale Spalten-Trennung Buttons ↔ Build-Snapshot. — `bugreports/pause_v180.png`
+- **#181 HP-Flask-Reposition:** Flask links vom HP-Globe, nach dem Hotbar-Block gerendert (nutzt `_hp_globe_pos`), kein eigenes Label mehr.
+- **#182 Bloodpool:** animierte Flüssigkeits-Oberfläche im Flask; Shadow-Fix „random Schatten überall" (Base-Alpha 180→150, Inner-Highlight). — `bugreports/bloodpool_v182.png`
+
+### World / Constants (#183) — `sf/world.py`, `sf/dungeon_gen.py`, `sf/surface_fx.py`, `sf/constants.py`
+- **#183 Quest-Flag-Gating (WELT_AUFBAU §10):** `quest_log` wird durch die Dungeon-Generierung gereicht; Akt-Gating zusätzlich zur Dungeon-Count-Heuristik (ROADMAP T2.4).
+- **#183 Glasgoldener Palast (WELT_AUFBAU §14):** user-sichtbarer Name von Akt-2-Dungeon lore-konform auf „Glasgoldener Palast"; Engine-Key `frost_palace` bleibt bis Phase 2 (Save-Compat) — Voll-Rename auf `glass_palace` zusammen mit `glass_ruins`-Biome-Buildout (T2.1-B Phase 2).
+- **#183 Surface-FX Wall-Clipping-Fix (User: „Kreise gehen durch/über Wände"):** Skill-Kreise respektieren jetzt Wände.
+- **Default-Auflösung** von 1600×900 auf 1920×1080 angehoben.
+
+---
+
+## [2026-05-24/25] — Update #172–#180 — Tile-Pipeline / Walk-Anim-Fixes / Tiled-Loader / Tool-Anker (Engine-Strang)
+
+> **Doku-Nachtrag.** Diese Updates waren committet (git-Strang, Sprite/Asset-Pipeline) aber nicht im CHANGELOG. Rekonstruiert aus Commit-Bodies. Diese liefen nach dem #171-Pivot — die hier getrackten Assets (Monk-Walk-Sheets, Town-Tiles) sind die bewusst behaltene **procedural-komplementäre** Ausnahme (vgl. CLAUDE.md).
+
+### #172 — Town-Tile-Refresh (Brassweir-Hafenstein) — `c4a2c65`
+Neues Town-Floor-Tile (dunkler Hafenstein mit Ketten/Salzkrusten, Marrowport-Look) aus User-PNG → `town_floor_a.png` (512×512). 4 procedural Variants (a/b/c/d via Rotation + Tint-Shift), aber nur `a` aktiv (Anti-Patchwork wie crypt). Wall via `wall_from_floor.py --biome town`; 16-Mask-Set via `workflow_texture_tiler.py` → Edge-Overlay-System (4-Bit-Bitmask N/E/S/W + Wall-Color-Bleed) greift jetzt für Town. Registriert in `TILE_VARIANT_MAP['town']` + `sprite_registry.py`.
+
+### #173 — `process_biome_tile.py` One-Command-Pipeline + Orphan-Cleanup — `66bdf9d`
+Neues Tool `tools/process_biome_tile.py`: Ein-Befehl-Pipeline pro Biom-Drop (Normalisieren 512×512 → 4 Variants → Wall → 16 Masks → `sprite_registry.py` + `TILE_VARIANT_MAP`/`TILE_WALL_MAP`/`TILE_SPRITE_ALIAS` auto-update, idempotent). `--no-<step>`/`--dry-run`-Flags, Source-Auto-Discovery (`<biome>_drop/_source/_new.png`). **Cleanup:** 21 orphan Tile-PNGs entfernt (10 `*_akt_*`, 9 generische `*_wall_w` aus #170, crypt_floor_b/d/legacy). Fallback: fehlt ein Tile → `get_tile_sprite` returnt None → `world.py` rendert procedural (kein Crash).
+
+### #174 — Monk-Walk-Sheets 4-Direction final — `1af9542`
+4 echte Walk-Cycle-Strips (down/up/left/right) aus **identischem 3D-Render** (löst das „8 verschiedene Charaktere"-Problem der #169-Sheets). 8 Frames/Strip → `classes/monk_anims/walk/`, postprocessed (`--bg black --threshold 30 --feather 10`). Direction-Fallback (#169) damit obsolet.
+
+### #175 — Fix: Char durchsichtig + Animation unflüssig — `1195ba2`
+Zwei User-Bugs: (1) Postprocess setzte dunkle Robe/Stiefel/Schatten auf feathered Alpha → halbtransparenter Body. Fix: **Inner-Opaque-Erode** (Core 2px erodiert → alpha=255, nur Edge-Ring behält Feather). (2) `_load_anim_strip` trimmte jedes Frame einzeln → unterschiedliche Breiten → horizontales „Springen". Fix: **Union-BBox-Trim** (min-rect über alle 8 Frames, einheitliche Dimensionen).
+
+### #176 — Fix: Belt durchsichtig → Hard-Char-Mask — `8f3bfc8`
+User: „kann immer noch durch den gürtel schauen". #175 versagte bei dünnen Features (~8px Gürtel → Core-Erode schrumpft zu ~4px). Fix: **Hard-Char-Mask** — Char-Pixel hart auf alpha=255, nur 1px-Boundary auf ~200 gegen Aliasing. Kein Mid-Range-Alpha mehr.
+
+### #177 — Fix: Boundary-Detection-Bug (Robe komplett durchsichtig) — `6a9c8d1`
+User: „kann den brunnen durch meine robe sehen". #176-Boundary-Code war fehlerhaft (`boundary == char_mask` statt Subset → ganzer Body auf alpha=200). Fix: korrekte 4-Neighbor-Shift-Detection (`interior = AND über 4 Shifts`, `boundary = char_mask AND NOT interior`). Body wieder voll opak (255), nur Edge-Ring 220.
+
+### #178 — Tiled Level-Editor Loader (`sf/tiled_loader.py`) — `a70c4e0`
+pytmx-basierter `.tmx`-Loader (`is_available`/`has_map`/`load_map`/`tmx_to_engine`/`list_maps`). Konvertiert Tiled-Maps in Engine-Format `{grid, spawns, decor, regions, meta}`. Convention: `assets/maps/<biome>/<name>.tmx`, Layer `floor*/walls*/doors*/traps*/spawns*/decor*/regions*`, Object-Types `player_spawn`/`npc:`/`mob:`/`boss:`/`decor:`/`region:lighting`. Ordnerstruktur + README angelegt. (Discovery: Lighting war bereits voll in `sf/lighting.py` — kein Redundanz-Bau.) Engine-Wireup als Folge geplant.
+
+### #179 — Tool-Anker: VELGRAD_TOOLBOX.md + list_stack.py + CLAUDE.md — `26e8cb7`
+Dreiteiliger Tool-Anker: (1) `VELGRAD_TOOLBOX.md` Single-Source-of-Truth (Decision-Tree, Libraries, 62 Engine-Module, 22 Tools, Workflows, Pitfalls), (2) `tools/list_stack.py` Auto-Diagnose (Library-Versionen, Module/Tools/Docs/Assets, `--check` Anti-Drift, `--json`), (3) `CLAUDE.md` Onboarding-Doc. Konsistenz-Check grün.
+
+### #180 — TOOLBOX Release-Ready-Roadmap (Section 7a) — `abbc244`
+Kuratierte Tool-Empfehlungen für Release-Reife (nur verankert, nicht aktiviert): Tier-1 Nuitka/PyInstaller + moviepy; Tier-2 scipy.ndimage/noise/moderngl; Tier-3 pygame_menu/pysrt; Tier-4 pytest/ruff/mypy; Tier-5 steamworks-py/discord-rpc/itch-butler.
+
+### Begleit-Commits (ohne Update-Nummer)
+- `dac5718` — `_archive/shadowfall.py` (1071 Zeilen alter PoC archiviert, AUDIT A.1).
+- `417baf6` — großer Asset/Voice-Reorg (648 Files): deutsche Voice-Lines nach `Sounds/voice_de_legacy/` verschoben, generische Death-/Quote-Pools angelegt, `AUDIT.md` hinzugefügt — die Audio-Seite des #171-Pivots.
+
+---
+
 ## [2026-05-24] — Update #171 — PROCEDURAL-ONLY-PIVOT (User-Entscheidung)
 
 > **User-Wunsch:** „Habe mich entschieden wir machen das Spiel komplett ohne externe Assets."

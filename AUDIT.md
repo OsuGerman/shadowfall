@@ -171,11 +171,20 @@
 ### C.1 — Boss-Visibility auf Minimap (POE2-Style) ❌ FALSE POSITIVE
 - **Verifikation:** Update #42 hat das implementiert ([sf/world.py:1803-1840](sf/world.py#L1803-L1840)): pulsierender Boss-Skull, clamping am Minimap-Rand wenn off-view, Richtungs-Pfeil. Kommentar im Code referenziert explizit "POE2-Style". Memory `feedback_boss_fairness` ist erfüllt.
 
-### C.2 — Quest-Fail/Abandon-Pfad fehlt komplett
-- **Datei:** `sf/quests.py`
-- **Status:** Keine `on_quest_failed()`, keine `on_quest_abandoned()`, keine Timeouts.
-- **Konsequenz:** Escort-NPC stirbt → Quest stuck forever. Spieler will Quest droppen → unmöglich.
-- **Fix:** Abandon-Button im Quest-Log + Auto-Fail nach X min Inaktivität.
+### C.2 — Quest-Fail/Abandon-Pfad ✅ GEFIXT (Abandon-API + Hotkey + Auto-Fail-Timeout)
+- **Datei:** [sf/quests.py:339-385](sf/quests.py#L339-L385), [sf/game.py:1645-1666](sf/game.py#L1645-L1666), [sf/save.py:340-342, 366-368](sf/save.py#L340-L342)
+- **Fix:**
+  - `QuestLog.abandon(qid)` — removed aus `active`, in `abandoned`-Set
+  - `QuestLog.retake(qid)` — entfernt aus `abandoned` (re-enables `offer()`)
+  - **Main-Quests sind geschützt** (kein Akt-Progression-Bruch möglich)
+  - `offer()` checkt jetzt `abandoned` — re-Offers werden bis `retake()` blockiert
+  - **Hotkey:** SHIFT+P im Quest-Log abandoned die getrackte Quest
+  - Save/Load persistiert das `abandoned`-Set (schema-additiv, alte Saves bleiben kompatibel)
+- **Auto-Fail-Pfad ✅ GEFIXT (2026-05-30):** Timeout-basierter Auto-Fail für ESCORT/DEFEND + `on_quest_failed`-Hook umgesetzt.
+  - `QuestState.fail_timer`/`fail_reason` (Patience-Timer); DEFEND failt wenn Schützling tot bleibt (`DEFEND_FAIL_GRACE_S=6 s`, vorher Soft-Lock: Timer-Reset + ewiges Warten); ESCORT failt nur bei echtem Broken-State in Town (`ESCORT_FAIL_TIMEOUT_S=240 s`), **pausiert** dagegen legitim im Dungeon (kein Fail bei langem Run). Per-Quest via `target['fail_grace']`/`['fail_timeout']` überschreibbar.
+  - `QuestLog.fail(qid, game)` → `failed`-Set (blockt Re-Offer wie `abandoned`, via `retake()` reaktivierbar); **Main-Quests reverten** auf Stage 0 statt zu failen (Akt-Progression geschützt).
+  - `quests.on_quest_failed(game, qid, state, reason)` Modul-Hook (Toast + Event-Banner + `quest_fail`-Sound + opt. Telemetrie; patchbar für Mods).
+  - Save/Load: `failed`-Set persistiert (schema-additiv). Tests: +4 Smoke-Tests (`quest_defend_fail_npc_death`, `quest_fail_protects_main`, `quest_escort_pause_vs_fail`, `quest_fail_offer_block_save`), 207/207 grün.
 
 ### C.3 — Save-Migration nur vorwärts ✅ GEFIXT
 - **Datei:** [sf/save.py:307-340](sf/save.py#L307-L340) und [sf/save.py:596-610](sf/save.py#L596-L610)
@@ -197,10 +206,10 @@
 - **Status:** Akt-1-Vendor kann Akt-5-Tier-Items verkaufen.
 - **Fix:** `vendor.tier_cap = player.max_completed_act`.
 
-### C.7 — A* mit hartem 300-Step-Limit
-- **Datei:** `sf/dungeon_gen.py:209-240`
-- **Status:** Bei großen Dungeons (80×80) zu klein, Fallback zu "closest walkable" fehlt.
-- **Fix:** Limit adaptiv (`grid_w * grid_h // 4`) + Fallback-Pfad.
+### C.7 — A* mit hartem 300-Step-Limit ✅ GEFIXT (Fallback-Pfad)
+- **Datei:** [sf/dungeon_gen.py:211-263](sf/dungeon_gen.py#L211-L263)
+- **Fix:** A* trackt `best_cell` (Manhattan-Distanz minimal zum Ziel) während der Suche. Wenn `max_steps` überschritten wird und kein Pfad gefunden, returnt es den Pfad zur naheliegendsten erreichten Zelle (statt `None`). NPC-Escort/Quest-Pathfinding kann jetzt "nahe drankommen" statt stuck-forever zu sein.
+- **Verhalten:** Wenn auch Best-Cell == Start (also wirklich kein Fortschritt), bleibt `None` als ehrliche Antwort.
 
 ### C.8 — Crash-Recovery existiert, ist aber nicht in der UI verdrahtet ✅ GEFIXT
 - **Datei:** [sf/game.py:466-473](sf/game.py#L466-L473) (Init), [sf/game.py:1391-1394](sf/game.py#L1391-L1394) (F8-Key), [sf/game.py:9016-9039](sf/game.py#L9016-L9039) (`_try_apply_crash_recovery`)
@@ -222,13 +231,24 @@
 ### C.11 — Y-Sorting für Sprites ❌ FALSE POSITIVE
 - **Verifikation:** Y-Sort ist in [sf/game.py:5441-5448](sf/game.py#L5441-L5448) implementiert: `_draw_world()` baut `tall`-Liste aus Tall-Decor + Enemies + Player + Portalen und sortiert nach `t.y` vor dem Blit. Die "extern gemanagte Sortierung" ist absichtlich (Renderer arbeitet auf game-Daten, nicht umgekehrt — Y-Sort gehört in den Draw-Coordinator, nicht in `sprites.py`).
 
-### C.12 — Tests fehlen
-- **Verzeichnis:** `tests/` existiert (siehe `ls`), aber Test-Coverage unklar.
-- **Empfehlung:** Smoke-Test für Save/Load-Roundtrip, Skill-Dispatch (alle Skills castbar?), Quest-Completion-Pfade.
+### C.12 — Tests erweitert ✅ TEIL-UMGESETZT (+5 Tests)
+- **Datei:** [tests/smoke.py:6055-6164](tests/smoke.py#L6055-L6164)
+- **Neue Smoke-Tests** (alle in der TESTS-Registry):
+  - `quest_abandon_api` — abandon/retake/offer-Block-Roundtrip
+  - `quest_abandon_protects_main` — Main-Quests dürfen nicht abgebrochen werden
+  - `quest_abandon_save_load` — `abandoned`-Set persistiert
+  - `astar_closest_walkable` — A*-Fallback mit max_steps=5 liefert closest-cell
+  - `profiler_section_records` — `section()` schreibt in Ring-Buffer
+- **Stand:** 202 Tests (vorher 197). Pre-existing RNG-flaky `dot_kill_loot_pipeline` bleibt — sollte als deterministischer Test umgebaut werden (eigenes Ticket).
 
-### C.13 — Performance-Telemetrie fehlt
-- **Status:** Kein Frame-Time-Tracking, kein Profiler-Hook im Live-Build.
-- **Fix:** `sf/profiler.py` (existiert, 58 Zeilen) erweitern: pro-Section Timer (`update_player`, `draw_world`, `update_enemies`), F3-Overlay.
+### C.13 — Performance-Telemetrie ✅ GEFIXT (Frame-Time-Sections im F3-Overlay)
+- **Datei:** [sf/profiler.py:60-125](sf/profiler.py#L60-L125), [sf/game.py:11531-11541](sf/game.py#L11531-L11541), [sf/game.py:9067-9075](sf/game.py#L9067-L9075)
+- **Fix:**
+  - `profiler.section('label')` Context-Manager — schreibt elapsed ms in Ring-Buffer (60 Frames History pro Section)
+  - `profiler.frame_summary()` returnt `{label: avg_ms}` sortiert nach Dauer
+  - Game.run() wrappt `handle_events`/`update`/`draw` in Sections — Default-Lightweight (~0.001 ms Overhead pro Section)
+  - F3-Debug-Overlay zeigt die Top-5 Sections live: `update: 4.2 ms`, `draw: 8.1 ms`, etc.
+- **Offen** (separater Sprint): Granulare Sections in `update`/`draw` (z.B. `update.enemies`, `draw.world`) wenn Mid-Level-Profiling gebraucht wird.
 
 ---
 
@@ -269,17 +289,19 @@
 
 ### E.2 Gameplay (`combat.py`, `skills.py`, `class_skills.py`, `ai.py`, `enemies.py`, `boss_encounter.py`)
 
+> **Status nach Verifikation (2026-05-30):** Die 5 combat/ai/enemies-**Bug**-Findings wurden im aktuellen Tree geprüft — **alle 5 sind False-Positives** (Sektion E hatte, wie A/C, zu kleine Read-Fenster; mehrere wurden bereits von Update #106 „Audit F-xxx" gefixt). Mit ❌ markiert + Evidenz. Die 3 verbleibenden ✱-Findings (aschenbrut/boss_encounter/phase2) sind kosmetik/polish/balance, keine Bugs, und ungeprüft.
+
 **Bugs (zusätzlich zu A.4-A.10):**
-- `sf/combat.py:769` — `_engage_charge`: kein Guard bei `d == 0` vor `diff.normalize()`.
-- `sf/enemies.py:1723, 1740` — Caster: `diff.length() == 0`-Check NACH `normalize()`.
-- `sf/combat.py:229-243` — Stun-Buildup: `e.stun_buildup_max` nicht garantiert initialisiert.
-- `sf/combat.py:96-108` — Pin-Trigger: `'pinned' not in e.status` aber Pin wird nie in `status`-Dict eingetragen → Doppel-Apply möglich.
-- `sf/enemies.py:794-805` — `aschenbrut._plague_aura_t` erst beim 1. Frame initialisiert (1-Frame-Aussetzer).
-- `sf/boss_encounter.py:511, 513` — Heal-Once hardcoded 0.5x; sollte `heal_frac`-Config sein.
-- `sf/enemies.py:984-985` — Phase2-Multiplier 0.7 vs 0.75 inkonsistent zwischen Bossen.
+- `sf/combat.py:769` — `_engage_charge`: kein Guard bei `d == 0` vor `diff.normalize()`. — ❌ **FALSE POSITIVE:** Die Funktion `_engage_charge` existiert im aktuellen Tree nicht mehr (`grep` = 0 Treffer); Zeile 769 ist heute anderer Code.
+- `sf/enemies.py:1723, 1740` — Caster: `diff.length() == 0`-Check NACH `normalize()`. — ❌ **FALSE POSITIVE:** Beide Stellen ([sf/enemies.py:1723](sf/enemies.py#L1723), [sf/enemies.py:1740](sf/enemies.py#L1740)) haben `if diff.length() == 0: return False` **vor** dem `normalize()` (Zombie-Spit / Skeleton-Bone-Fan, beide via Update #106 Audit F-009 gefixt). Guard sitzt korrekt davor.
+- `sf/combat.py:229-243` — Stun-Buildup: `e.stun_buildup_max` nicht garantiert initialisiert. — ❌ **FALSE POSITIVE:** [sf/entities.py:304-305](sf/entities.py#L304-L305) setzt `stun_buildup = 0.0` **und** `stun_buildup_max = 100.0` gemeinsam im Konstruktor. Der Guard `hasattr(e, 'stun_buildup')` ([sf/combat.py:234](sf/combat.py#L234)) ist also genau dann wahr, wenn auch `stun_buildup_max` existiert. Kein AttributeError.
+- `sf/combat.py:96-108` — Pin-Trigger: `'pinned' not in e.status` aber Pin wird nie in `status`-Dict eingetragen → Doppel-Apply möglich. — ❌ **FALSE POSITIVE:** `'pinned'` IST ein registrierter `STATUS_EFFECTS`-Key ([sf/constants.py:233](sf/constants.py#L233)) und in keinem `ELEMENT_COMBOS`-Paar → `effects.apply(game, e, 'pinned')` erreicht immer den `target.status[key] = {...}`-Pfad ([sf/effects.py:498](sf/effects.py#L498)). Damit greift der Guard `'pinned' not in e.status` korrekt — kein Doppel-Apply.
+- `sf/enemies.py:794-805` — `aschenbrut._plague_aura_t` erst beim 1. Frame initialisiert (1-Frame-Aussetzer). ✱ *(ungeprüft, kosmetisch)*
+- `sf/boss_encounter.py:511, 513` — Heal-Once hardcoded 0.5x; sollte `heal_frac`-Config sein. ✱ *(ungeprüft, Polish)*
+- `sf/enemies.py:984-985` — Phase2-Multiplier 0.7 vs 0.75 inkonsistent zwischen Bossen. ✱ *(ungeprüft, Balance)*
 
 **AI-State-Machine-Lücke:**
-- `sf/ai.py:404-414` — Wenn `_has_patrol(e)` False, fällt Enemy in IDLE und kommt nie wieder raus.
+- `sf/ai.py:404-414` — Wenn `_has_patrol(e)` False, fällt Enemy in IDLE und kommt nie wieder raus. — ❌ **FALSE POSITIVE:** Der IDLE-Handler ([sf/ai.py:337-357](sf/ai.py#L337-L357)) hat vier Austritte: `hp_changed`→AGGRO, `sees & dist≤220`→AGGRO, `sees or hears`→ALERT, `_has_patrol`→PATROL. Ein Enemy in IDLE wacht bei Sicht/Hören/Schaden sofort auf — kein Soft-Lock.
 
 ### E.3 Content/World (`quests.py`, `inventory.py`, `crafting.py`, `world.py`, `dungeon_gen.py`)
 

@@ -839,13 +839,35 @@ def generate_outpost(outpost_key):
 # AKT-PROGRESS-GATING
 # ============================================================
 
-def unlocked_outposts(player):
+def unlocked_outposts(player, quest_log=None):
     """Returnt die Liste der Outpost-Keys, die für den Player verfügbar sind.
 
-    Aktuelle Heuristik: `tier_gate` ≤ Anzahl abgeschlossener Dungeons
-    (= Akt-Progress). Sobald Quest-System steht, wird dies durch
-    explizite Quest-Flags ersetzt.
+    Heuristik (backward-compat): `tier_gate` ≤ Anzahl abgeschlossener
+    Dungeons + 1.  Alte Saves bleiben funktionsfaehig.
+
+    Update #183 (WELT_AUFBAU §10): Wenn `quest_log` uebergeben wird,
+    duerfen zusaetzlich Outposts entsperren, deren akt-zugehoerige
+    main-quest des vorherigen Akts completed ist
+    (siehe `progression.AKT_QUEST_GATES`).  Erlaubt Quest-driven
+    Progression statt nur Dungeon-Clear-Counter.
     """
     akt_progress = len(getattr(player, 'completed_dungeons', ()))
-    return [k for k, v in OUTPOSTS.items()
-            if k != 'brassweir' and v['tier_gate'] <= akt_progress + 1]
+    completed = (getattr(quest_log, 'completed', set())
+                 if quest_log is not None else set())
+    # Lazy-import um Circular-Dependency zu vermeiden (progression liest
+    # constants, outposts wird von game.py vor progression importiert).
+    from .progression import AKT_QUEST_GATES
+    out = []
+    for k, v in OUTPOSTS.items():
+        if k == 'brassweir':
+            continue
+        if v['tier_gate'] <= akt_progress + 1:
+            out.append(k)
+            continue
+        # Quest-Gate-Pfad: pruefe ob die main-quest des Akts dieses
+        # Outposts entsperrt wurde.
+        akt = v.get('akt', 99)
+        gate_quest = AKT_QUEST_GATES.get(akt)
+        if gate_quest and gate_quest in completed:
+            out.append(k)
+    return out

@@ -218,11 +218,22 @@ def _draw_flasks(screen, game, font_small):
     f = flasks.get('vital')
     if f is None:
         return
-    # Layout: links unter den Globes
-    fx = 22
-    fy = SCREEN_H - 110
-    fw = 56
-    fh = 100
+    # Update #181: Flask sitzt jetzt LINKS vom HP-Globe, vertikal mit
+    # der Hotbar gefluchtet — vorher schwebte sie isoliert unten-links
+    # ohne Verbindung zur Skill-Bar.
+    # `_hp_globe_pos` wird vom Hotbar-Render gesetzt; _draw_flasks wird
+    # NACH dem Hotbar-Block aufgerufen → immer verfuegbar.
+    fw = 48
+    fh = 92
+    hp_pos = getattr(game, '_hp_globe_pos', None)
+    if hp_pos is not None:
+        hp_cx, hp_cy, globe_r = hp_pos
+        fx = hp_cx - globe_r - 18 - fw
+        fy = hp_cy - fh // 2
+    else:
+        # Fallback: erstes Frame oder Hotbar nicht aktiv
+        fx = 22
+        fy = SCREEN_H - fh - 60
     ready = f['charges'] >= 1.0
     col = f['color'] if ready else (90, 80, 70)
     fill_pct = min(1.0, f['charges'] / max(1, f['max']))
@@ -667,16 +678,61 @@ def _draw_globe(screen, cx, cy, radius, val, max_val, base_color,
         fill_surf.blit(mask, (0, 0),
                        special_flags=pygame.BLEND_RGBA_MULT)
         screen.blit(fill_surf, (cx - radius, cy - radius))
-        # Wellen-Linie am Wasserstand (subtle animation)
+        # Update #182: Animierte Fluessigkeits-Oberflaeche.
+        # Zwei ueberlagerte Sinus-Wellen + aufsteigende Bubbles.
+        # Phase variiert pro Globe (cx als Seed) damit HP/MP nicht
+        # synchron schwingen — wirkt lebendiger.
         wave_y = cy + radius - liquid_h
         wave_w = int(math.sqrt(max(0, radius ** 2 -
                                        (cy - wave_y) ** 2)) * 2)
+        t_ms = pygame.time.get_ticks()
+        phase_seed = cx * 0.013
         if wave_w > 0:
-            wave_off = math.sin(pygame.time.get_ticks() * 0.003) * 1.5
-            pygame.draw.line(screen, _shade_color(base_color, 1.6),
-                              (cx - wave_w // 2, wave_y + int(wave_off)),
-                              (cx + wave_w // 2,
-                               wave_y - int(wave_off)), 1)
+            bright = _shade_color(base_color, 1.7)
+            soft = _shade_color(base_color, 1.3)
+            surface_left = cx - wave_w // 2
+            pts_main = []
+            pts_back = []
+            step = 3
+            for i in range(0, wave_w + 1, step):
+                sx = surface_left + i
+                rel = i / max(1, wave_w)
+                # Haupt-Welle: amplitude 2 px, fast
+                w1 = math.sin(t_ms * 0.003 + rel * 6.0
+                              + phase_seed) * 2.0
+                # Hinter-Welle: amplitude 1.5 px, langsamer, anderer Phase
+                w2 = math.sin(t_ms * 0.0018 + rel * 4.0
+                              + phase_seed + 1.7) * 1.5
+                pts_main.append((sx, wave_y + w1))
+                pts_back.append((sx, wave_y + 2 + w2))
+            if len(pts_main) >= 2:
+                pygame.draw.lines(screen, soft, False, pts_back, 1)
+                pygame.draw.lines(screen, bright, False, pts_main, 1)
+
+        # Aufsteigende Bubbles — 3 Bubbles mit gestaffeltem Lifecycle.
+        if frac > 0.05 and liquid_h > 8:
+            bubble_col = _shade_color(base_color, 1.8)
+            t_s = t_ms * 0.001
+            liquid_top_y = cy + radius - liquid_h
+            for k in range(3):
+                # 3-s Lifecycle, gestaffelt um 1 s
+                phase = (t_s + k * 1.05 + phase_seed * 0.7) % 3.0
+                prog = phase / 3.0  # 0..1 (Boden -> Oberflaeche)
+                by = (cy + radius) - prog * liquid_h
+                # X-Offset deterministisch aus Bubble-Index
+                bx_off = math.sin(k * 2.3 + phase_seed * 5.0) \
+                         * (radius * 0.45)
+                bx = cx + bx_off
+                # Innerhalb Kreis + ueber Oberflaeche bleiben
+                dx = bx - cx
+                dy = by - cy
+                if dx * dx + dy * dy > (radius - 4) ** 2:
+                    continue
+                if by < liquid_top_y + 2:
+                    continue
+                br = max(1, 2 - int(prog * 1.4))
+                pygame.draw.circle(screen, bubble_col,
+                                    (int(bx), int(by)), br)
     # Outline-Rim (klassen-getönt)
     rim_w = 3
     if low_pulse and frac < 0.30:
@@ -764,7 +820,12 @@ def _draw_spirit_bar(screen, cx, cy, w, h, val_reserved, val_max,
 
 def _draw_xp_thin_bar(screen, cx, cy, w, h, val, max_val,
                        rim_color, font_small):
-    """Dünner XP-Streifen (gold, klassen-getönte Rim)."""
+    """Duenner XP-Streifen unter der Spirit-Bar.
+
+    Update #181: Kein eigenes Label mehr — die Cartouche oben-links
+    zeigt bereits ‚ERINNERUNG · X%". Doppeltes Label kollidierte mit
+    dem ATEM-Label der Spirit-Bar.
+    """
     if max_val <= 0:
         max_val = 1
     frac = max(0.0, min(1.0, val / max_val))
@@ -781,13 +842,6 @@ def _draw_xp_thin_bar(screen, cx, cy, w, h, val, max_val,
                              (cx - w // 2 + fw, cy - h // 2 + hy), 1)
     pygame.draw.rect(screen, rim_color,
                      (cx - w // 2, cy - h // 2, w, h), 1)
-    # Compact label — Velgrad-Design nennt XP-Bar „ERINNERUNG"
-    # (Memory, Lore-Bibel: jeder Skill ist eine Erinnerung).
-    txt = font_small.render(
-        f'ERINNERUNG  {int(val)}/{int(max_val)}',
-        True, GOLD_BRIGHT)
-    screen.blit(txt, (cx - txt.get_width() // 2,
-                       cy - h // 2 - txt.get_height() - 1))
 
 
 def _draw_dodge_charges(screen, cx, cy, charges, max_charges,
@@ -1028,19 +1082,6 @@ def _draw_akt_progression_hud(screen, game, font_small):
     # Bottom noch nicht gesetzt (Game-Init / Test-Frame).
     base_x = 30
     base_y = getattr(game, '_pills_bottom_y', 192)
-    # Background-Strip (sehr dezent — kein dicker Block)
-    region_surf = font_small.render(region_name, True, (243, 213, 114))
-    hint_surf = font_small.render(
-        f'→ {next_hint}', True, (200, 180, 140))
-    box_w = max(region_surf.get_width(), hint_surf.get_width()) + 18
-    box_h = region_surf.get_height() + hint_surf.get_height() + 12
-    bg = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
-    bg.fill((16, 12, 8, 200))
-    screen.blit(bg, (base_x, base_y))
-    # Bronze-Border + Akzent-Line links (Akt-Farbe)
-    bronze = (154, 118, 66)
-    pygame.draw.rect(screen, bronze, (base_x, base_y, box_w, box_h), 1)
-    # Linke Akzent-Linie in Akt-Color
     AKT_COLORS = [
         (180, 200, 220),  # Akt 1 — Salz-Blau (crypt)
         (220, 200, 100),  # Akt 2 — Glas-Gold (frost)
@@ -1052,12 +1093,47 @@ def _draw_akt_progression_hud(screen, game, font_small):
         (220, 220, 180),  # Endgame
     ]
     acc_col = AKT_COLORS[min(len(AKT_COLORS) - 1, idx)]
-    pygame.draw.rect(screen, acc_col, (base_x, base_y, 3, box_h))
-    # Region-Name + Hint
-    screen.blit(region_surf, (base_x + 10, base_y + 4))
-    screen.blit(hint_surf,
-                 (base_x + 10,
-                  base_y + 4 + region_surf.get_height() + 2))
+    # --- Objective-Card (Header + gezeichnete Checkbox + Ziel-Text) ---
+    head_surf = font_small.render(region_name.upper(), True,
+                                  _shade_color(acc_col, 1.05))
+    obj_surf = font_small.render(next_hint, True, (224, 208, 178))
+    pad = 12
+    cb = 15                      # Checkbox-Kantenlaenge
+    acc_w = 4                    # linke Akzent-Leiste
+    inner_x = base_x + acc_w + pad
+    content_w = max(head_surf.get_width(), cb + 9 + obj_surf.get_width())
+    box_w = acc_w + pad + content_w + pad
+    obj_h = max(cb, obj_surf.get_height())
+    box_h = pad - 2 + head_surf.get_height() + 8 + obj_h + pad - 2
+    # Gradient-Hintergrund
+    bg = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+    for yy in range(box_h):
+        f = yy / max(1, box_h - 1)
+        bg_col = (int(26 + (14 - 26) * f), int(19 + (10 - 19) * f),
+                  int(12 + (6 - 12) * f), 232)
+        pygame.draw.line(bg, bg_col, (0, yy), (box_w, yy))
+    screen.blit(bg, (base_x, base_y))
+    # Doppel-Rahmen
+    pygame.draw.rect(screen, (150, 112, 60),
+                     (base_x, base_y, box_w, box_h), 1)
+    pygame.draw.rect(screen, (52, 36, 20),
+                     (base_x + 2, base_y + 2, box_w - 4, box_h - 4), 1)
+    # Linke Akzent-Leiste in Akt-Farbe (schlicht, kein Glow)
+    pygame.draw.rect(screen, acc_col, (base_x, base_y, acc_w, box_h))
+    # Header (Akt-Region) + duenner Divider
+    hy = base_y + pad - 2
+    screen.blit(head_surf, (inner_x, hy))
+    div_y = hy + head_surf.get_height() + 3
+    pygame.draw.line(screen, (66, 48, 26),
+                     (inner_x, div_y), (base_x + box_w - pad, div_y))
+    # Objective-Zeile: gezeichnete Checkbox (offen) + Ziel-Text
+    oy = div_y + 5
+    pygame.draw.rect(screen, (10, 7, 4), (inner_x, oy + 1, cb, cb),
+                     border_radius=3)
+    pygame.draw.rect(screen, _shade_color(acc_col, 0.85),
+                     (inner_x, oy + 1, cb, cb), 2, border_radius=3)
+    screen.blit(obj_surf, (inner_x + cb + 9,
+                           oy + 1 + (cb - obj_surf.get_height()) // 2))
 
 
 def _draw_character_cartouche(screen, game, font_small, font_med):
@@ -1084,41 +1160,43 @@ def _draw_character_cartouche(screen, game, font_small, font_med):
         a = -math.pi / 2 + k * (math.pi / 3)
         hex_pts.append((cx + math.cos(a) * psize // 2,
                          cy + math.sin(a) * psize // 2))
-    # Hex-Hintergrund (dunkel radial)
-    pygame.draw.polygon(screen, (10, 6, 4), hex_pts)
-    pygame.draw.polygon(screen, (42, 26, 16), hex_pts, 2)
-    # Innen-Glow (aspekt-getönt, pulsiert)
-    pulse = 0.7 + 0.3 * math.sin(t * 1.4)
-    glow = pygame.Surface((psize, psize), pygame.SRCALPHA)
-    pygame.draw.circle(glow,
-                        (*pal['bright'], int(60 * pulse)),
-                        (psize // 2, psize // 2), psize // 2 - 6)
-    screen.blit(glow, (px, py))
-    # Innen-Hexagon (kleiner, ohne Fill — Frame-Look)
-    inner_pts = []
-    for k in range(6):
-        a = -math.pi / 2 + k * (math.pi / 3)
-        inner_pts.append((cx + math.cos(a) * (psize // 2 - 5),
-                          cy + math.sin(a) * (psize // 2 - 5)))
-    pygame.draw.polygon(screen, _shade_color(pal['deep'], 1.4),
-                         inner_pts, 1)
-    # Klassen-Initialbuchstabe (groß, gilded)
+    # --- Hex-Fuellung: dezenter vertikaler Gradient (ruhig, kein Glow) ---
+    top_fill = _shade_color(pal['deep'], 1.1)
+    bot_fill = _shade_color(pal['deep'], 0.55)
+    hexsurf = pygame.Surface((psize, psize), pygame.SRCALPHA)
+    for yy in range(psize):
+        f = yy / max(1, psize - 1)
+        col = (int(top_fill[0] + (bot_fill[0] - top_fill[0]) * f),
+               int(top_fill[1] + (bot_fill[1] - top_fill[1]) * f),
+               int(top_fill[2] + (bot_fill[2] - top_fill[2]) * f), 255)
+        pygame.draw.line(hexsurf, col, (0, yy), (psize, yy))
+    mask = pygame.Surface((psize, psize), pygame.SRCALPHA)
+    local_pts = [(x - px, y - py) for (x, y) in hex_pts]
+    pygame.draw.polygon(mask, (255, 255, 255, 255), local_pts)
+    hexsurf.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    screen.blit(hexsurf, (px, py))
+    # Schlichter Bronze-Rahmen + duenner Innen-Akzent (kein Bevel/Glow)
+    pygame.draw.polygon(screen, (150, 112, 60), hex_pts, 2)
+    inner_pts = [(cx + math.cos(-math.pi / 2 + k * (math.pi / 3))
+                  * (psize // 2 - 4),
+                  cy + math.sin(-math.pi / 2 + k * (math.pi / 3))
+                  * (psize // 2 - 4)) for k in range(6)]
+    pygame.draw.polygon(screen, (70, 50, 28), inner_pts, 1)
+    # Klassen-Initialbuchstabe (gilded, nur Schatten)
     cls_name = CLASSES.get(p.cls, {}).get('name', '?')
     initial = cls_name[0].upper() if cls_name else '?'
-    init_surf = font_med.render(initial, True, pal['halo'])
-    # Drop-Shadow
-    init_sh = font_med.render(initial, True, (10, 6, 4))
-    screen.blit(init_sh, (cx - init_surf.get_width() // 2 + 1,
-                            cy - init_surf.get_height() // 2 + 1))
-    screen.blit(init_surf, (cx - init_surf.get_width() // 2,
-                              cy - init_surf.get_height() // 2))
-    # Aspekt-Sigil unten rechts (Mini-Badge)
-    sig_cx = px + psize - 4
-    sig_cy = py + psize - 4
-    pygame.draw.circle(screen, (10, 6, 4), (sig_cx, sig_cy), 14)
-    pygame.draw.circle(screen, pal['primary'], (sig_cx, sig_cy), 14, 1)
-    _asp.draw_glyph(screen, sig_cx, sig_cy, 20,
-                     aspect_key, color=pal['bright'])
+    init_surf = font_med.render(initial, True, (238, 222, 178))
+    init_sh = font_med.render(initial, True, (8, 5, 3))
+    iw, ih = init_surf.get_width(), init_surf.get_height()
+    screen.blit(init_sh, (cx - iw // 2 + 1, cy - ih // 2 + 1))
+    screen.blit(init_surf, (cx - iw // 2, cy - ih // 2))
+    # Aspekt-Sigil unten rechts (schlichtes Mini-Badge, kein Glow)
+    sig_cx = px + psize - 6
+    sig_cy = py + psize - 6
+    pygame.draw.circle(screen, (12, 8, 5), (sig_cx, sig_cy), 12)
+    pygame.draw.circle(screen, (120, 90, 50), (sig_cx, sig_cy), 12, 1)
+    _asp.draw_glyph(screen, sig_cx, sig_cy, 16,
+                     aspect_key, color=_shade_color(pal['primary'], 1.0))
 
     # Rechts neben Portrait: Stufe + Mastery / Klassen-Name / Faktion.
     # Update #181 (User-Fix „HUD ordentlich, kein Ueberlappen"):
@@ -1154,26 +1232,50 @@ def _draw_character_cartouche(screen, game, font_small, font_med):
     text_bottom = ly + fac_surf.get_height()
 
     # XP-Rail sitzt unter PORTRAIT oder TEXT (je nachdem was tiefer ist).
-    rail_y = max(py + psize, text_bottom) + 8
+    rail_y = max(py + psize, text_bottom) + 10
     rail_w = psize + 14 + 220
     rail_x = px
-    pygame.draw.rect(screen, (10, 6, 4), (rail_x, rail_y, rail_w, 4))
-    pygame.draw.rect(screen, (90, 63, 36), (rail_x, rail_y, rail_w, 4), 1)
-    if p.xp_to_next > 0:
-        fw = int(rail_w * min(1.0, p.xp / p.xp_to_next))
-        for hy in range(4):
-            col = _shade_color((227, 180, 64), 1.0 - hy * 0.15)
-            pygame.draw.line(screen, col,
-                              (rail_x, rail_y + hy),
-                              (rail_x + fw, rail_y + hy))
+    bar_h = 10
     xp_pct = min(100, int(100 * p.xp / max(1, p.xp_to_next)))
-    erin = font_small.render(
-        f'ERINNERUNG · {xp_pct}%', True, (154, 118, 66))
-    screen.blit(erin, (rail_x, rail_y + 8))
+    pct_frac = min(1.0, p.xp / p.xp_to_next) if p.xp_to_next > 0 else 0.0
+    # --- Track (eingelassen, gerundet) ---
+    pygame.draw.rect(screen, (8, 5, 3),
+                     (rail_x, rail_y, rail_w, bar_h), border_radius=5)
+    pygame.draw.rect(screen, (70, 50, 28),
+                     (rail_x, rail_y, rail_w, bar_h), 1, border_radius=5)
+    # Viertel-Ticks auf dem Track (dezent)
+    for q in (1, 2, 3):
+        tx_ = rail_x + int(rail_w * q / 4)
+        pygame.draw.line(screen, (52, 38, 22),
+                         (tx_, rail_y + 2), (tx_, rail_y + bar_h - 3))
+    # --- Fuellung mit vertikalem Gold-Gradient + Top-Highlight ---
+    if pct_frac > 0:
+        fw = max(bar_h, int(rail_w * pct_frac))
+        fill = pygame.Surface((fw, bar_h), pygame.SRCALPHA)
+        for hy in range(bar_h):
+            f = hy / max(1, bar_h - 1)
+            col = (int(255 + (150 - 255) * f), int(214 + (96 - 214) * f),
+                   int(96 + (28 - 96) * f), 255)
+            pygame.draw.line(fill, col, (0, hy), (fw, hy))
+        # runde Maske
+        fmask = pygame.Surface((fw, bar_h), pygame.SRCALPHA)
+        pygame.draw.rect(fmask, (255, 255, 255, 255),
+                         (0, 0, fw, bar_h), border_radius=5)
+        fill.blit(fmask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        screen.blit(fill, (rail_x, rail_y))
+        pygame.draw.line(screen, (255, 236, 184),
+                         (rail_x + 3, rail_y + 1),
+                         (rail_x + fw - 3, rail_y + 1))
+    # --- Label links + Prozent rechts (gilded) ---
+    erin = font_small.render('ERINNERUNG', True, (176, 138, 84))
+    pct_surf = font_small.render(f'{xp_pct}%', True, (235, 205, 130))
+    label_y = rail_y + bar_h + 4
+    screen.blit(erin, (rail_x, label_y))
+    screen.blit(pct_surf, (rail_x + rail_w - pct_surf.get_width(), label_y))
     # Update #181: Bottom-Y der Cartouche an Game durchreichen damit
     # nachfolgende HUD-Elemente (Pillen + Akt-Tracker) sauber darunter
     # einrasten ohne Ueberlappen.
-    game._cartouche_bottom_y = rail_y + 8 + erin.get_height() + 4
+    game._cartouche_bottom_y = label_y + erin.get_height() + 4
 
 
 def _draw_top_status_bar(screen, game, font_small, font_med, font_dmg):
@@ -1205,7 +1307,11 @@ def _draw_top_status_bar(screen, game, font_small, font_med, font_dmg):
     total_inner_w = 0
     for kind, label, value, col in stats:
         ls = font_small.render(label, True, (180, 160, 110))
-        vs = font_med.render(value, True, GOLD_BRIGHT)
+        # Update #200: Wert in der Stat-eigenen Farbe (aufgehellt) statt
+        # einheitlich Gold → sofortige visuelle Identitaet (Seelen lila,
+        # Splitter blau, Kills rot, Gold/Stufe gold).
+        vcol = tuple(min(255, int(c * 1.12) + 24) for c in col)
+        vs = font_med.render(value, True, vcol)
         pw = icon_w + 8 + ls.get_width() + 8 + vs.get_width() + pill_padding
         pills.append((kind, label, value, col, ls, vs, pw))
         total_inner_w += pw
@@ -1278,8 +1384,12 @@ def _draw_top_status_bar(screen, game, font_small, font_med, font_dmg):
         content_h = ls.get_height() + 4 + vs.get_height()
         top_margin = (bar_h - content_h) // 2
         screen.blit(ls, (x + icon_w + 8, bar_y + top_margin))
-        screen.blit(vs, (x + icon_w + 8,
-                          bar_y + top_margin + ls.get_height() + 4))
+        # Wert mit Schatten (Lesbarkeit auf dem dunklen Bar-Gradient)
+        vx = x + icon_w + 8
+        vy = bar_y + top_margin + ls.get_height() + 4
+        vsh = font_med.render(value, True, (8, 5, 3))
+        screen.blit(vsh, (vx + 1, vy + 1))
+        screen.blit(vs, (vx, vy))
         x += pw
         # Separator-Diamond (außer nach letztem)
         if i < len(pills) - 1:
@@ -1367,7 +1477,7 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
             words = stage_text.split(' ')
             cur = ''
             for w in words:
-                if font_small.size(cur + ' ' + w)[0] > box_w - 28 and cur:
+                if font_small.size(cur + ' ' + w)[0] > box_w - 52 and cur:
                     stage_lines.append(cur)
                     cur = w
                 else:
@@ -1384,6 +1494,15 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
                      + title_surf.get_height() + 14 + 10
                      + region_surf.get_height() + 12
                      + len(stage_lines) * line_h + 14)
+            # Update #200: Akt-Akzentfarbe aus der Region ("Akt N — …")
+            # — gleiche Palette wie der linke Akt-Tracker (Konsistenz).
+            import re as _re2
+            _AKT_ACC = [(180, 200, 220), (220, 200, 100), (255, 140, 60),
+                        (120, 200, 120), (200, 170, 255), (240, 200, 100),
+                        (180, 180, 200), (220, 220, 180)]
+            _ma = _re2.search(r'Akt (\d+)', main.region or '')
+            acc_col = _AKT_ACC[min(len(_AKT_ACC) - 1,
+                                   (int(_ma.group(1)) - 1) if _ma else 0)]
             # Pergament-Hintergrund mit Gradient
             bg = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
             for y in range(box_h):
@@ -1401,22 +1520,40 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
             pygame.draw.rect(screen, (60, 40, 22),
                               (box_x + 3, box_y + 3,
                                box_w - 6, box_h - 6), 1)
+            # Linke Akt-Akzentleiste (schlicht, kein Glow — wie Akt-Tracker)
+            pygame.draw.rect(screen, acc_col, (box_x + 1, box_y + 1, 4,
+                                               box_h - 2))
             # Filigree-Ecken (kleiner als Modal)
             _asp.draw_filigree_corners(
                 screen,
                 pygame.Rect(box_x, box_y, box_w, box_h),
                 bronze, size=14)
             # Top-Tab „QUEST" (überlagert auf der Border)
-            tab_w = 80
-            tab_x = box_x + box_w // 2 - tab_w // 2
-            pygame.draw.rect(screen, (10, 6, 4),
-                              (tab_x, box_y - 8, tab_w, 14))
-            pygame.draw.rect(screen, bronze,
-                              (tab_x, box_y - 8, tab_w, 14), 1)
+            # Update #180 fix: Tab-Hoehe an Text-Hoehe koppeln — vorher
+            # 14px fix, aber font_small (~22px) lief unten ueber den
+            # Rand in die Box rein.
             qlbl = font_small.render('QUEST', True, (227, 180, 64))
+            tab_pad_x = 16
+            tab_pad_y = 3
+            tab_w = qlbl.get_width() + tab_pad_x * 2
+            tab_h = qlbl.get_height() + tab_pad_y * 2
+            tab_x = box_x + box_w // 2 - tab_w // 2
+            tab_y = box_y - tab_h + 6   # 6px ragen in die Box rein
+            tab_bg = pygame.Surface((tab_w, tab_h), pygame.SRCALPHA)
+            for yy in range(tab_h):
+                f = yy / max(1, tab_h - 1)
+                tc = (int(36 + (12 - 36) * f), int(26 + (8 - 26) * f),
+                      int(15 + (5 - 15) * f), 255)
+                pygame.draw.line(tab_bg, tc, (0, yy), (tab_w, yy))
+            screen.blit(tab_bg, (tab_x, tab_y))
+            pygame.draw.rect(screen, bronze,
+                              (tab_x, tab_y, tab_w, tab_h), 1)
+            pygame.draw.line(screen, (227, 180, 64),
+                              (tab_x + 3, tab_y + 1),
+                              (tab_x + tab_w - 3, tab_y + 1))
             screen.blit(qlbl,
-                         (tab_x + tab_w // 2 - qlbl.get_width() // 2,
-                          box_y - 8))
+                         (tab_x + (tab_w - qlbl.get_width()) // 2,
+                          tab_y + tab_pad_y))
             # Eyebrow
             y = box_y + 14
             screen.blit(eyebrow, (box_x + box_w // 2 -
@@ -1436,10 +1573,22 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
             r_x = box_x + (box_w - region_surf.get_width()) // 2
             screen.blit(region_surf, (r_x, y))
             y += region_surf.get_height() + 12
-            # Stage-Text
-            for line in stage_lines:
-                ls = font_small.render(line, True, (220, 200, 170))
-                screen.blit(ls, (box_x + 12, y))
+            # Stage-Text mit Checkbox-Bullet (Konsistenz mit Akt-Tracker):
+            # die erste Zeile bekommt eine offene, akt-getoente Checkbox,
+            # Folgezeilen sind buendig eingerueckt.
+            cbq = 14
+            text_x = box_x + 16 + cbq + 8
+            for i, line in enumerate(stage_lines):
+                ls = font_small.render(line, True, (224, 206, 176))
+                if i == 0:
+                    cby = y + max(0, (ls.get_height() - cbq) // 2)
+                    pygame.draw.rect(screen, (10, 7, 4),
+                                     (box_x + 16, cby, cbq, cbq),
+                                     border_radius=3)
+                    pygame.draw.rect(screen, _shade_color(acc_col, 0.85),
+                                     (box_x + 16, cby, cbq, cbq), 2,
+                                     border_radius=3)
+                screen.blit(ls, (text_x, y))
                 y += line_h
             # Update #145: Lock-Hint wenn die Quest aktuell unerreichbar
             # ist (Akt-Gate noch nicht erfüllt).  User-Report „komme
@@ -1488,8 +1637,8 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
     _draw_charge_orbs(screen, game, font_small)
     # Update #22: Mahnmal-Marken I..VII oben rechts (User-Wahl).
     _draw_mahnmal_marken(screen, game, font_small)
-    # Update #82: Flask-Slots (F1/F2) am linken HUD-Rand unter Health-Globe.
-    _draw_flasks(screen, game, font_small)
+    # Update #82/#181: Flask wird NACH dem Hotbar-Block gerendert
+    # (siehe unten) — braucht _hp_globe_pos.
 
     # ----------------------------------------------------------------
     # SKILL-/HOTKEY-BAR (PLAN G-01..G-04, G-07, G-14)
@@ -1627,8 +1776,8 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
     spirit_w = min(360, total - 20)
     _draw_spirit_bar(screen, spirit_cx, spirit_cy, spirit_w, 12,
                       sp_res, sp_max, tint, font_small)
-    # XP-Bar dünn unter Spirit
-    _draw_xp_thin_bar(screen, spirit_cx, spirit_cy + 18, spirit_w, 5,
+    # XP-Bar duenn unter Spirit (kein Label — siehe Cartouche)
+    _draw_xp_thin_bar(screen, spirit_cx, spirit_cy + 14, spirit_w, 4,
                        p.xp, p.xp_to_next, tint, font_small)
     # Dodge-Charges (G-09)
     dc = int(getattr(p, 'dodge_charges', 0))
@@ -1655,6 +1804,20 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
                                 True, (160, 200, 255))
         screen.blit(ss, (hp_cx - ss.get_width() // 2,
                           globe_cy + globe_r + 8))
+
+    # --- Zusammenhaengendes Hotbar-Panel hinter den Slots (statt
+    # schwebender Einzel-Boxen) — fuellt die Luecken, ruhiger Look. ---
+    hb_pad = 7
+    hb_rect = pygame.Rect(sx0 - hb_pad, sy0 - hb_pad,
+                          total + hb_pad * 2, sw + hb_pad * 2)
+    hb_bg = pygame.Surface((hb_rect.w, hb_rect.h), pygame.SRCALPHA)
+    for yy in range(hb_rect.h):
+        f = yy / max(1, hb_rect.h - 1)
+        c = (int(22 + (11 - 22) * f), int(17 + (9 - 17) * f),
+             int(11 + (6 - 11) * f), 230)
+        pygame.draw.line(hb_bg, c, (0, yy), (hb_rect.w, yy))
+    screen.blit(hb_bg, hb_rect.topleft)
+    pygame.draw.rect(screen, (118, 90, 52), hb_rect, 1, border_radius=6)
 
     import math as _m
     for i, (key, skill, can_cast, cd, icon_idx) in enumerate(skill_data):
@@ -1723,6 +1886,10 @@ def draw_hud(screen, game, font_small, font_med, font_dmg):
             screen.blit(cd_surf,
                         (x + sw // 2 - cd_surf.get_width() // 2,
                          sy0 + sw // 2 - cd_surf.get_height() // 2))
+
+    # Update #181: Flask jetzt HIER rendern — Hotbar hat `_hp_globe_pos`
+    # bereits gesetzt, Flask sitzt links neben HP-Globe.
+    _draw_flasks(screen, game, font_small)
 
     # Skill-Punkt-/Attribut-Hinweise als kompakte Pillen UNTER der
     # ERINNERUNG-Bar.
@@ -3251,7 +3418,9 @@ class TravelUI:
         Aktueller Outpost ist enthalten aber als „bereits hier" markiert.
         """
         from . import outposts as _op
-        unlocked = _op.unlocked_outposts(game.player)
+        # Update #183: Quest-Flag-Gating per quest_log
+        unlocked = _op.unlocked_outposts(
+            game.player, quest_log=getattr(game, 'quest_log', None))
         current = getattr(game, 'outpost_id', None)
         out = []
         # Brassweir immer dabei (Persistenz-Hub)
@@ -3672,7 +3841,7 @@ class SkillTreeUI:
         node_keys = list(TREE_NODES.keys())
         cols = 4
         node_w = 200
-        node_h = 100
+        node_h = 110
         gx = modal.x + 24
         gy = modal.y + 112
         self._node_rects = {}
@@ -3692,9 +3861,9 @@ class SkillTreeUI:
         # ----- Klassen-Tree (unter Universal) -----
         from .constants import CLASSES
         class_name = CLASSES[game.player.cls]['name']
-        # gy = modal.y + 112, node_h = 100 (+10 gap) → 3 Reihen = 330
+        # gy = modal.y + 112, node_h = 110 (+10 gap) → 3 Reihen = 360
         rows_univ = (len(node_keys) + cols - 1) // cols
-        cgy = gy + rows_univ * (node_h + 10) + 36
+        cgy = gy + rows_univ * (node_h + 10) + 26
         sec_lbl = self.font_small.render(
             f'KLASSE: {class_name.upper()}', True, GOLD_BRIGHT)
         screen.blit(sec_lbl, (modal.x + 24, cgy - 22))
@@ -4187,13 +4356,13 @@ class SkillTreeUI:
         # '+ Investieren' Button-Text mehr; Bronze-Border signalisiert
         # Investierbarkeit, kleines '+' Glyph rechts unten als Affordance).
         desc_col = (210, 200, 180) if lvl > 0 or can_invest else (120, 110, 90)
-        self._wrap(screen, desc, rect.x + 10, rect.y + 42,
-                    rect.w - 28, desc_col)
+        self._wrap(screen, desc, rect.x + 10, rect.y + 40,
+                    rect.w - 22, desc_col)
 
         if can_invest:
             plus = self.font_small.render('+', True, (227, 180, 64))
-            screen.blit(plus, (rect.right - plus.get_width() - 24,
-                                rect.bottom - plus.get_height() - 4))
+            screen.blit(plus, (rect.right - plus.get_width() - 22,
+                                rect.bottom - plus.get_height() - 2))
 
     def _wrap(self, screen, text, x, y, max_w, color):
         font = self.font_small
@@ -4241,6 +4410,736 @@ class SkillTreeUI:
         body_y = rect.y + 12 + t_surf.get_height() + 8
         self._wrap(screen, body, rect.x + 14, body_y,
                     rect.w - 28, (140, 125, 100))
+
+
+# ============================================================
+# ATLAS-UI (Update #184) — POE2-style pannable skill graph
+# ============================================================
+class AtlasUI:
+    """Pannable / zoomable Skill-Atlas-View.
+
+    Steuerung:
+      - Linksklick auf allokierbaren Knoten → allokieren
+      - Rechtsklick auf allokierten Knoten → refunden (Orb-of-Regret)
+      - Mittlere Maustaste / Space + Drag → pannen
+      - Mausrad → zoomen
+      - C-Taste → zur eigenen Klassen-Start-Position springen
+    """
+
+    ZOOM_LEVELS = (0.40, 0.55, 0.70, 0.85, 1.00, 1.15, 1.30)
+
+    def __init__(self, font_med, font_small):
+        self.font_med = font_med
+        self.font_small = font_small
+        self.pan_x = 0.0
+        self.pan_y = 0.0
+        self._zoom_idx = 3   # 0.85
+        self.zoom = self.ZOOM_LEVELS[self._zoom_idx]
+        self._dragging = False
+        self._drag_anchor = None
+        self._hover_node = None
+        self._node_rects = {}      # node_id -> screen rect (rebuilt each draw)
+        self._centered_on_start = False
+        self._anims = []  # allocation feedback (kept light)
+
+    def modal_rect(self):
+        return pygame.Rect(40, 40, SCREEN_W - 80, SCREEN_H - 80)
+
+    # ---- Coordinate transforms ----
+    def _atlas_to_screen(self, ax, ay, modal):
+        cx = modal.x + modal.w / 2
+        cy = modal.y + modal.h / 2
+        sx = cx + (ax - self.pan_x) * self.zoom
+        sy = cy + (ay - self.pan_y) * self.zoom
+        return int(sx), int(sy)
+
+    def _screen_to_atlas(self, sx, sy, modal):
+        cx = modal.x + modal.w / 2
+        cy = modal.y + modal.h / 2
+        ax = (sx - cx) / self.zoom + self.pan_x
+        ay = (sy - cy) / self.zoom + self.pan_y
+        return ax, ay
+
+    def _center_on_start(self, game):
+        from . import skill_atlas as _atlas
+        start = _atlas.CLASS_STARTS.get(game.player.cls)
+        if start and start in _atlas.ATLAS_NODES:
+            pos = _atlas.ATLAS_NODES[start]['pos']
+            self.pan_x = pos[0]
+            self.pan_y = pos[1]
+        else:
+            self.pan_x = _atlas.ATLAS_CENTER[0]
+            self.pan_y = _atlas.ATLAS_CENTER[1]
+        self._centered_on_start = True
+
+    def open(self, game):
+        if not self._centered_on_start:
+            self._center_on_start(game)
+
+    # ---- Input handlers ----
+    def wheel_zoom(self, delta):
+        idx = max(0, min(len(self.ZOOM_LEVELS) - 1,
+                          self._zoom_idx + (1 if delta > 0 else -1)))
+        self._zoom_idx = idx
+        self.zoom = self.ZOOM_LEVELS[idx]
+
+    def begin_drag(self, mx, my):
+        self._dragging = True
+        self._drag_anchor = (mx, my, self.pan_x, self.pan_y)
+
+    def update_drag(self, mx, my):
+        if not self._dragging or self._drag_anchor is None:
+            return
+        ax_mx, ax_my, base_px, base_py = self._drag_anchor
+        dx = (ax_mx - mx) / self.zoom
+        dy = (ax_my - my) / self.zoom
+        self.pan_x = base_px + dx
+        self.pan_y = base_py + dy
+
+    def end_drag(self):
+        self._dragging = False
+        self._drag_anchor = None
+
+    def handle_left_click(self, game, mx, my):
+        from . import skill_atlas as _atlas
+        modal = self.modal_rect()
+        hit = self._pick_node(mx, my, modal)
+        if hit is None:
+            return False
+        if _atlas.try_allocate(game.player, hit):
+            node = _atlas.ATLAS_NODES[hit]
+            game.toast(f'Allokiert: {node["name"]}', (220, 200, 120))
+            self._anims.append({
+                'node_id': hit, 'age': 0.0, 'life': 0.8,
+            })
+            return True
+        # Not allocatable — feedback
+        node = _atlas.ATLAS_NODES.get(hit)
+        if node and hit not in game.player.atlas:
+            if node['class_'] is not None and node['class_'] != game.player.cls:
+                game.toast('Knoten nur fuer andere Klasse.', (200, 120, 120))
+            elif game.player.atlas_points <= 0:
+                game.toast('Keine Atlas-Punkte verfuegbar.', (200, 120, 120))
+            else:
+                game.toast('Pfad noch nicht erreichbar.', (200, 120, 120))
+        return True
+
+    def handle_right_click(self, game, mx, my):
+        from . import skill_atlas as _atlas
+        modal = self.modal_rect()
+        hit = self._pick_node(mx, my, modal)
+        if hit is None:
+            return False
+        if hit not in game.player.atlas:
+            return True
+        if _atlas.try_refund(game.player, hit):
+            node = _atlas.ATLAS_NODES[hit]
+            game.toast(f'Refundiert: {node["name"]} (-1 Orb)',
+                       (180, 220, 240))
+        else:
+            if getattr(game.player, 'orbs_of_regret', 0) <= 0:
+                game.toast('Keine Orb-of-Regret im Bestand.',
+                           (200, 120, 120))
+            else:
+                game.toast('Refund wuerde Verbindung trennen.',
+                           (200, 120, 120))
+        return True
+
+    def _pick_node(self, mx, my, modal):
+        """Returnt node_id unter der Mausposition (oder None)."""
+        for nid, rect in self._node_rects.items():
+            cx = rect[0] + rect[2] // 2
+            cy = rect[1] + rect[3] // 2
+            r = max(rect[2], rect[3]) // 2 + 2
+            if (mx - cx) ** 2 + (my - cy) ** 2 <= r * r:
+                return nid
+        return None
+
+    # ---- Zonen-Farben (POE2-style farbcodierte Cluster) ----
+    _ZONE_COLORS = {
+        'm_sturm': (120, 180, 255),   # Sturm — elektrisches Blau
+        'm_bamb':  (224, 170, 90),    # Bambus — Bronze/Amber
+        'm_schat': (150, 215, 230),   # Schatten — kaltes Cyan
+        'm_gate':  (190, 230, 160),   # Moench-Gateway — Lotus-Gruen
+        'core':    (224, 190, 120),   # Shared-Core — warmes Gold
+    }
+
+    def _zone_color(self, nid, node):
+        """Thematische Grundfarbe eines Knotens (nach Cluster/Klasse)."""
+        for prefix, col in self._ZONE_COLORS.items():
+            if nid.startswith(prefix):
+                return col
+        cls = node.get('class_')
+        if cls and cls in CLASSES:
+            return CLASSES[cls]['color']
+        return (210, 180, 120)
+
+    def _glow_surf(self, radius, color, intensity=64):
+        """Cached, vormultiplizierter additiver Bloom (weiches Halo).
+
+        Wichtig: wird mit BLEND_ADD geblittet — BLEND_ADD ignoriert Alpha,
+        darum bakeln wir die Helligkeit direkt in die RGB-Werte (premultiplied)
+        und füllen den Rand mit Schwarz, damit dort nichts addiert wird.
+        """
+        radius = max(2, int(radius))
+        if not hasattr(self, '_glow_cache'):
+            self._glow_cache = {}
+        qc = (color[0] // 16, color[1] // 16, color[2] // 16)
+        key = (radius, qc, intensity)
+        surf = self._glow_cache.get(key)
+        if surf is None:
+            surf = pygame.Surface((radius * 2, radius * 2))
+            surf.fill((0, 0, 0))
+            steps = 14
+            for i in range(steps, 0, -1):
+                rr = max(1, int(radius * i / steps))
+                frac = (1 - i / steps) ** 2          # 0 außen → 1 innen
+                f = frac * (intensity / 255.0)
+                col = (int(color[0] * f), int(color[1] * f), int(color[2] * f))
+                pygame.draw.circle(surf, col, (radius, radius), rr)
+            self._glow_cache[key] = surf
+        return surf
+
+    def _ensure_starfield(self, modal):
+        """Erzeugt ein kachelbares Sternenfeld einmalig (parallax-fähig)."""
+        if getattr(self, '_starfield', None) is not None:
+            return
+        import random as _rnd
+        rng = _rnd.Random(20184)
+        tile = pygame.Surface((420, 420), pygame.SRCALPHA)
+        for _ in range(140):
+            x = rng.randint(0, 419)
+            y = rng.randint(0, 419)
+            b = rng.randint(40, 150)
+            sz = 1 if b < 110 else 2
+            tint = rng.choice([(b, b, b + 18), (b + 14, b + 8, b),
+                                (b, b + 10, b + 14)])
+            pygame.draw.circle(tile, (*tint, b + 60), (x, y), sz)
+        self._starfield = tile
+
+    # ---- Draw ----
+    def draw(self, screen, game):
+        from . import skill_atlas as _atlas
+        from . import aspects as _asp
+
+        modal = self.modal_rect()
+        pal = _asp.aspect_palette(game.player.cls)
+        bg_tint = _asp.class_theme(game.player.cls).get('bg_tint', (40, 34, 28))
+        t_ms = pygame.time.get_ticks()
+        atlas = getattr(game.player, 'atlas', set())
+        mx, my = pygame.mouse.get_pos()
+
+        # === Dimmer hinter dem Modal ===
+        overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 232))
+        screen.blit(overlay, (0, 0))
+
+        # === Kosmischer Hintergrund (radialer Gradient + Aspekt-Tint) ===
+        bg = pygame.Surface((modal.w, modal.h))
+        cx_local = modal.w / 2
+        cy_local = modal.h / 2
+        max_d = math.hypot(cx_local, cy_local)
+        # Vertikaler Basisverlauf, deutlich dunkel
+        for y in range(0, modal.h, 2):
+            t = y / max(1, modal.h)
+            r = int(14 + bg_tint[0] * 0.10 + 6 * (1 - t))
+            g = int(11 + bg_tint[1] * 0.10 + 5 * (1 - t))
+            b = int(16 + bg_tint[2] * 0.12 + 8 * (1 - t))
+            pygame.draw.line(bg, (r, g, b), (0, y), (modal.w, y + 1))
+        screen.blit(bg, modal.topleft)
+
+        old_clip = screen.get_clip()
+        screen.set_clip(modal)
+
+        # Sternenfeld (parallax, gekachelt)
+        self._ensure_starfield(modal)
+        tile = self._starfield
+        tw, th = tile.get_size()
+        ox = int(-self.pan_x * 0.12) % tw
+        oy = int(-self.pan_y * 0.12) % th
+        for ty in range(modal.y - th + oy, modal.bottom + th, th):
+            for tx in range(modal.x - tw + ox, modal.right + tw, tw):
+                screen.blit(tile, (tx, ty))
+
+        # Zentrale Nebel-Aura (am Shared-Core) + Klassen-Start-Aura — dezent
+        core_s = self._atlas_to_screen(*_atlas.ATLAS_CENTER, modal=modal)
+        neb = self._glow_surf(int(300 * self.zoom), pal['deep'], intensity=22)
+        screen.blit(neb, (core_s[0] - neb.get_width() // 2,
+                          core_s[1] - neb.get_height() // 2),
+                    special_flags=pygame.BLEND_ADD)
+        start_id = _atlas.CLASS_STARTS.get(game.player.cls)
+        if start_id and start_id in _atlas.ATLAS_NODES:
+            ss = self._atlas_to_screen(*_atlas.ATLAS_NODES[start_id]['pos'],
+                                       modal=modal)
+            saur = self._glow_surf(int(220 * self.zoom), pal['primary'],
+                                   intensity=26)
+            screen.blit(saur, (ss[0] - saur.get_width() // 2,
+                               ss[1] - saur.get_height() // 2),
+                        special_flags=pygame.BLEND_ADD)
+
+        # === Edges ===
+        pulse = 0.5 + 0.5 * math.sin(t_ms * 0.004)
+        for a, b in _atlas.ATLAS_EDGES:
+            na = _atlas.ATLAS_NODES.get(a)
+            nb = _atlas.ATLAS_NODES.get(b)
+            if na is None or nb is None:
+                continue
+            sa = self._atlas_to_screen(*na['pos'], modal=modal)
+            sb = self._atlas_to_screen(*nb['pos'], modal=modal)
+            # Cull
+            if (max(sa[0], sb[0]) < modal.x or min(sa[0], sb[0]) > modal.right
+                    or max(sa[1], sb[1]) < modal.y
+                    or min(sa[1], sb[1]) > modal.bottom):
+                continue
+            both = a in atlas and b in atlas
+            one = (a in atlas) != (b in atlas)
+            if both:
+                zc = self._zone_color(a if a in atlas else b,
+                                      na if a in atlas else nb)
+                # Soft glow underlay
+                gw = max(4, int(7 * self.zoom))
+                glow_col = (int(zc[0] * 0.5), int(zc[1] * 0.5), int(zc[2] * 0.5))
+                pygame.draw.line(screen, glow_col, sa, sb, gw)
+                # Bright core
+                core_col = (min(255, int(zc[0] * 0.7 + 90)),
+                            min(255, int(zc[1] * 0.7 + 90)),
+                            min(255, int(zc[2] * 0.7 + 90)))
+                pygame.draw.line(screen, core_col, sa, sb,
+                                 max(2, int(3 * self.zoom)))
+                # Wander-Funke
+                fp = pulse
+                px = int(sa[0] + (sb[0] - sa[0]) * fp)
+                py = int(sa[1] + (sb[1] - sa[1]) * fp)
+                pygame.draw.circle(screen, (255, 245, 210), (px, py),
+                                   max(2, int(2.5 * self.zoom)))
+            elif one:
+                pygame.draw.line(screen, (120, 100, 66), sa, sb,
+                                 max(1, int(2 * self.zoom)))
+            else:
+                pygame.draw.line(screen, (58, 50, 40), sa, sb,
+                                 max(1, int(1.4 * self.zoom)))
+
+        # === Nodes ===
+        self._node_rects.clear()
+        hover_id = None
+        # Label-Kandidaten werden gesammelt und in einem Zweit-Pass mit
+        # Kollisions-Vermeidung platziert (verhindert Text-Overlap bei
+        # dicht stehenden Notables).
+        label_cands = []
+        for nid, node in _atlas.ATLAS_NODES.items():
+            sx, sy = self._atlas_to_screen(*node['pos'], modal=modal)
+            if not (modal.x - 60 <= sx <= modal.right + 60 and
+                    modal.y - 60 <= sy <= modal.bottom + 60):
+                continue
+            kind = node['kind']
+            base_r = _atlas.KIND_RADIUS.get(kind, 8)
+            r = max(3, int(base_r * self.zoom))
+            allocated = nid in atlas
+            allocatable = (not allocated
+                           and (node['class_'] is None
+                                or node['class_'] == game.player.cls)
+                           and any(nb in atlas
+                                   for nb in _atlas.neighbors(nid)))
+            class_locked = (node['class_'] is not None
+                            and node['class_'] != game.player.cls)
+            zc = self._zone_color(nid, node)
+
+            dist2 = (mx - sx) ** 2 + (my - sy) ** 2
+            is_hover = dist2 <= (r + 5) ** 2
+            if is_hover:
+                hover_id = nid
+
+            self._node_rects[nid] = (sx - r, sy - r, r * 2, r * 2)
+            self._draw_node_fancy(screen, sx, sy, r, kind, zc,
+                                  allocated, allocatable, class_locked,
+                                  is_hover, t_ms)
+
+            # Labels fuer Notable/Keystone/Start — Kandidat sammeln,
+            # Platzierung im Zweit-Pass (Kollisions-Vermeidung).
+            if (kind in ('notable', 'keystone', 'classstart')
+                    and self.zoom >= 0.55):
+                # Prioritaet: niedriger = wichtiger (zuerst platziert).
+                #   hover=0, allokiert=1, keystone/start=2, notable=3
+                if is_hover:
+                    prio = 0
+                elif allocated:
+                    prio = 1
+                elif kind in ('keystone', 'classstart'):
+                    prio = 2
+                else:
+                    prio = 3
+                label_cands.append((prio, sx, sy + r + 4, node['name'],
+                                    kind, allocated))
+
+        # === Allocation-Animationen ===
+        for anim in list(self._anims):
+            anim['age'] += 1.0 / 60.0
+            if anim['age'] >= anim['life']:
+                self._anims.remove(anim)
+                continue
+            node = _atlas.ATLAS_NODES.get(anim['node_id'])
+            if node is None:
+                continue
+            sx, sy = self._atlas_to_screen(*node['pos'], modal=modal)
+            tt = anim['age'] / anim['life']
+            r_pulse = int(34 * self.zoom * (1 - tt)) + 6
+            alpha = int(230 * (1 - tt))
+            ring = pygame.Surface((r_pulse * 2 + 4, r_pulse * 2 + 4),
+                                   pygame.SRCALPHA)
+            pygame.draw.circle(ring, (255, 232, 150, alpha),
+                                (r_pulse + 2, r_pulse + 2), r_pulse,
+                                max(2, int(3 * self.zoom)))
+            screen.blit(ring, (sx - r_pulse - 2, sy - r_pulse - 2))
+
+        # === Label-Platzierung (Zweit-Pass mit Kollisions-Vermeidung) ===
+        # Wichtige Labels (Hover/allokiert/Keystone/Start) zuerst — sie
+        # duerfen nach unten ausweichen; unwichtige Notable-Labels werden
+        # bei Kollision weggelassen statt uebereinander gestapelt.
+        label_cands.sort(key=lambda c: c[0])
+        placed_labels = []
+        fh = self.font_small.get_height()
+
+        def _label_hits(rr):
+            for pr in placed_labels:
+                if (rr[0] < pr[0] + pr[2] and rr[0] + rr[2] > pr[0]
+                        and rr[1] < pr[1] + pr[3] and rr[1] + rr[3] > pr[1]):
+                    return True
+            return False
+
+        for prio, lsx, ltop, lname, lkind, lalloc in label_cands:
+            lw = self.font_small.size(lname)[0]
+            rect = [lsx - lw // 2 - 6, ltop - 2, lw + 12, fh + 4]
+            max_tries = 0 if prio == 3 else 3
+            tries = 0
+            while _label_hits(rect) and tries < max_tries:
+                rect[1] += fh + 3
+                ltop += fh + 3
+                tries += 1
+            if prio == 3 and _label_hits(rect):
+                continue   # unwichtiges Notable-Label → weglassen (Declutter)
+            placed_labels.append(rect)
+            self._draw_node_label(screen, lname, lsx, ltop, lkind, lalloc)
+
+        screen.set_clip(old_clip)
+        self._hover_node = hover_id
+
+        # === Ornamentrahmen ===
+        pygame.draw.rect(screen, (60, 44, 24), modal, 2)
+        pygame.draw.rect(screen, pal['deep'],
+                          (modal.x + 4, modal.y + 4,
+                           modal.w - 8, modal.h - 8), 1)
+        _asp.draw_filigree_corners(screen, modal, (154, 118, 66), size=40)
+
+        # === Header-Band ===
+        head_band = pygame.Surface((modal.w - 8, 56), pygame.SRCALPHA)
+        head_band.fill((12, 9, 6, 210))
+        screen.blit(head_band, (modal.x + 4, modal.y + 4))
+        folio_l = self.font_small.render('LIBER MEMORIAE', True, (170, 134, 78))
+        screen.blit(folio_l, (modal.x + 28, modal.y + 14))
+        ap = getattr(game.player, 'atlas_points', 0)
+        orbs = getattr(game.player, 'orbs_of_regret', 0)
+        allocated_count = len(atlas)
+        folio_r = self.font_small.render(
+            f'FOL. CCXLVII · {allocated_count} Knoten', True, (170, 134, 78))
+        screen.blit(folio_r, (modal.right - folio_r.get_width() - 28,
+                              modal.y + 14))
+        title_text = 'D E R   E R I N N E R U N G S - A T L A S'
+        title = self.font_med.render(title_text, True, pal['halo'])
+        title_sh = self.font_med.render(title_text, True, (8, 5, 3))
+        tx = modal.x + modal.w // 2 - title.get_width() // 2
+        screen.blit(title_sh, (tx + 1, modal.y + 26))
+        screen.blit(title, (tx, modal.y + 25))
+        _asp.draw_ornament_divider(screen, modal.x + 28, modal.y + 52,
+                                   modal.w - 56, (120, 90, 50))
+
+        # === Punkte-Pill (zentriert oben) ===
+        pill_txt = (f'Atlas-Punkte: {ap}    ·    Orbs-of-Regret: {orbs}'
+                    f'    ·    Zoom {self.zoom:.2f}×')
+        pill = self.font_small.render(pill_txt, True,
+                                       pal['halo'] if ap > 0 else TEXT_DIM)
+        pw = pill.get_width() + 28
+        px = modal.x + modal.w // 2 - pw // 2
+        py = modal.y + 62
+        pill_bg = pygame.Surface((pw, 24), pygame.SRCALPHA)
+        pill_bg.fill((20, 15, 9, 220))
+        screen.blit(pill_bg, (px, py))
+        pygame.draw.rect(screen, (120, 92, 52), (px, py, pw, 24), 1)
+        screen.blit(pill, (px + 14, py + 4))
+
+        # === Footer ===
+        foot = pygame.Surface((modal.w - 8, 30), pygame.SRCALPHA)
+        foot.fill((12, 9, 6, 210))
+        screen.blit(foot, (modal.x + 4, modal.bottom - 34))
+        hint = self.font_small.render(
+            'LMB allokieren   ·   RMB refunden (Orb)   ·   '
+            'MMB/Ziehen pannen   ·   Mausrad Zoom   ·   C zum Start   ·   '
+            'K/Esc schließen',
+            True, (150, 124, 82))
+        screen.blit(hint, (modal.x + modal.w // 2 - hint.get_width() // 2,
+                           modal.bottom - 28))
+
+        # === Tooltip ===
+        if hover_id is not None:
+            self._draw_tooltip(screen, game, hover_id, modal)
+
+    def _draw_node_label(self, screen, name, cx, top, kind, allocated):
+        """Label mit Hintergrundplatte fuer Notable/Keystone/Start."""
+        col = (255, 232, 170) if allocated else (200, 184, 150)
+        if kind == 'keystone':
+            col = (255, 210, 150) if allocated else (210, 150, 130)
+        label = self.font_small.render(name, True, col)
+        lw = label.get_width()
+        lx = cx - lw // 2
+        # Halbtransparente Platte
+        plate = pygame.Surface((lw + 12, label.get_height() + 4),
+                               pygame.SRCALPHA)
+        plate.fill((10, 7, 4, 170))
+        screen.blit(plate, (lx - 6, top - 2))
+        sh = self.font_small.render(name, True, (6, 4, 2))
+        screen.blit(sh, (lx + 1, top + 1))
+        screen.blit(label, (lx, top))
+
+    def _draw_node_fancy(self, screen, sx, sy, r, kind, zc,
+                         allocated, allocatable, class_locked,
+                         is_hover, t_ms):
+        """Zeichnet einen einzelnen Knoten mit Frame, Glow und Bevel."""
+        def _mix(c, f):
+            return (int(c[0] * f), int(c[1] * f), int(c[2] * f))
+
+        def _lighten(c, add):
+            return (min(255, c[0] + add), min(255, c[1] + add),
+                    min(255, c[2] + add))
+
+        # --- Glow-Halo hinter allokierten / hover-Knoten ---
+        if allocated:
+            halo_r = int(r * (2.6 if kind == 'keystone' else 2.0))
+            inten = 95 if kind == 'keystone' else 72
+            glow = self._glow_surf(halo_r, zc, intensity=inten)
+            screen.blit(glow, (sx - halo_r, sy - halo_r),
+                        special_flags=pygame.BLEND_ADD)
+        elif is_hover and allocatable:
+            halo_r = int(r * 2.2)
+            glow = self._glow_surf(halo_r, zc, intensity=50)
+            screen.blit(glow, (sx - halo_r, sy - halo_r),
+                        special_flags=pygame.BLEND_ADD)
+
+        # --- Farb-Status ---
+        if class_locked:
+            fill = (40, 36, 30)
+            rim = (66, 58, 48)
+            inner = (52, 46, 38)
+        elif allocated:
+            fill = _mix(zc, 0.55)
+            rim = _lighten(zc, 70)
+            inner = _lighten(zc, 20)
+        elif allocatable:
+            fill = _mix(zc, 0.32)
+            rim = _mix(zc, 0.85)
+            inner = _mix(zc, 0.5)
+        else:
+            fill = (34, 29, 23)
+            rim = _mix(zc, 0.4)
+            inner = (44, 38, 30)
+
+        rim_w = max(2, int(2.4 * self.zoom))
+
+        if kind == 'keystone':
+            # Achteckiger Ornamentrahmen
+            self._draw_polygon_node(screen, sx, sy, r, 8, fill, rim, rim_w,
+                                    rot=t_ms * 0.0003 if allocated else 0.0)
+            # Aeusserer Pulsring bei allokiert
+            if allocated:
+                pr = r + int(6 + 3 * math.sin(t_ms * 0.005))
+                self._draw_polygon_ring(screen, sx, sy, pr, 8,
+                                        _lighten(zc, 90),
+                                        max(1, int(1.6 * self.zoom)),
+                                        rot=-t_ms * 0.0002)
+            # Innerer Edelstein
+            pygame.draw.circle(screen, inner, (sx, sy), max(2, int(r * 0.45)))
+            pygame.draw.circle(screen, _lighten(rim, 40), (sx, sy),
+                               max(2, int(r * 0.45)), 1)
+        elif kind == 'classstart':
+            # Großes Medaillon mit Doppelring
+            pygame.draw.circle(screen, fill, (sx, sy), r)
+            pygame.draw.circle(screen, rim, (sx, sy), r, rim_w)
+            pygame.draw.circle(screen, _lighten(rim, 60), (sx, sy),
+                               r + max(2, int(3 * self.zoom)),
+                               max(1, int(1.6 * self.zoom)))
+            # Stern-Akzent in der Mitte
+            pygame.draw.circle(screen, (255, 244, 214), (sx, sy),
+                               max(2, int(r * 0.35)))
+        elif kind == 'notable':
+            # Rautenförmiger Rahmen + Edelstein
+            self._draw_polygon_node(screen, sx, sy, r, 6, fill, rim, rim_w,
+                                    rot=0.26)
+            pygame.draw.circle(screen, inner, (sx, sy), max(2, int(r * 0.4)))
+            # Bevel-Highlight
+            pygame.draw.circle(screen, _lighten(inner, 50),
+                               (sx - r // 4, sy - r // 4),
+                               max(1, int(r * 0.18)))
+        elif kind == 'gateway':
+            # Diamant
+            self._draw_polygon_node(screen, sx, sy, r, 4, fill, rim, rim_w,
+                                    rot=0.785)
+        else:
+            # Small — Kreis mit Bevel
+            pygame.draw.circle(screen, fill, (sx, sy), r)
+            pygame.draw.circle(screen, rim, (sx, sy), r, max(1, rim_w - 1))
+            if allocated or allocatable:
+                pygame.draw.circle(screen, _lighten(fill, 45),
+                                   (sx - max(1, r // 3), sy - max(1, r // 3)),
+                                   max(1, int(r * 0.35)))
+
+        # Hover-Outline
+        if is_hover:
+            pygame.draw.circle(screen, (255, 250, 220), (sx, sy),
+                               r + max(2, int(4 * self.zoom)),
+                               max(1, int(1.5 * self.zoom)))
+
+    def _poly_points(self, sx, sy, r, sides, rot=0.0):
+        pts = []
+        for i in range(sides):
+            a = rot + i * (math.tau / sides)
+            pts.append((sx + math.cos(a) * r, sy + math.sin(a) * r))
+        return pts
+
+    def _draw_polygon_node(self, screen, sx, sy, r, sides, fill, rim, rim_w,
+                           rot=0.0):
+        pts = self._poly_points(sx, sy, r, sides, rot)
+        pygame.draw.polygon(screen, fill, pts)
+        pygame.draw.polygon(screen, rim, pts, rim_w)
+
+    def _draw_polygon_ring(self, screen, sx, sy, r, sides, col, w, rot=0.0):
+        pts = self._poly_points(sx, sy, r, sides, rot)
+        pygame.draw.polygon(screen, col, pts, w)
+
+    def _draw_tooltip(self, screen, game, node_id, modal):
+        from . import skill_atlas as _atlas
+        node = _atlas.ATLAS_NODES.get(node_id)
+        if node is None:
+            return
+        atlas = getattr(game.player, 'atlas', set())
+        is_allocated = node_id in atlas
+        is_keystone = node['kind'] == 'keystone'
+        zc = self._zone_color(node_id, node)
+
+        mx, my = pygame.mouse.get_pos()
+
+        kind_label = {
+            'small':       'Kleiner Knoten',
+            'notable':     'Bedeutender Knoten',
+            'keystone':    'KEYSTONE · Spielregel-Änderung',
+            'classstart':  'Klassen-Start',
+            'gateway':     'Tor zum Inneren',
+        }.get(node['kind'], node['kind'])
+        if node.get('class_'):
+            kind_label += f'  ·  {CLASSES[node["class_"]]["name"]}'
+        else:
+            kind_label += '  ·  Neutral'
+
+        # Zeilen sammeln (Body)
+        body = []
+        for chunk in _wrap_text(node.get('desc', ''), 46):
+            body.append((chunk, (224, 220, 206)))
+        for k, v in node.get('stats', {}).items():
+            body.append((f'+ {_fmt_stat(k, v)}', (170, 210, 235)))
+        if is_allocated:
+            body.append(('✓ Allokiert', (170, 230, 170)))
+        elif _atlas.can_allocate(game.player, node_id):
+            body.append(('▸ Klick zum Allokieren (1 Punkt)', (210, 225, 160)))
+        elif node['class_'] is not None and node['class_'] != game.player.cls:
+            body.append(('✗ Anderer Klasse vorbehalten', (210, 130, 130)))
+        else:
+            body.append(('✗ Benötigt verbundenen Nachbarn', (200, 150, 120)))
+
+        tip_w = 320
+        line_h = 17
+        head_h = 42
+        tip_h = head_h + 8 + line_h * len(body) + 6
+        tip_x = min(mx + 20, modal.right - tip_w - 10)
+        tip_y = min(my + 16, modal.bottom - tip_h - 10)
+
+        # Box
+        box = pygame.Surface((tip_w, tip_h), pygame.SRCALPHA)
+        box.fill((14, 11, 7, 246))
+        screen.blit(box, (tip_x, tip_y))
+        # Akzent-Header-Streifen in Zonenfarbe
+        head = pygame.Surface((tip_w, head_h), pygame.SRCALPHA)
+        head.fill((int(zc[0] * 0.22), int(zc[1] * 0.22),
+                   int(zc[2] * 0.22), 255))
+        screen.blit(head, (tip_x, tip_y))
+        pygame.draw.line(screen, zc, (tip_x, tip_y + head_h),
+                         (tip_x + tip_w, tip_y + head_h), 2)
+        pygame.draw.rect(screen, (150, 116, 66), (tip_x, tip_y, tip_w, tip_h), 2)
+        # Linker Farbbalken Keystone
+        if is_keystone:
+            pygame.draw.rect(screen, (220, 90, 70),
+                             (tip_x, tip_y, 4, tip_h))
+
+        # Titel + Kind
+        name_col = (255, 226, 160) if is_keystone else (236, 222, 188)
+        name = self.font_small.render(node['name'], True, name_col)
+        screen.blit(name, (tip_x + 12, tip_y + 6))
+        kl = self.font_small.render(kind_label, True,
+                                     (210, 150, 130) if is_keystone
+                                     else (170, 158, 132))
+        screen.blit(kl, (tip_x + 12, tip_y + 23))
+
+        y = tip_y + head_h + 6
+        for text, col in body:
+            ts = self.font_small.render(text, True, col)
+            screen.blit(ts, (tip_x + 12, y))
+            y += line_h
+
+
+def _wrap_text(text, width):
+    """Naive word-wrap auf width Zeichen."""
+    if not text:
+        return ['']
+    words = text.split()
+    out = []
+    line = ''
+    for w in words:
+        if line and len(line) + 1 + len(w) > width:
+            out.append(line)
+            line = w
+        else:
+            line = (line + ' ' + w) if line else w
+    if line:
+        out.append(line)
+    return out
+
+
+def _fmt_stat(k, v):
+    """Stat-Key-Mapping fuer Tooltip-Anzeige."""
+    labels = {
+        'hp':                       'max. Leben',
+        'mp':                       'max. Mana',
+        'hp_regen':                 'HP-Regen / s',
+        'mp_regen':                 'MP-Regen / s',
+        'dmg_pct':                  '% Gesamtschaden',
+        'melee_dmg_pct':            '% Nahkampf-Schaden',
+        'spell_dmg_pct':            '% Zauberschaden',
+        'fire_dmg_pct':             '% Feuer-Schaden',
+        'cold_dmg_pct':             '% Frost-Schaden',
+        'lit_dmg_pct':              '% Blitz-Schaden',
+        'crit_chance':              '% Krit-Chance',
+        'crit_chance_lightning':    '% Krit ggn Blitz',
+        'crit_dmg':                 '% Krit-Schaden',
+        'speed':                    '% Bewegungstempo',
+        'attack_speed':             '% Angriffstempo',
+        'cdr':                      '% Skill-Geschwindigkeit',
+        'dodge_cdr':                '% Ausweich-Erholung',
+        'dmg_red':                  '% Schaden-Reduktion',
+        'dodge_chance':             '% Ausweichchance',
+        'mana_cost_red':            '% Mana-Ersparnis',
+    }
+    lbl = labels.get(k, k)
+    if isinstance(v, float):
+        if v < 1.0:
+            return f'{int(v * 100)} {lbl}'
+        return f'{v:g} {lbl}'
+    return f'{v} {lbl}'
 
 
 # ============================================================

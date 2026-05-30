@@ -399,11 +399,19 @@ def _crit_roll(eff):
     return 1.0, False
 
 
-def _spend_mana(p, info, eff):
-    """Verbrauche Mana. Free-cast-Chance kann das umgehen."""
+def _spend_mana(p, info, eff, skill_key=None):
+    """Verbrauche Mana. Free-cast-Chance kann das umgehen.
+    Update #184: Atlas-mana_cost_red, Cold-Mirror und Storm-Rider modifizieren
+    Skill-spezifisch die Mana-Kosten."""
     if eff.get('free_cast', 0) > 0 and random.random() < eff['free_cast']:
         return True  # gratis
-    p.mp -= info['mana']
+    cost = info['mana']
+    cost *= (1.0 - eff.get('mana_cost_red', 0))
+    if skill_key == 'frostnova':
+        cost *= eff.get('cold_mirror_mp_mult', 1.0)
+    elif skill_key == 'lightning':
+        cost *= eff.get('storm_rider_mp_mult', 1.0)
+    p.mp -= cost
     return False
 
 
@@ -505,6 +513,13 @@ def cast_lightning(game):
     elif rune == 'lt_thunder':
         cause_stun = True
 
+    # Update #184: Atlas-Keystones modifizieren Chain-Count
+    eff_pre = progression.effective(p)
+    atlas_eff = eff_pre.get('atlas_effects', set())
+    if 'lightning_chains_plus_2' in atlas_eff:
+        max_targets += 2
+    storm_rider = 'keystone_storm_rider' in atlas_eff
+
     # LOS-Filter: nur Gegner mit Sichtlinie
     candidates = []
     for e in game.enemies:
@@ -520,18 +535,49 @@ def cast_lightning(game):
     if not targets:
         return
     eff = progression.effective(p)
-    _spend_mana(p, info, eff)
+    _spend_mana(p, info, eff, skill_key='lightning')
     _apply_cd(p, 'lightning', info['cd'], eff['cdr'])
     skill_mult = progression.skill_level_mult(p, 'lightning')
     # M-06 (Update #66): Rain-Bonus für Lightning-Skills. +30 % bei voller
     # Intensity, skaliert linear mit `game.rain_intensity` (0..1).
     rain_bonus = 1.0 + 0.30 * getattr(game, 'rain_intensity', 0.0)
+    # Update #184 / Storm-Rider: zaehle shock-stacks im Schwarm, gibt extra chains.
+    if storm_rider:
+        shock_stack_sum = 0
+        for c, _d in candidates:
+            st = getattr(c, 'status', {}).get('shock')
+            if st:
+                shock_stack_sum += st.get('stacks', 0)
+        extra_chains = shock_stack_sum // 2
+        if extra_chains > 0:
+            # Schocked candidates anhaengen (LOS-frei nicht noetig, sind im Pool)
+            shocked = [c for c, _ in candidates
+                       if getattr(c, 'status', {}).get('shock')]
+            for sc in shocked[:extra_chains]:
+                if sc not in targets:
+                    targets.append(sc)
+    # Update #184 / Eye of the Storm: 100% crit ggn shocked enemies.
+    eye_storm = 'keystone_eye_of_storm' in atlas_eff
+    # Update #184 / Lit-Dmg per Shock-Stack: +10% lit-dmg pro shock-stack auf target
+    lit_per_shock = 'lit_dmg_per_shock_stack' in atlas_eff
+
     prev = p.pos
     for i, e in enumerate(targets):
-        mult, crit = _crit_roll(eff)
+        # Per-Target Crit-Roll
+        is_shocked = bool(getattr(e, 'status', {}).get('shock'))
+        if eye_storm and is_shocked:
+            mult = eff['crit_mult']
+            crit = True
+        else:
+            mult, crit = _crit_roll(eff)
         bonus = first_bonus if i == 0 else 1.0
+        # Lit-Dmg-per-Shock-Stack
+        shock_bonus = 1.0
+        if lit_per_shock and is_shocked:
+            stacks = e.status['shock'].get('stacks', 0)
+            shock_bonus = 1.0 + 0.10 * stacks
         dmg = (eff['damage'] * dmg_mult * bonus * eff['lit_dmg']
-                * mult * skill_mult * rain_bonus)
+                * mult * skill_mult * rain_bonus * shock_bonus)
         game.bolts.append(LightningBolt(prev.x, prev.y, e.pos.x, e.pos.y))
         game.hit_enemy(e, dmg, crit=crit, dmg_type='lightning')
         if apply_shock_stacks and e in game.enemies:
@@ -626,9 +672,10 @@ def cast_frostnova(game):
     if not _has_mana(p, info['mana']) or _on_cooldown(p, 'frostnova'):
         return
     eff = progression.effective(p)
-    _spend_mana(p, info, eff)
+    _spend_mana(p, info, eff, skill_key='frostnova')
     _apply_cd(p, 'frostnova', info['cd'], eff['cdr'])
     skill_mult = progression.skill_level_mult(p, 'frostnova')
+    atlas_eff = eff.get('atlas_effects', set())
 
     rune = p.runes.get('frostnova')
     radius = 140
@@ -641,22 +688,48 @@ def cast_frostnova(game):
     elif rune == 'fn_frost':
         apply_frost = True
 
-    for e in list(game.enemies):
-        d = (e.pos - p.pos).length()
-        if d > radius or e.dying:
-            continue
-        # LOS-Filter (kein Frost durch Wände)
-        if game.grid is not None and not game.grid.has_los(
-                p.pos.x, p.pos.y, e.pos.x, e.pos.y):
-            continue
-        mult, crit = _crit_roll(eff)
-        dmg = eff['damage'] * dmg_mult * eff['cold_dmg'] * mult * skill_mult
-        game.hit_enemy(e, dmg, crit=crit, dmg_type='cold')
-        if apply_frost and e in game.enemies:
-            fx.apply(game, e, 'frost', stacks=3)
-        elif e in game.enemies:
-            e.slow_timer = 3.0
-            e.slow_factor = 0.4
+    # Update #184: Atlas-Effekte modifizieren
+    if 'frostnova_radius_40' in atlas_eff:
+        radius = int(radius * 1.40)
+    if 'frostnova_applies_frost_5' in atlas_eff:
+        apply_frost = True  # ueberschreibt das Slow-default
+    cold_mirror = 'keystone_cold_mirror' in atlas_eff
+
+    def _do_nova(dmg_scale=1.0):
+        for e in list(game.enemies):
+            d = (e.pos - p.pos).length()
+            if d > radius or e.dying:
+                continue
+            if game.grid is not None and not game.grid.has_los(
+                    p.pos.x, p.pos.y, e.pos.x, e.pos.y):
+                continue
+            mult, crit = _crit_roll(eff)
+            dmg = (eff['damage'] * dmg_mult * eff['cold_dmg'] * mult
+                   * skill_mult * dmg_scale)
+            game.hit_enemy(e, dmg, crit=crit, dmg_type='cold')
+            if apply_frost and e in game.enemies:
+                fx.apply(game, e, 'frost', stacks=5
+                         if 'frostnova_applies_frost_5' in atlas_eff else 3)
+            elif e in game.enemies:
+                e.slow_timer = 3.0
+                e.slow_factor = 0.4
+
+    _do_nova(1.0)
+    # Cold-Mirror: 2 weitere Wellen mit kleiner Verzoegerung schedulen
+    if cold_mirror:
+        if not hasattr(game, '_pending_cold_mirror'):
+            game._pending_cold_mirror = []
+        # Wir queueen Wellen via simple Timer-Liste; Game-Loop muss tickern.
+        game._pending_cold_mirror.append({
+            'pos': Vector2(p.pos.x, p.pos.y), 'radius': radius,
+            'dmg_mult': dmg_mult * 0.75, 'apply_frost': apply_frost,
+            'delay': 0.15, 'skill_mult': skill_mult,
+        })
+        game._pending_cold_mirror.append({
+            'pos': Vector2(p.pos.x, p.pos.y), 'radius': radius,
+            'dmg_mult': dmg_mult * 0.5, 'apply_frost': apply_frost,
+            'delay': 0.30, 'skill_mult': skill_mult,
+        })
 
     for i in range(48):
         a = (i / 48) * math.tau
@@ -696,18 +769,35 @@ def dodge_roll(game):
     if length == 0:
         return
     eff = progression.effective(p)
+    atlas_eff = eff.get('atlas_effects', set())
     p.dodge_dir = Vector2(dx / length, dy / length)
     p.dodge = 0.30  # längere Dodge-Animation
     # i-Frames: 0.35s — komplette Dodge-Dauer + leichter Buffer
     p.invuln = max(p.invuln, 0.35)
+    # Update #184: Way of Wind — keine Dodge-CD, aber +40% dmg in iframe-Phase
+    way_of_wind = 'keystone_way_of_wind' in atlas_eff
     # Charge verbrauchen wenn vorhanden
-    if charges > 0:
+    if charges > 0 and not way_of_wind:
         p.dodge_charges = charges - 1
         # Start Regen-Timer wenn alle weg
         if p.dodge_charges < getattr(p, 'dodge_charges_max', 2):
             p.dodge_regen_t = max(getattr(p, 'dodge_regen_t', 0.0), 4.0)
-    else:
+    elif not way_of_wind:
         p.dodge_cd = 1.0 * (1.0 - eff['dodge_cdr'])
+    if way_of_wind:
+        # Flag fuer +40% dmg taken in iframe-Phase
+        p._way_of_wind_active = 1.0  # 1s window
+    # Update #184 / Dodge-Shock-Burst: Schock-Stacks an Nachbarn entladen
+    if 'dodge_shock_burst' in atlas_eff:
+        for e in game.enemies:
+            if (e.pos - p.pos).length() <= 140 and not e.dying:
+                fx.apply(game, e, 'shock', stacks=5)
+    # Update #184 / Dodge-Resets-Cooldowns: 10% Chance alle CDs reset
+    if 'dodge_resets_cooldowns' in atlas_eff and random.random() < 0.10:
+        for k in list(p.skill_cd.keys()):
+            p.skill_cd[k] = 0.0
+        game.floaters.append(Floater(p.pos.x, p.pos.y - 28,
+                                     'BAMBUSBIEGUNG!', (220, 200, 130)))
     snd.play('dodge')
     # Trail-Spawn: ein Geist-Klon-Marker am Start-Pos
     if not hasattr(p, '_dodge_trail'):

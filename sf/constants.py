@@ -1,6 +1,6 @@
 """Globale Konstanten — Farben, Bildschirm, Tuning."""
 
-SCREEN_W, SCREEN_H = 1600, 900
+SCREEN_W, SCREEN_H = 1920, 1080
 FPS = 60
 
 # ---- Farben ----
@@ -437,12 +437,17 @@ DUNGEONS = {
         ],
     ),
     'frost_palace': dict(
-        name='Ewiger Eispalast', biome='frost', level_req=4,
+        # Update #183 (WELT_AUFBAU Sektion 14): User-sichtbarer Name jetzt
+        # Lore-konform "Glasgoldener Palast" (Akt 2 = Glasgoldene Ruinen).
+        # Engine-Key `frost_palace` bleibt bis Phase 2 (Save-Compat + 8
+        # Test-Sites + outposts.py-Referenz) — Voll-Rename auf `glass_palace`
+        # in Phase 2 zusammen mit dem `glass_ruins`-Biome-Buildout.
+        name='Glasgoldener Palast', biome='frost', level_req=4,
         enemy_count=42, boss='frostlord',
         objectives=[
-            ('boss',     'Besiege Glacius den Eisherrn',  400, 1),
-            ('kills',    'Erschlage 25 Gegner',           120, 25),
-            ('no_death', 'Kein Tod im Dungeon',           200, 1),
+            ('boss',     'Besiege den Glasherrn',          400, 1),
+            ('kills',    'Erschlage 25 Gegner',            120, 25),
+            ('no_death', 'Kein Tod im Dungeon',            200, 1),
         ],
     ),
     'lava_pit':    dict(

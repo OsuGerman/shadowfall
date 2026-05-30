@@ -223,9 +223,14 @@ def draw_dungeon_floor(screen, grid, biome, w2s_xy, camera):
         accent_b = (180, 160, 120)     # heller Mosaik-Stein
         rune_col = (200, 170, 110)
     elif biome == 'frost':
-        accent_a = (180, 200, 230)     # Eiskristall-Glanz
-        accent_b = (110, 140, 190)     # Schatten-Riss
-        rune_col = (200, 230, 255)
+        # User-Feedback Akt 2 „erkennt man nichts": Das Biom heisst
+        # „Glasgoldene Ruinen" — vorher waren alle Akzente kaltblau und
+        # damit ununterscheidbar von generischem Eis. Jetzt: vergoldete
+        # Glas-Adern (warmes Gold-Amber) gegen den kalten Eisgrund →
+        # lesbare „Glasgold"-Identitaet.
+        accent_a = (224, 188, 120)     # vergoldete Glas-Ader
+        accent_b = (120, 145, 195)     # kalter Eis-Schatten-Riss
+        rune_col = (236, 206, 138)     # Goldglas-Rune
     elif biome == 'lava':
         accent_a = (255, 100, 30)      # Glut-Riss
         accent_b = (60, 30, 20)        # verbrannter Stein
@@ -717,13 +722,15 @@ def generate_decor(biome):
 # ============================================================
 # DECOR-ZEICHNEN
 # ============================================================
-def _decor_shadow(screen, sx, sy, w=40, h=16, alpha=110):
+def _decor_shadow(screen, sx, sy, w=40, h=16, alpha=70):
     """Update #153 (PLAN U-03): Generischer Drop-Shadow für Tall-Decor.
 
-    Rendert eine flache Ellipse unter dem Decor-Ground-Anker.  Größe
-    proportional zur Sprite-Breite; alpha 110 mittel-stark (sichtbar
-    aber nicht erdrückend).  Wird VOR dem Decor-Body gezeichnet, damit
-    der Schatten unter dem Sprite liegt.
+    Update #183 (User-Fix „komische graue Kreise nach Kill"): alpha 110
+    → 70 — bei mehreren tall-decor Stuecken in einem Raum las sich der
+    Default-Wert nach dem Kampfclear wie verstreute schwebende Ovale,
+    weil das Body-Sprite im dunklen Pergament weniger Kontrast hatte
+    als der Shadow selbst.  Schatten bleiben sichtbar, dominieren aber
+    nicht mehr den Boden.
     """
     sh = pygame.Surface((w, h), pygame.SRCALPHA)
     pygame.draw.ellipse(sh, (0, 0, 0, alpha), (0, 0, w, h))
@@ -751,7 +758,12 @@ def draw_decor(screen, t, sp, biome):
                     ai_decor, (new_w, target_h))
             except Exception:
                 scaled = ai_decor
-            _decor_shadow(screen, sx, sy, w=min(80, new_w), alpha=110)
+            # Update #184: Silhouette-Shadow statt generischem Oval.
+            from . import sprites as _sp_mod
+            shadow_w = max(12, int(new_w * 0.85))
+            _sp_mod._silhouette_shadow(
+                screen, ai_decor, sx, sy + 2, shadow_w,
+                alpha=110, squash_y=0.32)
             screen.blit(scaled, (sx - new_w // 2, sy - target_h))
         return
 
@@ -828,9 +840,9 @@ def draw_decor(screen, t, sp, biome):
         pygame.draw.circle(screen, (110, 95, 80), (sx, sy), 12)
         pygame.draw.circle(screen, (80, 65, 50), (sx, sy), 12, 2)
         pygame.draw.circle(screen, (140, 120, 95), (sx - 2, sy - 2), 5)
-        # Schatten
+        # Schatten — Update #183: alpha 120 → 75 (weniger orphan-Oval Look)
         sh = pygame.Surface((40, 18), pygame.SRCALPHA)
-        pygame.draw.ellipse(sh, (0, 0, 0, 120), (0, 0, 40, 18))
+        pygame.draw.ellipse(sh, (0, 0, 0, 75), (0, 0, 40, 18))
         screen.blit(sh, (sx - 20, sy + 12))
 
     elif t.kind == 'frozen_pillar':
@@ -849,7 +861,7 @@ def draw_decor(screen, t, sp, biome):
             ])
 
     elif t.kind == 'torch':
-        _decor_shadow(screen, sx, sy + 8, w=22, h=10, alpha=130)
+        _decor_shadow(screen, sx, sy + 8, w=22, h=10, alpha=90)
         # Säulenfuß
         pygame.draw.rect(screen, (60, 45, 30), (sx - 4, sy - 4, 8, 16))
         pygame.draw.rect(screen, (40, 30, 20), (sx - 4, sy - 4, 8, 16), 1)
@@ -956,10 +968,22 @@ def draw_decor(screen, t, sp, biome):
         roof_color = (130, 60, 40)
         roof_dark = (90, 40, 24)
         sz = int(t.size) if t.size > 20 else 60
-        # Hausgrundriss (Schatten)
-        sh = pygame.Surface((sz + 20, sz // 2 + 12), pygame.SRCALPHA)
-        pygame.draw.ellipse(sh, (0, 0, 0, 100), (0, 0, sz + 20, sz // 2 + 12))
-        screen.blit(sh, (sx - sz // 2 - 10, sy + sz // 2 - 6))
+        # Update #184: Haus-Schatten projiziert die echte Wand-Form
+        # (Trapez mit leichter Top-Down-Schraege), nicht mehr ein Oval.
+        sh_w = sz + 18
+        sh_h = sz // 3 + 6
+        sh = pygame.Surface((sh_w, sh_h), pygame.SRCALPHA)
+        # Trapez-Footprint: oben schmaler (Top-Down-Perspektive)
+        shadow_pts = [
+            (4, 2),
+            (sh_w - 4, 2),
+            (sh_w - 1, sh_h - 2),
+            (1, sh_h - 2),
+        ]
+        pygame.draw.polygon(sh, (0, 0, 0, 105), shadow_pts)
+        # Sanfte Edge-Vignette (1-px-Rim heller, fadet in den Boden)
+        pygame.draw.polygon(sh, (0, 0, 0, 55), shadow_pts, 1)
+        screen.blit(sh, (sx - sh_w // 2, sy + sz // 2 - 4))
         # Wände (sechseckiger Top-View)
         pygame.draw.rect(screen, (160, 130, 90),
                          (sx - sz // 2, sy - sz // 2, sz, sz))
@@ -1119,7 +1143,7 @@ def draw_decor(screen, t, sp, biome):
                 pygame.draw.rect(screen, col, (sx + dx - 1, row_y - 4, 4, 8))
 
     elif t.kind == 'lantern':
-        _decor_shadow(screen, sx, sy, w=20, h=8, alpha=130)
+        _decor_shadow(screen, sx, sy, w=20, h=8, alpha=90)
         # Update #134 (User-Screenshot): Laternen-Glow war massiv
         # überdimensioniert (72×72 + BLEND_ADD) und mit ~20 Laternen pro
         # Town entstand eine gelbe Glow-Wand die die Stadt verdeckt hat.
@@ -1186,23 +1210,146 @@ def draw_decor(screen, t, sp, biome):
 
     elif t.kind == 'salt_puddle':
         # Lore-Bibel 4.1 + Audio 7.7: Brassweir, halb-versunken, Salzpfützen.
-        # Blass-blaue Pfütze mit Sparkle, deutet auf Salzwunde.
-        pulse = abs(math.sin(pygame.time.get_ticks() * 0.001 + sx * 0.01))
-        sw = pygame.Surface((44, 26), pygame.SRCALPHA)
-        pygame.draw.ellipse(sw, (40, 60, 90, 180), (0, 0, 44, 26))
-        pygame.draw.ellipse(sw, (140, 180, 220, int(140 + pulse * 60)),
-                            (4, 3, 36, 20))
-        pygame.draw.ellipse(sw, (220, 240, 255, int(100 + pulse * 80)),
-                            (12, 8, 18, 8))
+        # Update #184 (User-Fix „wirkt draufgelegt, keine Tiefe"):
+        # 7-Layer Depth-Render statt 3 konzentrischer Ellipsen:
+        #   1. Soft Drop-Shadow (Pfuetze sitzt im Boden, nicht auf ihm)
+        #   2. Dunkler Inset-Rim (Pfuetzenkante geht abwaerts)
+        #   3. Substrat-Tint (was unter dem Wasser durchschimmert)
+        #   4. Wasserkoerper mit Color-Variation pro Polygon-Punkt
+        #   5. Wellen-Linien (drei sinus-modulierte Lichtreflexe)
+        #   6. Specular Hotspot + Bloom (direkter Lichtpunkt)
+        #   7. Salz-Kristall-Cluster (echte Diamond-Formen am Rand,
+        #      keine Sparkle-Kreuze) + animierter Ripple-Ring
+        ticks = pygame.time.get_ticks()
+        pulse = abs(math.sin(ticks * 0.001 + sx * 0.01))
+        h = (int(t.x) * 73856093 ^ int(t.y) * 19349663) & 0xFFFFFFFF
+        base_w, base_h = 24, 14
+        n_pts = 12
+        # Outline-Polygon mit Hash-jitter pro Punkt (organische Form)
+        outline = []
+        for i in range(n_pts):
+            ang = (i / n_pts) * math.tau
+            jitter = ((h >> (i * 3)) & 0x7) / 7.0
+            r_mult = 0.74 + 0.26 * jitter
+            outline.append((math.cos(ang) * base_w * r_mult,
+                             math.sin(ang) * base_h * r_mult))
+        sw_w, sw_h = base_w * 2 + 16, base_h * 2 + 16
+        sw = pygame.Surface((sw_w, sw_h), pygame.SRCALPHA)
+        cx_s, cy_s = sw_w // 2, sw_h // 2
+
+        # Layer 1 — Soft Drop-Shadow.  Subtler dunkler Halo unter der
+        # Pfuetze.  Mehrere Ellipsen mit abnehmender Alpha geben weichen
+        # radialen Fade — Pfuetze sieht aus als sitze sie IN einer
+        # leichten Bodensenke statt auf der Oberflaeche.
+        for k, (rad_mul, a) in enumerate(((1.20, 28), (1.10, 42), (1.0, 55))):
+            sh_w = int(base_w * 2 * rad_mul)
+            sh_h = int(base_h * 2 * rad_mul)
+            sh_sf = pygame.Surface((sh_w, sh_h), pygame.SRCALPHA)
+            pygame.draw.ellipse(sh_sf, (20, 28, 40, a),
+                                 (0, 0, sh_w, sh_h))
+            sw.blit(sh_sf, (cx_s - sh_w // 2, cy_s - sh_h // 2 + 1))
+
+        # Layer 2 — Inset-Rim.  Dunkle Polygon-Outline simuliert
+        # Wasserkante die unter Bodenniveau geht.  Oben dicker als unten
+        # (Licht von oben → unterer Rand im Schatten staerker).
+        outline_rim = [(cx_s + ox, cy_s + oy) for ox, oy in outline]
+        pygame.draw.polygon(sw, (22, 38, 58, 200), outline_rim)
+
+        # Layer 3 — Substrat-Tint.  Leicht graue Schicht (Stein/Sand
+        # unter Wasser) — verhindert dass Pfuetze hohl-schwarz wirkt.
+        outline_sub = [(cx_s + ox * 0.92, cy_s + oy * 0.92 + 1)
+                        for ox, oy in outline]
+        pygame.draw.polygon(sw, (70, 78, 86, 170), outline_sub)
+
+        # Layer 4 — Wasserkoerper.  Polygon mit Per-Punkt-Color-Variation
+        # via subtilem Gradient (oben heller — Himmel-Reflex) durch
+        # zwei ueberlagerte Polygone unterschiedlicher Farbe + Alpha.
+        outline_water_lo = [(cx_s + ox * 0.85, cy_s + oy * 0.85)
+                             for ox, oy in outline]
+        pygame.draw.polygon(sw, (60, 100, 130, int(140 + pulse * 30)),
+                             outline_water_lo)
+        # Heller obere Haelfte (Himmel-Tint)
+        outline_water_hi = [(cx_s + ox * 0.78,
+                              cy_s + oy * 0.78 - max(0, -oy * 0.15))
+                             for ox, oy in outline]
+        pygame.draw.polygon(sw, (110, 160, 180, int(110 + pulse * 30)),
+                             outline_water_hi)
+
+        # Layer 5 — Wellen-Linien (3 sinus-modulierte Highlights, drift
+        # langsam).  Geben dem Wasser Oberflaechen-Textur statt platt.
+        wave_t = ticks * 0.0008 + (h & 0xFF) / 255.0 * math.tau
+        for w_i in range(3):
+            wy = cy_s - 4 + w_i * 3
+            wave_alpha = int(60 + 20 * math.sin(wave_t + w_i * 1.7))
+            pts = []
+            for px in range(-base_w + 4, base_w - 4, 3):
+                # Innerhalb der Pfuetzen-Breite an dieser Hoehe samplen
+                rel_y = (wy - cy_s) / base_h
+                if abs(rel_y) >= 1:
+                    continue
+                max_x = base_w * (1 - rel_y * rel_y) ** 0.5 * 0.78
+                if abs(px) > max_x:
+                    continue
+                yoff = math.sin(wave_t * 1.3 + px * 0.18 + w_i * 0.6) * 0.8
+                pts.append((cx_s + px, wy + yoff))
+            if len(pts) >= 2:
+                pygame.draw.lines(sw, (180, 210, 230, wave_alpha),
+                                   False, pts, 1)
+
+        # Layer 6 — Specular-Hotspot + Bloom.  Heller Lichtpunkt oben-
+        # links (konstante Lichtrichtung).  Pulse + Bloom-Halo darum.
+        hot_x = cx_s - int(base_w * 0.32)
+        hot_y = cy_s - int(base_h * 0.38)
+        spec_pulse = int(60 + 50 * pulse)
+        # Bloom (groesser, alpha-low)
+        bloom = pygame.Surface((20, 14), pygame.SRCALPHA)
+        pygame.draw.ellipse(bloom, (200, 230, 250, 60), (0, 0, 20, 14))
+        sw.blit(bloom, (hot_x - 10, hot_y - 7))
+        # Core (klein, hell)
+        pygame.draw.ellipse(sw, (240, 250, 255, 180 + spec_pulse // 3),
+                             (hot_x - 4, hot_y - 2, 8, 4))
+        # Mini-Glint Punkt (fast weiss)
+        pygame.draw.ellipse(sw, (255, 255, 255, 220),
+                             (hot_x - 2, hot_y - 1, 4, 2))
+
+        # Layer 7 — Animierter Ripple-Ring.  Expandiert + fadet.
+        ripple_t = ((ticks * 0.0006) + (h & 0xFF) / 255.0) % 1.0
+        ripple_r = base_w * (0.30 + 0.70 * ripple_t)
+        ripple_alpha = int(90 * (1.0 - ripple_t))
+        if ripple_alpha > 6:
+            ripple_pts = []
+            for i in range(n_pts):
+                ang = (i / n_pts) * math.tau
+                jitter = ((h >> (i * 3 + 5)) & 0x7) / 7.0
+                r_mult = 0.85 + 0.15 * jitter
+                ripple_pts.append(
+                    (cx_s + math.cos(ang) * ripple_r * r_mult,
+                     cy_s + math.sin(ang) * ripple_r * r_mult * 0.6))
+            pygame.draw.polygon(sw, (220, 235, 250, ripple_alpha),
+                                 ripple_pts, 1)
+
         rot = pygame.transform.rotate(sw, math.degrees(t.rot))
         screen.blit(rot, (sx - rot.get_width() // 2,
                           sy - rot.get_height() // 2))
-        # Salz-Sparkle (2 winzige Kreuze)
-        if int(pygame.time.get_ticks() * 0.002 + sx) % 3 == 0:
-            pygame.draw.line(screen, (240, 250, 255),
-                             (sx - 8, sy - 2), (sx - 6, sy - 2), 1)
-            pygame.draw.line(screen, (240, 250, 255),
-                             (sx - 7, sy - 3), (sx - 7, sy - 1), 1)
+
+        # Layer 8 — Salz-Kristall-Cluster am Pfuetzenrand.  Echte
+        # 4-Punkt-Diamond-Formen mit Highlight-Linie, NICHT nur Kreuze
+        # — diese sind die Lore-Anker (Salzwunde-Marker).  Positioniert
+        # in Welt-Koordinaten (ueber rotierte Pfuetze) damit sie nicht
+        # mitrotieren — Kristalle stehen aufrecht.
+        for k in range(4):
+            ang = ((h >> (k * 5)) & 0xF) / 16.0 * math.tau
+            cdist = 0.85 + ((h >> (k * 3 + 2)) & 0x3) / 16.0  # 0.85-1.0
+            spx = sx + int(math.cos(ang) * base_w * cdist)
+            spy = sy + int(math.sin(ang) * base_h * cdist)
+            # Diamond-Polygon (klein)
+            dpts = [(spx, spy - 2), (spx + 2, spy),
+                    (spx, spy + 2), (spx - 2, spy)]
+            pygame.draw.polygon(screen, (230, 240, 250), dpts)
+            pygame.draw.polygon(screen, (140, 170, 200), dpts, 1)
+            # Highlight-Punkt oben-links (Kristall-Spitze)
+            pygame.draw.circle(screen, (255, 255, 255),
+                                (spx - 1, spy - 1), 1)
 
     elif t.kind == 'pier_post':
         # Verfallener Hafen-Pfosten (zerbrochen, schräg, Salzkrusten).
@@ -1264,9 +1411,9 @@ def draw_decor(screen, t, sp, biome):
     elif t.kind == 'mahnmal_stele':
         # Mahnmal-Marke-Stele: schwarze Steinplatte mit Gold-Gravur.
         # Lore: Mahnmal-Gilde-Signature, eine Mark pro vergessenem Ort.
-        # Schatten
+        # Schatten — Update #183: alpha 140 → 90 (weniger orphan-Oval Look)
         sh = pygame.Surface((28, 10), pygame.SRCALPHA)
-        pygame.draw.ellipse(sh, (0, 0, 0, 140), (0, 0, 28, 10))
+        pygame.draw.ellipse(sh, (0, 0, 0, 90), (0, 0, 28, 10))
         screen.blit(sh, (sx - 14, sy + 8))
         # Sockel
         pygame.draw.rect(screen, (40, 36, 30), (sx - 10, sy + 4, 20, 6))
@@ -1287,9 +1434,9 @@ def draw_decor(screen, t, sp, biome):
     elif t.kind == 'gravestone':
         # Salzgekreuzter-Grab: bemooste Stele mit Riss.
         # Lore: Marrowport, vom Vergessen erfasst — jede Stele ist ein Fischer.
-        # Schatten
+        # Schatten — Update #183: alpha 120 → 75 (weniger orphan-Oval Look)
         sh = pygame.Surface((22, 8), pygame.SRCALPHA)
-        pygame.draw.ellipse(sh, (0, 0, 0, 120), (0, 0, 22, 8))
+        pygame.draw.ellipse(sh, (0, 0, 0, 75), (0, 0, 22, 8))
         screen.blit(sh, (sx - 11, sy + 6))
         # Bogen-Form (klassisches Grabstein-Silhouette)
         stone_col = (90, 84, 76) if biome != 'frost' else (130, 150, 180)

@@ -176,6 +176,7 @@ _PERSISTED_SETTING_KEYS = (
     'camera_lookahead',
     'camera_combat_zoom',
     'frame_cap',
+    'vsync',
     'render_scale',
     'music_vol',
     'sfx_vol',
@@ -341,6 +342,9 @@ def _quest_log_to_dict(log):
         # Audit #179 C.2: Abgebrochene Quests — verhindert Re-Offer
         # nach Save/Load.
         'abandoned': list(getattr(log, 'abandoned', set())),
+        # Audit C.2: Gescheiterte Quests (ESCORT/DEFEND-Timeout) — blocken
+        # Re-Offer nach Save/Load wie abandoned.
+        'failed': list(getattr(log, 'failed', set())),
     }
 
 
@@ -371,6 +375,9 @@ def _quest_log_from_dict(d):
     # Audit #179 C.2: Abgebrochene Quests restaurieren (schema-additiv,
     # alte Saves haben den Key nicht → leeres Set).
     log.abandoned = set(d.get('abandoned', []))
+    # Audit C.2: Gescheiterte Quests restaurieren (schema-additiv, alte
+    # Saves haben den Key nicht → leeres Set).
+    log.failed = set(d.get('failed', []))
     return log
 
 
@@ -500,6 +507,9 @@ def save_game(game, slot=None):
             'strength': p.strength, 'intellect': p.intellect, 'dexterity': p.dexterity,
             'tree': dict(p.tree),
             'class_tree': dict(p.class_tree),
+            # Update #184: POE2-Atlas
+            'atlas': list(getattr(p, 'atlas', set())),
+            'atlas_points': getattr(p, 'atlas_points', 0),
             'runes': dict(p.runes),
             'aura': p.aura,
             'skill_levels': dict(p.skill_levels),
@@ -766,6 +776,25 @@ def load_game(game, slot=None):
     new_player.dexterity = pd.get('dexterity', new_player.dexterity)
     new_player.tree = dict(pd.get('tree', {}))
     new_player.class_tree = dict(pd.get('class_tree', {}))
+    # Update #184: POE2-Atlas — laden oder aus Legacy migrieren.
+    from . import skill_atlas as _atlas
+    if 'atlas' in pd:
+        # Verwaiste Node-IDs filtern (z.B. alte `*_stub_*`-Nodes, die beim
+        # Klassen-Arm-Ausbau ersetzt wurden) — sonst blockiert ein nicht
+        # mehr existenter, unerreichbarer Eintrag den Refund-Connectivity-
+        # Check. Erstattete Punkte werden zurueckgegeben.
+        raw_atlas = set(pd.get('atlas', []))
+        valid_atlas = {nid for nid in raw_atlas if nid in _atlas.ATLAS_NODES}
+        refunded = len(raw_atlas) - len(valid_atlas)
+        new_player.atlas = valid_atlas
+        new_player.atlas_points = pd.get('atlas_points', 0) + refunded
+        # Sicherheit: Start-Node garantieren
+        start = _atlas.CLASS_STARTS.get(new_player.cls)
+        if start and start not in new_player.atlas:
+            new_player.atlas.add(start)
+    else:
+        # Alter Save → Migration (Refund alter Punkte als Atlas-Points)
+        _atlas.migrate_legacy_points(new_player)
     new_player.runes = dict(pd.get('runes', {}))
     new_player.aura = pd.get('aura')
     new_player.skill_levels = dict(pd.get('skill_levels', new_player.skill_levels))

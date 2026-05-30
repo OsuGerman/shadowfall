@@ -5,36 +5,76 @@ from .constants import (
     SKILL_XP_PER_LEVEL, SKILL_LEVEL_MAX, SKILL_DMG_PER_LEVEL,
 )
 from . import items as items_mod
+from . import skill_atlas
 
 
 # ============================================================
-# Akt-Gating (ROADMAP T2.4)
+# Akt-Gating (ROADMAP T2.4 + Update #183 — WELT_AUFBAU Section 10)
 # ============================================================
-def can_enter_akt(player, akt):
-    """Update #156 (ROADMAP T2.4): Returnt True wenn der Spieler den
-    gegebenen Akt betreten darf.
+# Update #183: Quest-Flag-Gating zusaetzlich zur Dungeon-Count-Heuristik.
+# Map akt -> main-quest-id der PREVIOUS akt; wenn diese Quest completed
+# ist, gilt der Akt als unlockable.  Bleibt rueckwaerts-kompatibel:
+# alte Saves mit `akt_progress >= akt-1` bleiben unlocked, neue Spieler
+# kommen ueber den Quest-Flag-Pfad rein.
+AKT_QUEST_GATES = {
+    2: 'akt1_salzwunde',
+    3: 'akt2_asch_prophezeiung',
+    4: 'akt3_asch_pakt',
+    5: 'akt4_shulavh_faden',
+    6: 'akt5_drei_zeiten',
+    # Akt 7 hat eine Multi-Flag-Gate (drei Wunden gelesen) — Phase-2-Work.
+}
 
-    Regel: Spieler braucht `akt_progress >= akt - 1` abgeschlossene
-    Dungeons.  Akt 1 (akt_progress >= 0) ist immer erlaubt.
+# Lore-Titel der Gate-Quests fuer akt_block_reason
+_AKT_QUEST_TITLES = {
+    'akt1_salzwunde':           'Die Salzwunde',
+    'akt2_asch_prophezeiung':   'Die Asch-Prophezeiung',
+    'akt3_asch_pakt':           'Der Asch-Pakt',
+    'akt4_shulavh_faden':       'Shulavhs Faden',
+    'akt5_drei_zeiten':         'Die Drei Zeiten',
+}
 
-    Synchron zur outposts.unlocked_outposts und zur Quest-Prereq-Logik.
-    Kann von UI-Code (Outpost-Portal-Click, Travel-Modal, Quest-Board)
-    aufgerufen werden für einen einheitlichen Gating-Pfad.
+
+def can_enter_akt(player, akt, quest_log=None):
+    """Update #156 (ROADMAP T2.4) + Update #183 (WELT_AUFBAU §10):
+    Returnt True wenn der Spieler den gegebenen Akt betreten darf.
+
+    Backward-compat-Regel (alte Saves): `akt_progress >= akt - 1`
+    abgeschlossene Dungeons reicht.  Akt 1 ist immer erlaubt.
+
+    Quest-Gate (neu): wenn `quest_log` uebergeben wird UND die main-quest
+    des vorherigen Akts (siehe `AKT_QUEST_GATES`) completed ist, gilt
+    der Akt auch ohne Dungeon-Count-Match als entsperrt.  Beide Pfade
+    sind additiv ("oder") damit kein laufender Save plötzlich locked.
+
+    Synchron zu outposts.unlocked_outposts und Quest-Prereq-Logik.
     """
     if akt is None or akt <= 1:
         return True
     akt_progress = len(getattr(player, 'completed_dungeons', ()))
-    return akt_progress >= (akt - 1)
+    if akt_progress >= (akt - 1):
+        return True
+    if quest_log is not None:
+        gate_quest = AKT_QUEST_GATES.get(akt)
+        if gate_quest and gate_quest in getattr(quest_log, 'completed', ()):
+            return True
+    return False
 
 
-def akt_block_reason(player, akt):
+def akt_block_reason(player, akt, quest_log=None):
     """Returnt eine lore-konforme Erklär-Zeile wenn `can_enter_akt`
     False ist — sonst None.
 
-    Beispiel: „Akt 3 noch verschlossen — schließe Akt 1-2 zuerst ab."
+    Update #183: Wenn ein Quest-Gate definiert ist und `quest_log`
+    uebergeben wird, nennen wir die konkrete Quest beim Namen.
     """
-    if can_enter_akt(player, akt):
+    if can_enter_akt(player, akt, quest_log=quest_log):
         return None
+    gate_quest = AKT_QUEST_GATES.get(akt) if quest_log is not None else None
+    if gate_quest:
+        title = _AKT_QUEST_TITLES.get(gate_quest, gate_quest)
+        return (f'Akt {akt} noch verschlossen — schließe zuerst die Quest '
+                f'„{title}" ab.')
     akt_progress = len(getattr(player, 'completed_dungeons', ()))
     needed = (akt - 1) - akt_progress
     if needed == 1:
@@ -50,6 +90,10 @@ def effective(player):
     item_stats = items_mod.aggregate_stats(player)
     tree = player.tree
     ctree = player.class_tree
+
+    # Update #184: Atlas-Stats + Keystones
+    atlas_stats = skill_atlas.aggregate_stats(player)
+    atlas_eff = skill_atlas.active_effects(player)
 
     # Attribute → Multiplikatoren
     str_dmg_pct = player.strength * 0.03
@@ -76,16 +120,22 @@ def effective(player):
     # Klassen-Talente: dynamische Bonus-Akkumulation
     class_bonuses = _class_tree_bonuses(player)
 
-    hp_max = player.hp_max_base + item_stats['hp'] + vit_hp
+    hp_max = player.hp_max_base + item_stats['hp'] + vit_hp + atlas_stats.get('hp', 0)
     hp_max *= (1 + class_bonuses.get('hp_pct', 0))
+    # Glasherz-Keystone: -40% HP_max
+    if 'keystone_glass_heart' in atlas_eff:
+        hp_max *= 0.60
     mp_max = (player.mp_max_base + item_stats['mp'] + int_mp + arc_mp
-              + class_bonuses.get('arc_mp', 0))
-    hp_regen = player.hp_regen_base + item_stats['hp_regen'] + extra_regen
+              + class_bonuses.get('arc_mp', 0) + atlas_stats.get('mp', 0))
+    hp_regen = (player.hp_regen_base + item_stats['hp_regen'] + extra_regen
+                + atlas_stats.get('hp_regen', 0))
     mp_regen = (player.mp_regen_base + item_stats['mp_regen']
-                + class_bonuses.get('mp_regen', 0))
+                + class_bonuses.get('mp_regen', 0)
+                + atlas_stats.get('mp_regen', 0))
 
     dmg_mult = (1.0 + item_stats['dmg_pct'] / 100.0 + str_dmg_pct + int_dmg_pct
-                + pow_dmg + class_bonuses.get('elem_dmg', 0))
+                + pow_dmg + class_bonuses.get('elem_dmg', 0)
+                + atlas_stats.get('dmg_pct', 0))
     # Rage: bei <50% HP zusätzlicher Schaden
     if class_bonuses.get('dmg_low_hp', 0) > 0 and player.hp < hp_max * 0.5:
         dmg_mult += class_bonuses['dmg_low_hp']
@@ -97,18 +147,33 @@ def effective(player):
 
     crit_chance = ((item_stats['crit_chance'] / 100.0) + dex_crit + prc_crit
                    + class_bonuses.get('crit_chance', 0)
-                   + class_bonuses.get('crit', 0))
+                   + class_bonuses.get('crit', 0)
+                   + atlas_stats.get('crit_chance', 0))
+    # Auge des Sturms: Basis-Krit halbiert (Bonus ggn shocked wirkt in skills.py)
+    if 'keystone_eye_of_storm' in atlas_eff:
+        crit_chance *= 0.5
+    # Resolute Technique: kein Crit, aber kein Miss
+    if 'keystone_resolute_technique' in atlas_eff:
+        crit_chance = 0.0
     crit_chance = min(0.85, crit_chance)
     crit_mult = (1.5 + item_stats['crit_dmg'] / 100.0
                  + class_bonuses.get('crit_dmg', 0)
                  + class_bonuses.get('crit_spell', 0)
-                 + extra_crit_dmg)
+                 + extra_crit_dmg
+                 + atlas_stats.get('crit_dmg', 0))
+    # Glasherz: +100% Krit-Dmg
+    if 'keystone_glass_heart' in atlas_eff:
+        crit_mult += 1.0
 
-    speed_mult = 1.0 + (item_stats['speed'] / 100.0) + dex_speed + agi_spd
+    speed_mult = (1.0 + (item_stats['speed'] / 100.0) + dex_speed + agi_spd
+                  + atlas_stats.get('speed', 0))
     speed = player.base_speed * speed_mult
 
-    cdr = min(0.6, (item_stats['cdr'] / 100.0) + cnc_cdr)
-    dodge_cdr = min(0.6, item_stats['dodge_cdr'] / 100.0 + class_bonuses.get('dodge_cdr', 0))
+    cdr = min(0.6, (item_stats['cdr'] / 100.0) + cnc_cdr + atlas_stats.get('cdr', 0))
+    dodge_cdr = min(0.6, item_stats['dodge_cdr'] / 100.0
+                    + class_bonuses.get('dodge_cdr', 0)
+                    + atlas_stats.get('dodge_cdr', 0))
+    # Weg des Windes: Dodge-CD wird auf 0 gesetzt (in skills.py beim Trigger)
 
     # Aura-Bonus
     aura_b = _aura_bonuses(player)
@@ -159,6 +224,30 @@ def effective(player):
         _bless_lit_extra = 0.0
         _bless_cold_extra = 0.0
 
+    # Atlas: Cleave-Effekt zaehlt auch
+    cleave_total = class_bonuses.get('cleave', 0)
+    if 'melee_cleave_40' in atlas_eff:
+        cleave_total = max(cleave_total, 0.40)
+
+    # Atlas: Iron-Palm-Keystone implies cleave-to-2 chain (also melee_cleave)
+    if 'keystone_iron_palm' in atlas_eff:
+        cleave_total = max(cleave_total, 0.50)
+
+    # Atlas: Dodge-Chance-Bonus
+    dodge_chance_total = (class_bonuses.get('dodge_chance', 0)
+                          + atlas_stats.get('dodge_chance', 0))
+
+    # Atlas: Mana-Cost-Reduction
+    mana_cost_red = atlas_stats.get('mana_cost_red', 0)
+    # Cold-Mirror reduziert Frostnova-Cost auf 60%
+    cold_mirror_mp_mult = 1.0
+    if 'keystone_cold_mirror' in atlas_eff:
+        cold_mirror_mp_mult = 0.60
+    # Storm-Rider verdoppelt Lightning-Mana
+    storm_rider_mp_mult = 1.0
+    if 'keystone_storm_rider' in atlas_eff:
+        storm_rider_mp_mult = 2.0
+
     return dict(
         hp_max=hp_max, mp_max=mp_max_eff, mp_reserved=mp_reserved,
         hp_regen=hp_regen, mp_regen=mp_regen,
@@ -166,20 +255,35 @@ def effective(player):
         crit_chance=crit_chance, crit_mult=crit_mult,
         speed=speed,
         cdr=cdr, dodge_cdr=dodge_cdr,
-        fire_dmg=1 + item_stats['fire_dmg'] / 100.0 + aura_b.get('spell_dmg_mult', 1.0) - 1.0 + _bless_fire_extra,
-        cold_dmg=1 + item_stats['cold_dmg'] / 100.0 + aura_b.get('spell_dmg_mult', 1.0) - 1.0 + _bless_cold_extra,
-        lit_dmg=1 + item_stats['lit_dmg'] / 100.0 + aura_b.get('spell_dmg_mult', 1.0) - 1.0 + _bless_lit_extra,
+        fire_dmg=1 + item_stats['fire_dmg'] / 100.0
+                 + aura_b.get('spell_dmg_mult', 1.0) - 1.0
+                 + _bless_fire_extra + atlas_stats.get('fire_dmg_pct', 0),
+        cold_dmg=1 + item_stats['cold_dmg'] / 100.0
+                 + aura_b.get('spell_dmg_mult', 1.0) - 1.0
+                 + _bless_cold_extra + atlas_stats.get('cold_dmg_pct', 0),
+        lit_dmg=1 + item_stats['lit_dmg'] / 100.0
+                + aura_b.get('spell_dmg_mult', 1.0) - 1.0
+                + _bless_lit_extra + atlas_stats.get('lit_dmg_pct', 0),
         thorns=item_stats['thorns'] + class_bonuses.get('thorns', 0),
         light_radius=item_stats.get('light_radius', 0),
-        cleave=class_bonuses.get('cleave', 0),
+        cleave=cleave_total,
         mp_to_hp=class_bonuses.get('mp_to_hp', 0),
         free_cast=class_bonuses.get('free_cast', 0) + class_bonuses.get('echo_chance', 0),
-        dodge_chance=class_bonuses.get('dodge_chance', 0),
+        dodge_chance=dodge_chance_total,
         poison_chance=class_bonuses.get('poison_chance', 0),
         dmg_taken_mult=dmg_taken_mult,
         magnet_bonus=extra_magnet,
         gold_bonus=extra_gold,
         xp_bonus=extra_xp,
+        # Update #184: Atlas-Spezial-Felder fuer skills.py / combat.py
+        melee_dmg_pct=atlas_stats.get('melee_dmg_pct', 0),
+        spell_dmg_pct=atlas_stats.get('spell_dmg_pct', 0),
+        attack_speed=atlas_stats.get('attack_speed', 0),
+        crit_chance_lightning=atlas_stats.get('crit_chance_lightning', 0),
+        mana_cost_red=mana_cost_red,
+        cold_mirror_mp_mult=cold_mirror_mp_mult,
+        storm_rider_mp_mult=storm_rider_mp_mult,
+        atlas_effects=atlas_eff,
     )
 
 
@@ -272,13 +376,18 @@ def set_aura(player, aura_key):
 # ---- Level-Up & Punktevergabe ----
 
 def level_up(player):
-    """Wendet Level-Up an. Punkte werden vergeben (nicht direkt verteilt)."""
+    """Wendet Level-Up an. Punkte werden vergeben (nicht direkt verteilt).
+    Update #184: Atlas-Punkte statt Skill/Class — der alte Tree bleibt nur
+    fuer Save-Compat, neue Investitionen laufen ueber den Atlas."""
     player.xp -= player.xp_to_next
     player.level += 1
-    player.xp_to_next = int(player.xp_to_next * 1.45)
-    player.skill_points += 1
+    # User-Feedback (Akt 2 „man levelt viel zu schnell"): Kurve versteilert
+    # von 1.45 → 1.58 pro Level. Zusammen mit hoeherem Start-Bedarf
+    # (entities.py xp_to_next 30 → 48) braucht Stufe 10 ~2.4x mehr XP.
+    player.xp_to_next = int(player.xp_to_next * 1.58)
+    # 2 Atlas-Punkte pro Level (entspricht ~1 Universal + 1 Class wie zuvor)
+    player.atlas_points = getattr(player, 'atlas_points', 0) + 2
     player.attr_points += 3
-    player.class_points += 1
     # HP/MP werden voll aufgefüllt (mit neuen Maxwerten)
     eff = effective(player)
     player.hp = eff['hp_max']

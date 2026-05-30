@@ -102,7 +102,8 @@ Tests: NNN/197 pass.
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ```
 - `feat:` neue Feature, `fix:` Bug, `docs:` Doku, `content:` Asset/Lore
-- Update-Nummer hochzaehlen (zuletzt: #178)
+- Update-Nummer hochzaehlen — **EINE globale Sequenz** (naechste freie Nummer: **#205**; zuletzt #204 = Doku-Pass + Push-Sync #181–#203; davor #203 = Player+Mobs kleiner/proportionaler). Entity-Render-Scale-Hebel: `PROC_SPRITE_SCALE` (Player/NPC) + `_draw_mob_scaled(scale=)` (Mobs) in [sf/sprites.py](sf/sprites.py). Frueher liefen zwei parallele Zaehler (Content im CHANGELOG vs. Engine im git-Log), deren Nummern kollidierten; seit 2026-05-30 konsolidiert. Details: Lesehilfe ganz oben in [docs/meta/CHANGELOG.md](docs/meta/CHANGELOG.md).
+- **Jedes Update auch im CHANGELOG eintragen** (newest-on-top), nicht nur in der Commit-Message — sonst entsteht wieder eine Doku-Luecke.
 - Co-Author-Trailer ist Pflicht
 
 ### Git-Workflow
@@ -143,4 +144,4 @@ User: adrian.mirwaldt21@gmail.com — Repo: github.com/OsuGerman/shadowfall
 
 ---
 
-**Stand:** 2026-05-24 (Update #179, TOOLBOX-Verankerung). Bei jeder neuen Library/Modul: hier nachpflegen.
+**Stand:** 2026-05-31 (#194–#204: Quest-Soft-Lock · Skill-Atlas · Akt-2-Balance · Save-Fix · Quest-Marker · HUD-Aufwertung/#201-Entzerrung · #202 NPC-Talk-Batch-Accept · #203 Entity-Render-Scale kleiner · #204 Doku-Pass + Push-Sync; naechstes Update = #205). Bei jeder neuen Library/Modul: hier nachpflegen.

@@ -325,8 +325,12 @@ def spawn_ground_decal(game, x, y, radius, kind=DECAL_KIND.DEADLY,
     if play_windup and windup >= 0.4:
         try:
             from . import sounds as _snd
-            # Skaliere Lautstärke mit Wind-Up-Dauer (länger = präsenter).
-            vol = min(1.0, 0.6 + windup * 0.3)
+            # Update #184 (User-Report „aoe_windup ballert die Ohren weg"):
+            # Lautstaerke-Kurve hart runter — vorher 0.6+windup*0.3 erreichte
+            # bei langen Windups Vollgas (1.0).  Jetzt 0.30+windup*0.10 mit
+            # Cap 0.55.  Volume-Cap auf 'aoe_windup' (0.35) im sounds.py
+            # bremst zusaetzlich.
+            vol = min(0.55, 0.30 + windup * 0.10)
             # C-13 (Update #51): Sound-Only-AoE-Cue. play_at statt play
             # gibt Distance-Falloff + L/R-Pan — Sehbehinderte können die
             # AoE-Position rein audio-spatial lokalisieren. Wenn das Game

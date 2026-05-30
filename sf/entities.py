@@ -26,7 +26,9 @@ class Player:
 
         self.level = 1
         self.xp = 0
-        self.xp_to_next = 30
+        # User-Feedback Akt 2 „levelt viel zu schnell": Start-XP-Bedarf
+        # 30 → 48 (Kurve in progression.level_up zudem 1.45 → 1.58).
+        self.xp_to_next = 48
         self.skill_points = 0
         self.attr_points = 0
 
@@ -88,8 +90,21 @@ class Player:
                          'heal': 0, 'frostnova': 0}
 
         # Klassen-Talentbaum (separat vom universellen)
+        # Update #184: Legacy — bleiben fuer Save-Compat erhalten, neue
+        # Spieler bekommen sie aber nicht mehr befuellt (Migration in
+        # skill_atlas.migrate_legacy_points).
         self.class_tree = {}
         self.class_points = 0  # 1 pro Stufe
+
+        # Update #184: POE2-Atlas (sf/skill_atlas.py) — Ersetzt tree+class_tree.
+        # `atlas` ist set[str] der allokierten Node-IDs.
+        # `atlas_points` = freie Punkte zum Allokieren.
+        try:
+            from . import skill_atlas as _atlas
+            self.atlas = _atlas.initial_atlas(self)
+        except Exception:
+            self.atlas = set()
+        self.atlas_points = 0
 
         # Aktive Aura
         self.aura = None  # 'wachsamkeit' | 'macht' | 'praezision' | 'entschlossenheit' | None
@@ -246,14 +261,15 @@ class Enemy:
         self.color = template['color']
         self.glow = template['glow']
         # Update #95: Schwierigkeit erhöht (User-Wunsch „Gegner viel zu leicht").
-        # HP-Scaling: +28 %/Wave (vorher +18 %).
-        # DMG-Scaling: +20 %/Wave (vorher +12 %).
-        # Base-DMG-Multiplier: ×1.30 — alle Mobs schlagen 30 % stärker.
-        # Base-HP-Multiplier: ×1.20 — alle Mobs halten 20 % mehr aus.
+        # Akt-2-Feedback („Gegner wehren sich gar nicht"): Base-HP-Mult
+        # 1.20 → 1.45 — Mobs ueberleben lang genug, um tatsaechlich
+        # zuzuschlagen statt vor dem ersten Angriff zu sterben. Base-DMG-Mult
+        # 1.30 → 1.45 — Treffer tun spuerbar weh.
+        # HP-Scaling: +28 %/Wave. DMG-Scaling: +20 %/Wave.
         scale_hp = 1 + (wave - 1) * 0.28
         scale_dmg = 1 + (wave - 1) * 0.20
-        self.hp_max = template['hp'] * scale_hp * 1.20
-        self.dmg = template['dmg'] * scale_dmg * 1.30
+        self.hp_max = template['hp'] * scale_hp * 1.45
+        self.dmg = template['dmg'] * scale_dmg * 1.45
         self.speed = template['speed']
         self.radius = template['radius']
         self.xp = template['xp']

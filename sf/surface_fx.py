@@ -137,17 +137,96 @@ class SurfaceFXSystem:
         kind = d['kind']
         col = d['color']
         if kind == DecalKind.WET:
-            alpha = int(60 * life_frac)
-            patch = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
-            # Spiegelnde Pfuetze: zentraler heller Glanz
-            pygame.draw.ellipse(patch, (*col, alpha), (0, r // 2, r * 2, r))
-            # Highlight-Streifen (Sinus-versetzt fuer „Atmen")
-            hi_alpha = int(40 * life_frac)
-            t = pygame.time.get_ticks() / 1000.0
-            off = int(math.sin(t * 0.3 + d['jitter']) * 4)
-            pygame.draw.ellipse(patch, (220, 230, 250, hi_alpha),
-                                (r // 3, r // 2 + 6 + off, r, r // 3))
-            screen.blit(patch, (sx - r, sy - r))
+            # Update #184 (User-Fix „wirkt draufgelegt, keine Tiefe"):
+            # 5-Layer Render statt eine Ellipse + ein Highlight.
+            # Drop-Shadow, Inset-Rim, Wasser-Body, Wellen-Linien,
+            # Specular-Hotspot + Bloom.
+            life_alpha_mul = life_frac
+            patch = pygame.Surface((r * 2 + 8, r + 12), pygame.SRCALPHA)
+            cx_p, cy_p = r + 4, r // 2 + 6
+            t_now = pygame.time.get_ticks() / 1000.0
+
+            # Layer 1 — Soft Drop-Shadow (radialer Fade)
+            for rad_mul, a in ((1.15, 18), (1.05, 28), (0.95, 38)):
+                sh_w = int(r * 2 * rad_mul)
+                sh_h = int(r * rad_mul)
+                sh_sf = pygame.Surface((sh_w, sh_h), pygame.SRCALPHA)
+                pygame.draw.ellipse(sh_sf,
+                                     (15, 22, 32, int(a * life_alpha_mul)),
+                                     (0, 0, sh_w, sh_h))
+                patch.blit(sh_sf, (cx_p - sh_w // 2,
+                                    cy_p - sh_h // 2 + 1))
+
+            # Layer 2 — Inset-Rim (dunkler Pfuetzen-Rand)
+            rim_alpha = int(100 * life_alpha_mul)
+            pygame.draw.ellipse(patch, (25, 40, 55, rim_alpha),
+                                 (cx_p - r, cy_p - r // 2, r * 2, r))
+
+            # Layer 3 — Wasserkoerper (zwei Schichten: dunkler unten,
+            # heller oben — Himmel-Reflex)
+            body_alpha_lo = int(80 * life_alpha_mul)
+            pygame.draw.ellipse(patch,
+                                 (55, 95, 125, body_alpha_lo),
+                                 (cx_p - r + 2, cy_p - r // 2 + 1,
+                                  r * 2 - 4, r - 2))
+            body_alpha_hi = int(60 * life_alpha_mul)
+            pygame.draw.ellipse(patch,
+                                 (*col, body_alpha_hi),
+                                 (cx_p - r + 4, cy_p - r // 2 + 1,
+                                  r * 2 - 8, r // 2 + 1))
+
+            # Layer 4 — Wellen-Linien (2 sinus-modulierte Highlights)
+            wave_a = int(50 * life_alpha_mul)
+            if wave_a > 4:
+                wave_t = t_now + d['jitter']
+                for w_i in range(2):
+                    wy = cy_p - 2 + w_i * 3
+                    pts = []
+                    for px in range(-r + 6, r - 6, 3):
+                        rel_y = (wy - cy_p) / max(1, r // 2)
+                        if abs(rel_y) >= 1:
+                            continue
+                        max_x = (r - 4) * (1 - rel_y * rel_y) ** 0.5
+                        if abs(px) > max_x:
+                            continue
+                        yoff = math.sin(wave_t * 1.3 + px * 0.15
+                                         + w_i * 0.7) * 0.7
+                        pts.append((cx_p + px, wy + yoff))
+                    if len(pts) >= 2:
+                        pygame.draw.lines(patch,
+                                           (200, 220, 240, wave_a),
+                                           False, pts, 1)
+
+            # Layer 5 — Specular-Hotspot + Bloom (Lichtreflex
+            # oben-links, atmend versetzt)
+            spec_off = int(math.sin(t_now * 0.3 + d['jitter']) * 3)
+            hot_x = cx_p - int(r * 0.32)
+            hot_y = cy_p - int(r * 0.25) + spec_off
+            spec_a = int(140 * life_alpha_mul)
+            # Bloom
+            bloom_w = max(4, int(r * 0.6))
+            bloom = pygame.Surface((bloom_w, bloom_w // 2),
+                                    pygame.SRCALPHA)
+            pygame.draw.ellipse(bloom,
+                                 (180, 220, 245, spec_a // 3),
+                                 (0, 0, bloom_w, bloom_w // 2))
+            patch.blit(bloom, (hot_x - bloom_w // 2,
+                                hot_y - bloom_w // 4))
+            # Core
+            core_w = max(3, int(r * 0.28))
+            core_h = max(2, core_w // 2)
+            pygame.draw.ellipse(patch,
+                                 (235, 245, 255, spec_a),
+                                 (hot_x - core_w // 2,
+                                  hot_y - core_h // 2,
+                                  core_w, core_h))
+            # Glint
+            pygame.draw.ellipse(patch,
+                                 (255, 255, 255, min(240,
+                                                      spec_a + 60)),
+                                 (hot_x - 2, hot_y - 1, 4, 2))
+
+            screen.blit(patch, (sx - cx_p, sy - cy_p))
         elif kind == DecalKind.ICE:
             alpha = int(120 * life_frac)
             patch = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)

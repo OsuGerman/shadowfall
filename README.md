@@ -2,22 +2,22 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5+-green.svg)](https://pyga.me/)
-[![Audio](https://img.shields.io/badge/audio-660%20KI%20Files-orange.svg)](#ki-audio-pipeline)
+[![Audio](https://img.shields.io/badge/audio-660%20Files-orange.svg)](#audio-pipeline)
 [![Status](https://img.shields.io/badge/status-foundation-yellow.svg)](#status--roadmap)
 
 Ein narratives 2D-ARPG in Pygame, angesiedelt in der Welt **Velgrad** — einer Welt, die sich selbst vergisst.
 
 > *„Die Welt vergisst sich selbst. Wer erinnert dich — wenn du nicht?"*
 
-**Self-contained:** Game ist sofort spielbar nach `git clone` — alle 660 KI-generierten Audio-Files (Voice + SFX) sind im Repo enthalten.
+**Self-contained:** Game ist sofort spielbar nach `git clone` — alle 660 Audio-Files (Voice + SFX) sind im Repo enthalten.
 
 ---
 
 ## Was ist Shadowfall?
 
-Shadowfall ist ein **Single-Player Action-RPG** mit dichter Lore, taktischem Top-Down-Combat und einer vollstaendig KI-generierten Audio-Pipeline. Inspiriert von **Path of Exile 2**, **Diablo IV** und **Dark Souls** — aber mit eigener mythologischer Welt: Sieben Aspekte, sieben Atemzuege, ein verlorener Pakt und ein Verraeter mit hundert Zungen.
+Shadowfall ist ein **Single-Player Action-RPG** mit dichter Lore, taktischem Top-Down-Combat und einer durchgehend produzierten Audio-Pipeline. Inspiriert von **Path of Exile 2**, **Diablo IV** und **Dark Souls** — aber mit eigener mythologischer Welt: Sieben Aspekte, sieben Atemzuege, ein verlorener Pakt und ein Verraeter mit hundert Zungen.
 
-**Status:** Foundation-Phase. Akt 1 spielbar mit vollem KI-Audio, Akt 2–7 + Endgame in Planung.
+**Status:** Foundation-Phase. Akt 1 spielbar mit vollem Audio, Akt 2–7 + Endgame in Planung.
 
 ---
 
@@ -66,17 +66,17 @@ Das ist alles. Game laeuft mit komplettem Sound + 8 Klassen + Akt-1-Quests + Bos
 - **Quest-Engine** mit 12 Stage-Types (TALK/KILL/REACH/COLLECT/INTERACT/RETURN/ESCORT/DEFEND/PUZZLE/CHOICE/TIMED/CONDITIONAL)
 - **Faction-Rep-System** (geplant — UI-Wiring in Arbeit)
 
-### KI-Audio-Pipeline
+### Audio-Pipeline
 
 Vollstaendige Sound-Pipeline via **ElevenLabs** — **alle Files im Repo enthalten**:
 
 | Kategorie | Anzahl | Groesse |
 |---|---|---|
-| KI-Voice-Lines (8 NPCs + 8 Klassen + Generic) | **227** | 13 MB |
-| KI-SFX Phase 1 (Mob/Boss/Skill/UI/Combat) | 227 | 8 MB |
-| KI-SFX Phase 2 (Footsteps/Status/Crafting/Menu/Quest) | 78 | 3 MB |
-| KI-SFX Phase 3 (Decor/Trap/Weather/Pakt/Atmos/...) | 128 | 5 MB |
-| **KI-SFX Total** | **433** | **~16 MB** |
+| Voice-Lines (8 NPCs + 8 Klassen + Generic) | **227** | 13 MB |
+| SFX Phase 1 (Mob/Boss/Skill/UI/Combat) | 227 | 8 MB |
+| SFX Phase 2 (Footsteps/Status/Crafting/Menu/Quest) | 78 | 3 MB |
+| SFX Phase 3 (Decor/Trap/Weather/Pakt/Atmos/...) | 128 | 5 MB |
+| **SFX Total** | **433** | **~16 MB** |
 | Stock-Sounds (Freesound, CC0) | 267 | 45 MB |
 | Music-Tracks | 2 | 9 MB |
 | **Gesamt-Audio** | **~927 Files** | **~80 MB** |
@@ -93,7 +93,7 @@ Pipeline-Tools in [`tools/`](tools/) erlauben **Re-Generation** mit eigenem Elev
 - **Footsteps pro Biome** automatisch via `pick_footstep_for_biome()` (11 Material-Surfaces)
 - **Save-Game-Versionierung** mit Migration-Pfaden
 - **Hardcore-Memorial-System** fuer permadeath-Modus
-- **Engine-Wiring der KI-Audio**: Boss-Spawn-Stinger, Mahnmal-Stelen-Activation, Rarity-aware Item-Pickup, NPC-Voice beim Reden, Quest-Marker-Reach, Achievement-Unlock, Status-Apply (frozen/shock/poison/bleed/stun/silence)
+- **Engine-Wiring der Audio-Layer**: Boss-Spawn-Stinger, Mahnmal-Stelen-Activation, Rarity-aware Item-Pickup, NPC-Voice beim Reden, Quest-Marker-Reach, Achievement-Unlock, Status-Apply (frozen/shock/poison/bleed/stun/silence)
 
 ---
 
@@ -129,7 +129,7 @@ shadowfall/
 │   ├── quests.py + quest_data.py    ← Quest-Engine + 12 Stage-Types
 │   ├── crafting.py + items.py       ← Otreth-Gemcutter, Affix-System
 │   ├── effects.py             ← Status-Effekte mit Element-Combos
-│   ├── sounds.py              ← Audio-Bus, Footstep-Picker, AI-SFX-Resolver
+│   ├── sounds.py              ← Audio-Bus, Footstep-Picker, SFX-Resolver
 │   ├── voice_registry.py      ← Auto-generiert: 85 Voice-Pools
 │   ├── sfx_registry.py        ← Auto-generiert: 433 SFX-Eintraege
 │   ├── dungeon.py + dungeon_events.py + dungeon_gen.py
@@ -139,7 +139,7 @@ shadowfall/
 │   ├── achievements.py + tutorial.py + crash_logger.py + tips.py
 │   └── ... (regions, runes, gems, archetypes, aspects, ...)
 │
-├── tools/                     ← KI-Audio-Pipeline (Re-Generation optional)
+├── tools/                     ← Audio-Pipeline (Re-Generation optional)
 │   ├── voice_gen.py           ← ElevenLabs Voice-Generator
 │   ├── voice_manifest_builder.py    ← Parst Voice-Pool + Casting → JSON
 │   ├── voice_list.py          ← Listet ElevenLabs-Library-Stimmen
@@ -147,12 +147,12 @@ shadowfall/
 │   ├── sfx_gen.py             ← ElevenLabs SFX-Generator (alle Phasen)
 │   └── README.md              ← Pipeline-Workflow
 │
-├── sounds/                    ← KI-Audio (committet, ~24 MB)
-│   ├── voice/                 ← 227 KI-Voice-Lines (8 NPCs + 8 Klassen + Generic)
+├── sounds/                    ← Voice + SFX (committet, ~24 MB)
+│   ├── voice/                 ← 227 Voice-Lines (8 NPCs + 8 Klassen + Generic)
 │   │   ├── korven/ helst/ vossharil/ tameris/ otreth/ mara/ vehren/
 │   │   ├── drei_muetter/ generic/
 │   │   └── cls_warrior/ cls_monk/ cls_sorceress/ cls_witch/ ...
-│   └── sfx/generated/         ← 433 KI-SFX in 31 Sektionen
+│   └── sfx/generated/         ← 433 SFX in 31 Sektionen
 │       ├── ui/ combat/ skills/ monster/ boss/ cinematic/ lore/
 │       ├── movement/ player_combat/ status/ interact/ crafting/ menu/ quest/
 │       ├── decor/ trap/ weather/ class_special/ currency/ event/
@@ -169,7 +169,7 @@ shadowfall/
 ├── docs/project-mgmt/WELT_AUFBAU.md             ← Welt-Topologie + NPC-Roster + Phasen-Plan
 ├── docs/lore/QUEST_BIBEL.md             ← 53 Quests ausformuliert + Stage-Definitionen
 ├── docs/lore/VELGRAD_LORE_BIBEL.md      ← Kosmologie + 7 Aspekte + Akt-Storyline (588 Zeilen)
-├── docs/gameplay/VELGRAD_BESTIARIUM.md      ← 30 Mobs mit AI-Patterns
+├── docs/gameplay/VELGRAD_BESTIARIUM.md      ← 30 Mobs mit Behavior-Patterns
 ├── docs/gameplay/VELGRAD_ITEMS_UNIQUE_BIBEL.md      ← 50 Unique-Items
 ├── docs/design/VELGRAD_VOICE_LINES_POOL.md        ← Dialog-Texte pro NPC
 ├── docs/design/_legacy/VELGRAD_VOICE_CASTING.md           ← Voice-IDs pro Charakter (ElevenLabs)
@@ -252,7 +252,7 @@ Smoke-Tests in [`tests/smoke.py`](tests/smoke.py) decken Engine-Importe, Save/Lo
 - ✅ Pygame-Engine mit 30 Modulen
 - ✅ Akt 1 (Salzkueste) komplett spielbar — Korven, Otreth, Tameris, Mara, Eldon, Mahnmal-Verwahrer, Helst-Vorpost
 - ✅ Boss-Encounter-System mit Salzhueter-Brut + Vehren + 6 weiteren Encounter-Configs (Senator-Geist, Shulavh, Velharn-Trio, Ertrunkene Koenigin, Echo-Drache, Nicht-Gott)
-- ✅ **KI-Audio-Pipeline vollstaendig im Repo** — 227 Voice + 433 SFX
+- ✅ **Audio-Pipeline vollstaendig im Repo** — 227 Voice + 433 SFX
 - ✅ Quest-Engine mit 12 Stage-Types
 - ✅ Crafting + Affix-System + Otreth-Gemcutter
 - ✅ Mahnmal-Schrein mit 7-Aspekt-Pakt-Wahl
@@ -264,11 +264,11 @@ Smoke-Tests in [`tests/smoke.py`](tests/smoke.py) decken Engine-Importe, Save/Lo
 - ⏳ Akt 1 vollstaendig (4 weitere Quests, Tameris-Schwester-Chain, Tribunal-Geruecht, Bounty-Salzgekreuzte, Versunkenes Grab)
 - ⏳ Faction-Rep-System UI im Codex
 - ⏳ Akt 2 Implementierung (Echo-Markt-Hub, Helst-NPC, Senator-Geist-Boss-Mechanik)
-- ⏳ Music-Tracks via Suno AI (42 geplant — Akt-Themes, Boss-Themes, Town-Themes)
-- ⏳ Ambience-Loops via Stable Audio (14 velgrad-spezifische Loops)
+- ⏳ Music-Tracks (42 geplant — Akt-Themes, Boss-Themes, Town-Themes)
+- ⏳ Ambience-Loops (14 velgrad-spezifische Loops)
 - ⏳ Cutscene-Framework + 9 Pflicht-Cutscenes
 - ⏳ Endgame-Atlas (Welkende Welten)
-- ⏳ KI-generierte Sprites via Scenario.gg / Stable Diffusion (geplant)
+- ⏳ Sprite-Pass: Procedural-Renderer ausbauen, optionale Re-Introduction externer Sprite-Sheets (Pipeline-Tools im Repo erhalten)
 
 Detail-Roadmap in [docs/project-mgmt/ROADMAP.md](docs/project-mgmt/ROADMAP.md) (5-Tier-Sprint-Plan, 149 priorisierte Tasks aus docs/project-mgmt/PLAN.md + docs/project-mgmt/WELT_AUFBAU.md + docs/lore/QUEST_BIBEL.md synthetisiert).
 
@@ -297,8 +297,8 @@ Das Projekt ist aktuell Solo-Dev. Bug-Reports und Lore-Ideen via [GitHub-Issues]
 
 - **Spielkonzept, Lore, Code:** Adrian Mirwaldt ([@OsuGerman](https://github.com/OsuGerman))
 - **Stock-Sounds:** [Freesound.org](https://freesound.org) (CC0 + verschiedene Lizenzen — Attribution in den Dateinamen)
-- **KI-Voice:** [ElevenLabs](https://elevenlabs.io) (`eleven_multilingual_v2`) — kommerzielle Lizenz via Creator-Plan
-- **KI-SFX:** [ElevenLabs Sound Effects API](https://elevenlabs.io/sound-effects)
+- **Voice:** [ElevenLabs](https://elevenlabs.io) (`eleven_multilingual_v2`) — kommerzielle Lizenz via Creator-Plan
+- **SFX:** [ElevenLabs Sound Effects API](https://elevenlabs.io/sound-effects)
 - **Engine:** [pygame-ce](https://pyga.me/) (LGPL)
 - **Genre-Inspiration:** Path of Exile 2, Diablo IV, Dark Souls, Hollow Knight
 

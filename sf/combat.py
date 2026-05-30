@@ -543,12 +543,51 @@ def _trigger_on_death(game, e):
             on_activate=_on_burst, play_windup=False)
 
 
+def _item_passes_loot_filter(game, item):
+    """Update #201 (User-Bug-Fix): Gefilterte Rarities droppen gar nicht
+    erst als Boden-Loot.
+
+    Vorher: Commons droppten sichtbar, waren aber wegen des Default-
+    Filters ('common', siehe Player.loot_filter) nicht aufhebbar — der
+    Pickup-Code in game._update_loot uebersprang sie. Resultat: grauer
+    Clutter am Boden, den der Spieler nicht anfassen konnte + unnoetige
+    Render-Last. Jetzt wird der Filter schon beim Drop angewandt, genau
+    wie in den meisten ARPGs (Loot-Filter blendet Drops aus).
+
+    `loot_filter`:  'off' = alles | 'common' = Commons aus |
+                    'magic' = alles unter Rare aus.
+    """
+    if item is None:
+        return True
+    flt = getattr(game.player, 'loot_filter', 'off')
+    if flt == 'off':
+        return True
+    order = {'common': 0, 'magic': 1, 'rare': 2, 'unique': 3, 'mythic': 4}
+    r = order.get(getattr(item, 'rarity', 'common'), 0)
+    if flt == 'common' and r == 0:
+        return False
+    if flt == 'magic' and r < 2:
+        return False
+    return True
+
+
 def kill_enemy(game, e):
     if e.dying:
         return
     e.dying = True
     e.death_timer = 0.0
     snd.play('death', volume=0.4)  # Update #38: war zu laut
+
+    # Update #184: Moench-Atlas "Klang der Stille" — Kills refunden 12% max-MP
+    try:
+        from . import skill_atlas as _atl
+        if _atl.has_keystone(game.player, 'kill_refunds_mana_12'):
+            eff_p = progression.effective(game.player)
+            refund = eff_p['mp_max'] * 0.12
+            game.player.mp = min(eff_p['mp_max'],
+                                 game.player.mp + refund)
+    except Exception:
+        pass
 
     # Update #X — Bestiarium-spezifischer Death-Sound (Phase-2-SFX-Pipeline)
     # Wenn der Mob ein bestiary_key hat, versuche <key>_death zu spielen.
@@ -974,6 +1013,8 @@ def kill_enemy(game, e):
         # Mini-Boss garantiert 2-3 items
         for _ in range(random.randint(2, 3)):
             it = items_mod.make_item(ilvl=ilvl, rarity_boost=12)
+            if not _item_passes_loot_filter(game, it):
+                continue
             game.loot.append(Loot(e.pos.x + random.uniform(-40, 40),
                                     e.pos.y + random.uniform(-40, 40),
                                     item=it))
@@ -984,6 +1025,8 @@ def kill_enemy(game, e):
         # Multi-Drop: 6-10 Items
         for _ in range(random.randint(6, 10)):
             it = items_mod.make_item(ilvl=ilvl, rarity_boost=rarity_boost)
+            if not _item_passes_loot_filter(game, it):
+                continue
             game.loot.append(Loot(e.pos.x + random.uniform(-60, 60),
                                   e.pos.y + random.uniform(-60, 60),
                                   item=it))
@@ -999,9 +1042,10 @@ def kill_enemy(game, e):
             game.loot[-1].gem_type = gem
     elif drop_chance > 0 and random.random() < drop_chance:
         it = items_mod.make_item(ilvl=ilvl, rarity_boost=rarity_boost)
-        game.loot.append(Loot(e.pos.x + random.uniform(-20, 20),
-                              e.pos.y + random.uniform(-20, 20),
-                              item=it))
+        if _item_passes_loot_filter(game, it):
+            game.loot.append(Loot(e.pos.x + random.uniform(-20, 20),
+                                  e.pos.y + random.uniform(-20, 20),
+                                  item=it))
 
     # Edelstein-Drop: 8% Chance bei normalen, 25% bei Eliten
     gem_chance = 0.25 if e.elite else 0.08
@@ -1280,14 +1324,23 @@ def damage_player(game, dmg, dmg_type='physical', source=None):
     if p.invuln > 0 or p.dodge > 0:
         return
     eff = progression.effective(p)
-    # Schurken-Ausweichchance
+    atlas_eff = eff.get('atlas_effects', set())
+    # Schurken-Ausweichchance (+ Atlas dodge_chance)
     if eff.get('dodge_chance', 0) > 0 and random.random() < eff['dodge_chance']:
         game.floaters.append(Floater(p.pos.x, p.pos.y - p.radius - 10,
                                      'Ausgewichen', (180, 220, 200)))
         p.invuln = 0.2
         return
-    # Aura: Schaden-Reduktion
+    # Aura: Schaden-Reduktion + Atlas dmg_red
     dmg = dmg * eff.get('dmg_taken_mult', 1.0)
+    # Update #184: Atlas-Stat dmg_red (additiv 0..1)
+    from .skill_atlas import aggregate_stats as _atlas_stats
+    _astats = _atlas_stats(p)
+    if _astats.get('dmg_red', 0) > 0:
+        dmg *= max(0.0, 1.0 - _astats['dmg_red'])
+    # Update #184: Way-of-Wind Keystone — +40% dmg taken in iframe-phase
+    if getattr(p, '_way_of_wind_active', 0) > 0:
+        dmg *= 1.40
     # Sapped: Spieler verursacht weniger Schaden, aber hier wirkt auf erlitten:
     # Wir interpretieren sapped als "weniger Damage dealt", angewendet auf Gegner.
     # Player Variante: skip hier.
@@ -1318,6 +1371,13 @@ def damage_player(game, dmg, dmg_type='physical', source=None):
     hp_before = p.hp
     p.hp -= dmg
     p.invuln = 0.3
+    # Update #184: Moench-Notable "Klangloser Tritt" — 25% chance auf
+    # Iframe-Refresh nach Hit (effektiv evade-cancel).
+    if 'evade_after_hit_25' in atlas_eff and random.random() < 0.25:
+        p.invuln = max(p.invuln, 0.4)
+        game.floaters.append(Floater(p.pos.x, p.pos.y - p.radius - 22,
+                                     'Klangloser Tritt',
+                                     (200, 230, 200)))
     game.shake = max(game.shake, 10)
     # Update #165: Animation-Trigger 'hit' (One-Shot 4 Frames @ 12fps ≈ 0.33s)
     try:

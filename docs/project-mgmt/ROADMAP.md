@@ -20,6 +20,8 @@
 - **Crafting-System** — Otreth-Gemcutter, Affix-Roll, Reroll, Socket, Salvage
 - **22 Outpost-NPCs** als Daten in [sf/outposts.py](sf/outposts.py) `NPC_ROSTER` (Spawn-Wiring teils ✅)
 - **8 von 15 Boss-Encounters** im Code: salzhueter_brut, vehren, senator_geist, shulavh, velharn_trio, ertrunkene_koenigin, echo_drache, nicht_gott
+- **POE2-Skill-Atlas** (#184/#195, [sf/skill_atlas.py](../../sf/skill_atlas.py)) — verbundener Node-Graph (~140 Nodes) ersetzt den flachen Tree; Atlas-UI mit Pan/Allocate/Refund + kollisionsfreie Labels. **Alle 8 Klassen haben echte Arme** (je Start + 9 themed Stat-Nodes, #195); Mönch zusätzlich mit gameplay-ändernden Keystones (Phase 1). Offen: Keystones/tiefere Trees für die 7 Nicht-Monk-Klassen
+- **Volumetrische Wolken + Fog-Parallax** (#184–#190), **Atem-Ambient-System** pro Biome×Intensität (#185/#186), procedural Detail-Sprite-Pass (#185–#193) — siehe [CHANGELOG #181–#193](../meta/CHANGELOG.md)
 
 ### Was JETZT blockiert (nach Update #170)
 - **47 von 53 Quests** sind nur in ../lore/QUEST_BIBEL.md ausformuliert, nicht in [sf/quest_data.py](sf/quest_data.py) implementiert
@@ -83,7 +85,7 @@
 
 ### 2.1 Akt-2-Content (Echo-Markt → Glasgolden-Ruinen)
 - [x] **T2.1-A** Echo-Markt-Outpost-Layout — ✅ #156 (verifiziert; bereits seit #112-114 via `outposts.generate_outpost('echo_markt')` + `build_outpost_npcs`)
-- [ ] **T2.1-B** Frost→Glass-Ruins Biome-Rename + Tile-Variation (W-09 Erweiterung)
+- [~] **T2.1-B** Frost→Glass-Ruins Biome-Rename + Tile-Variation (W-09 Erweiterung) — **Phase 1 ✅ #183**: User-sichtbarer Name = „Glasgoldener Palast" (Engine-Key `frost_palace` bleibt für Save-Compat). **Phase 2 offen:** Voll-Rename `frost_palace`→`glass_palace` + neues `glass_ruins`-Biome mit eigener Tile-Variation.
 - [x] **T2.1-C** 6 Akt-2-Quests — ✅ #155 (alle 6 Quests im Quest-Registry, Akt-Gating verifiziert):
   - `akt2_helst_pact_stones` (Faction Erblinde Kirche) ✅
   - `akt2_echo_handel` (Side, Vendor-Setup) ✅

@@ -257,7 +257,11 @@ def _enter_state(e, state, now_t=None):
                     _last_aggro_sound_t = now
                     from . import sounds as _snd
                     bkey = getattr(e, 'bestiary_key', None)
-                    fallback = 'ambient_monster_growl'
+                    # Update #185: Fallback war `ambient_monster_growl`
+                    # (30s freesound MP3) — zu lang + ohne Lore-Kontext.
+                    # Stattdessen procedural `growl` (~1.4s, distinkt,
+                    # passt fuer Mob-Alert ohne Krypta-Atmo zu spammen).
+                    fallback = 'growl'
                     cue = f'{bkey}_alert' if bkey else fallback
                     # play_at: positional (Stereo-Pan + Distance-Falloff)
                     px = getattr(e.pos, 'x', 0)

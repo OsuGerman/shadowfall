@@ -68,8 +68,19 @@ class DungeonGrid:
 
     # ---- Koordinaten ----
     def world_to_cell(self, wx, wy):
-        cx = int((wx - self.origin.x) / self.cell)
-        cy = int((wy - self.origin.y) / self.cell)
+        # Update #192 (User-Bug "kann aus der Map laufen"):
+        # int() trunkiert RICHTUNG NULL, math.floor() trunkiert RICHTUNG
+        # -INF.  Bei negativen Koordinaten relativ zum Origin gaben die
+        # alten Werte das FALSCHE Zellen-Ergebnis:
+        #   wx=-1, origin=0, cell=80
+        #   int(-1/80) = int(-0.0125) = 0   (falsch, sollte -1 sein)
+        #   floor(-1/80) = -1               (korrekt)
+        # Effekt: bei wx in (-80..0) wurde Zelle 0 (oft FLOOR) zurueck-
+        # gegeben statt Zelle -1 (VOID) — der Spieler konnte bis zu
+        # cell-1 px links/oben aus dem Dungeon heraus laufen weil die
+        # Wand-Kollision dort "walkable" zurueckgab.
+        cx = math.floor((wx - self.origin.x) / self.cell)
+        cy = math.floor((wy - self.origin.y) / self.cell)
         return cx, cy
 
     def cell_to_world_center(self, cx, cy):

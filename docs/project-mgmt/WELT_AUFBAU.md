@@ -449,8 +449,8 @@ Lore: VELGRAD_LORE_BIBEL Teil 4.2 + 11.5.
 
 Aktuell nur `level_req` in `DUNGEONS`. Notwendig: Quest-Flag-Gates.
 
-- [ ] Akt 1 → 2: Flag `quest_completed.akt1_salzwunde`
-- [ ] Akt 2 → 3: Flag `quest_completed.akt2_asch_prophezeiung` + Helst-Pact-Stone equipped
+- [x] Akt 1 → 2: Flag `quest_completed.akt1_salzwunde` ✅ #183 (`AKT_QUEST_GATES` in `sf/progression.py`)
+- [~] Akt 2 → 3: Flag `quest_completed.akt2_asch_prophezeiung` ✅ #183 (Quest-Flag-Pfad) — Helst-Pact-Stone-Equipped-Bedingung folgt in Phase 2
 - [ ] Akt 3 → 4: Flag `quest_completed.akt3_asch_pakt` + Asche-Aspekt-Wand owned
 - [ ] Akt 4 → 5: Flag `quest_completed.akt4_shulavh_faden` + Choice-Outcome
 - [ ] Akt 5 → 6: Flag `quest_completed.akt5_drei_zeiten` + Ousen-Reveal seen
@@ -570,7 +570,7 @@ Lore 8.4. Choice-System nötig (siehe 3.1 CHOICE-Stage-Type).
 ## 13. PHASEN-PLAN (Reihenfolge der Implementierung)
 
 ### Phase 1 — Akt-1 vollständig (Foundation, 4–6 Wochen)
-1. [ ] Quest-Stage-Types ESCORT + CHOICE einbauen
+1. [x] Quest-Stage-Types ESCORT + CHOICE einbauen ✅ #183 (alle 6 Stage-Types live)
 2. [ ] Faction-Rep-Foundation (`Player.faction_rep` + 7 Fraktionen)
 3. [ ] 4 fehlende Akt-1-Quests (Tameris-Schwester / Tribunal-Gerücht / Salzgekreuzte-Bounty / Versunkenes-Grab)
 4. [ ] Zhar-Eth-Karawane (Vorposten-Camp + 3 NPCs + 4 Sub-Quests)
@@ -620,15 +620,15 @@ Direkt aus `town.py` / `quest_data.py` / `boss_encounter.py` / `regions.py` / `c
 - [ ] 13 BOSS_ENCOUNTERS fehlen (siehe Sektion 4)
 - [ ] Akt 6 hat kein eigenes Biome
 - [ ] Akt 7 hat kein eigenes Biome
-- [ ] 6 Stage-Types fehlen (ESCORT/DEFEND/PUZZLE/CHOICE/TIMED/CONDITIONAL)
+- [x] 6 Stage-Types fehlen (ESCORT/DEFEND/PUZZLE/CHOICE/TIMED/CONDITIONAL) ✅ #183 — alle 6 in `sf/quest_data.py:37-42` + Handler in `sf/quests.py` implementiert
 - [ ] Faction-Rep-System komplett fehlend
 - [ ] Atlas-System komplett fehlend
-- [ ] Waypoint/Fast-Travel-System nicht implementiert (Stelen sind nur Decor)
+- [x] Waypoint/Fast-Travel-System nicht implementiert (Stelen sind nur Decor) ✅ #183 — `mahnmal_stele` in Dungeons ist jetzt F-interaktiver Return-Waypoint nach Brassweir (`sf/game.py` Dungeon-F-Handler)
 - [ ] Quest-NPC-Spawning IN Dungeons fehlt
 - [ ] Multi-Stage-Dungeons fehlen (alles ist Single-Map)
 - [ ] Quest-Board-Modal fehlt (Eldon ist NPC ohne UI)
-- [ ] `frost_palace` vs Lore-Akt-2-Glas-Look (Biome-Mismatch)
-- [ ] Akt-Gating an Quest-Flag fehlt (nur Level-Req aktiv)
+- [x] `frost_palace` vs Lore-Akt-2-Glas-Look (Biome-Mismatch) ⚠️ #183 — partial: user-sichtbarer Name → „Glasgoldener Palast" + Boss-Text. Engine-Key `frost_palace` + Biome `frost` bleiben bis Phase 2 (Save-Compat)
+- [x] Akt-Gating an Quest-Flag fehlt (nur Level-Req aktiv) ✅ #183 — `AKT_QUEST_GATES` in `sf/progression.py` + optionales `quest_log`-Arg in `can_enter_akt` + `unlocked_outposts`. Backward-compat: alte Saves via Dungeon-Count-Pfad bleiben unlocked
 - [ ] 47 Quests fehlen (4 ✅, 47 [ ])
 - [ ] 22 NPCs fehlen (6 ✅, 22 [ ])
 - [ ] 4 zusätzliche Slot-Typen erwägen (boots/gloves/belt/flask_modifier)
