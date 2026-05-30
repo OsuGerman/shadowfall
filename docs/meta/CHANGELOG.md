@@ -35,6 +35,24 @@
 
 ---
 
+## [2026-05-31] — Update #205 — README-Refresh: Stand-Sync auf #204 + Doku-Konsistenz
+
+Reiner Doku-Commit. Inhalts-Refresh nach langem Drift:
+
+- **Engine-Modul-Count:** `sf/` hat **65 Module**, README sagte 30 (Stand vor #150). Korrigiert.
+- **Projekt-Tree:** `sf/skill_atlas.py` (#184), `sf/surface_fx.py`, `sf/gl_post.py` (#171), `sf/boss_encounter.py` ergänzt. `bugreports/`-Ordner (Verifikations-Belege) eingetragen. `tools/` aus dem alten Sammel-Bullet als eigener Tree-Eintrag.
+- **`sounds/` vs `Sounds/`-Doppelung gefolded.** Windows-FS ist case-insensitive → es gibt **einen** `Sounds/`-Ordner, der `voice/` + `sfx/generated/` + `voice_de_legacy/` + die 267 Stock-MP3s **alle zusammen** enthält. README hatte fiktive Trennung „sounds/" (Generated) vs „Sounds/" (Stock), die so auf Disk nicht existiert.
+- **Status-Sektion auf #204:** Akt 2 als „in Arbeit" (Echo-Markt + 6 Quests im Registry), Skill-Atlas, Quest-Auto-Fail-Pfad, volumetrische Wolken + Fog-Parallax, Atem-Ambient, HUD-Pass — alles aus #181–#203 als ✅ erfasst.
+- **Naechste-Schritte:** Akt-2-Ausbau, Skill-Atlas-Klassen-Trees für die 7 Nicht-Monk-Klassen, 47/53 Quest-Wiring (statt der alten Phase-2-/3-SFX-Bullets, die inzwischen ✅ sind).
+- **Letzte-Updates-Liste:** #145–#150 → **#181–#204**.
+- **Tests-Zeile:** auf 212 Tests / 211 grün / 1 flaky-RNG (`dot_kill_loot_pipeline`, AUDIT C.12) aktualisiert.
+
+Keine Code-Aenderungen — reine `README.md`-Doku.
+
+**Tests:** 211/212 grün (unverändert).
+
+---
+
 ## [2026-05-31] — Update #204 — Doku-Pass: README + CHANGELOG entschärft, Push-Sync der offenen Updates #181–#203
 
 **Was:** Sammel-Push der seit #180 angesammelten Engine-/Content-Arbeit (Skill-Atlas-Rollout, Quest-Auto-Fail-Pipeline, HUD-Entzerrung, NPC-Talk-Batch-Accept, Entity-Render-Scale, Doku-Konsolidierung der Nummerierungs-Stränge). Begleitende Doku-Glättung:
