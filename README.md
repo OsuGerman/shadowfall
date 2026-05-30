@@ -120,7 +120,7 @@ Vollstaendige Lore in [docs/lore/VELGRAD_LORE_BIBEL.md](docs/lore/VELGRAD_LORE_B
 shadowfall/
 ├── shadowfall.py              ← Game-Entry-Point (Pygame Main-Loop)
 │
-├── sf/                        ← Engine-Code (30 Module)
+├── sf/                        ← Engine-Code (65 Module)
 │   ├── game.py                ← Game-Loop, Update, Render
 │   ├── combat.py              ← Damage, Crit, Death-Layer, bestiary_key-Sounds
 │   ├── boss_encounter.py      ← Multi-Phase-Boss-Cinematics + Spawn/Phase-Stinger
@@ -133,11 +133,13 @@ shadowfall/
 │   ├── voice_registry.py      ← Auto-generiert: 85 Voice-Pools
 │   ├── sfx_registry.py        ← Auto-generiert: 433 SFX-Eintraege
 │   ├── dungeon.py + dungeon_events.py + dungeon_gen.py
-│   ├── sprites.py + lighting.py + weather.py
+│   ├── sprites.py + lighting.py + weather.py + surface_fx.py + gl_post.py
 │   ├── ui.py + town.py + outposts.py + shop.py + stash.py
 │   ├── ai.py + entities.py + progression.py + save.py
 │   ├── achievements.py + tutorial.py + crash_logger.py + tips.py
-│   └── ... (regions, runes, gems, archetypes, aspects, ...)
+│   ├── skill_atlas.py         ← POE2-Skill-Atlas (verbundener Node-Graph, ~140 Nodes)
+│   ├── boss_encounter.py      ← 8/15 Encounter-Configs verdrahtet
+│   └── ... (regions, runes, gems, archetypes, aspects, bestiary, dialog, cutscene, ...)
 │
 ├── tools/                     ← Audio-Pipeline (Re-Generation optional)
 │   ├── voice_gen.py           ← ElevenLabs Voice-Generator
@@ -147,25 +149,26 @@ shadowfall/
 │   ├── sfx_gen.py             ← ElevenLabs SFX-Generator (alle Phasen)
 │   └── README.md              ← Pipeline-Workflow
 │
-├── sounds/                    ← Voice + SFX (committet, ~24 MB)
+├── Sounds/                    ← Audio-Assets (committet, ~70 MB)
 │   ├── voice/                 ← 227 Voice-Lines (8 NPCs + 8 Klassen + Generic)
 │   │   ├── korven/ helst/ vossharil/ tameris/ otreth/ mara/ vehren/
 │   │   ├── drei_muetter/ generic/
 │   │   └── cls_warrior/ cls_monk/ cls_sorceress/ cls_witch/ ...
-│   └── sfx/generated/         ← 433 SFX in 31 Sektionen
-│       ├── ui/ combat/ skills/ monster/ boss/ cinematic/ lore/
-│       ├── movement/ player_combat/ status/ interact/ crafting/ menu/ quest/
-│       ├── decor/ trap/ weather/ class_special/ currency/ event/
-│       ├── boss_special/ flask/ player_voice/ achievement/
-│       ├── engrave/ pakt/ daynight/ shop/ tutorial/ saveload/ atmos/
-│       └── voice_manifest.json + sfx_manifest.json
-│
-├── Sounds/                    ← 267 Stock-MP3s (Freesound, CC0)
+│   ├── sfx/generated/         ← 433 SFX in 31 Sektionen
+│   │   ├── ui/ combat/ skills/ monster/ boss/ cinematic/ lore/
+│   │   ├── movement/ player_combat/ status/ interact/ crafting/ menu/ quest/
+│   │   ├── decor/ trap/ weather/ class_special/ currency/ event/
+│   │   ├── boss_special/ flask/ player_voice/ achievement/
+│   │   ├── engrave/ pakt/ daynight/ shop/ tutorial/ saveload/ atmos/
+│   │   └── voice_manifest.json + sfx_manifest.json
+│   ├── voice_de_legacy/       ← Vorlaeufige DE-Voice-Lines (Archiv, Pivot 2026-05-24)
+│   └── *.mp3                  ← 267 Stock-Sounds (Freesound, CC0)
 │
 ├── Nebel von Arken.mp3        ← Music-Track 1
 ├── Soundtrack 3.mp3           ← Music-Track 2
 │
-├── docs/project-mgmt/PLAN.md                    ← Master-Plan (140+ Updates)
+├── docs/project-mgmt/PLAN.md                    ← Master-Plan (Update-Tracker)
+├── docs/project-mgmt/ROADMAP.md                 ← 5-Tier-Sprint-Plan, 149 priorisierte Tasks
 ├── docs/project-mgmt/WELT_AUFBAU.md             ← Welt-Topologie + NPC-Roster + Phasen-Plan
 ├── docs/lore/QUEST_BIBEL.md             ← 53 Quests ausformuliert + Stage-Definitionen
 ├── docs/lore/VELGRAD_LORE_BIBEL.md      ← Kosmologie + 7 Aspekte + Akt-Storyline (588 Zeilen)
@@ -174,11 +177,13 @@ shadowfall/
 ├── docs/design/VELGRAD_VOICE_LINES_POOL.md        ← Dialog-Texte pro NPC
 ├── docs/design/_legacy/VELGRAD_VOICE_CASTING.md           ← Voice-IDs pro Charakter (ElevenLabs)
 ├── docs/design/VELGRAD_AUDIO_DESIGN_BIBEL.md      ← Audio-Vision
-├── docs/design/VELGRAD_SFX_BIBEL.md               ← 453 SFX-Definitionen + Generation-Prompts
+├── docs/design/VELGRAD_SFX_BIBEL.md               ← 453 SFX-Definitionen + Prompts
 ├── docs/gameplay/POE2_GAMEPLAY_SYSTEMS_ERWEITERUNG.md  ← Mechanik-Referenz
 ├── docs/gameplay/POE2_SKILLS_BRIEFING_FUER_CLAUDE_CODE.md  ← Skill-Tree-Referenz
-├── docs/meta/CHANGELOG.md               ← Update-Historie (Update #1 → #150+)
-├── tests/                     ← pytest Smoke-Tests
+├── docs/meta/CHANGELOG.md               ← Update-Historie (Update #1 → #204)
+├── bugreports/                ← Verifikations-Screenshots/Audio pro Update
+├── tests/smoke.py             ← Smoke-Tests (212 Tests, 211 grün, 1 flaky-RNG)
+├── tools/                     ← Asset-Pipelines (Audio + Tile + Walk-Strip)
 └── Design idee/               ← UI-Mockups (HTML/JSX)
 ```
 
@@ -242,31 +247,35 @@ Analog fuer SFX, falls du z. B. den Salzhueter-Boss-Roar dramatischer haben will
 python -m pytest tests/
 ```
 
-Smoke-Tests in [`tests/smoke.py`](tests/smoke.py) decken Engine-Importe, Save/Load, Crafting-Logik, Quest-Engine, NPC-Spawning und Akt-Progression ab (Update #150 hat 237 Zeilen Regression-Tests ergaenzt).
+Smoke-Tests in [`tests/smoke.py`](tests/smoke.py) decken Engine-Importe, Save/Load, Crafting-Logik, Quest-Engine, NPC-Spawning, Akt-Progression, Skill-Atlas-Persistenz, Quest-Auto-Fail-Pfade und NPC-Marker-Konsistenz ab. **212 Tests, 211 grün** (1 flaky-RNG bei `dot_kill_loot_pipeline`, AUDIT C.12 — bekannt).
 
 ---
 
 ## Status & Roadmap
 
-### Aktuell (Foundation komplett)
-- ✅ Pygame-Engine mit 30 Modulen
-- ✅ Akt 1 (Salzkueste) komplett spielbar — Korven, Otreth, Tameris, Mara, Eldon, Mahnmal-Verwahrer, Helst-Vorpost
-- ✅ Boss-Encounter-System mit Salzhueter-Brut + Vehren + 6 weiteren Encounter-Configs (Senator-Geist, Shulavh, Velharn-Trio, Ertrunkene Koenigin, Echo-Drache, Nicht-Gott)
+### Aktuell (Foundation komplett, Akt 1+2 spielbar)
+- ✅ Pygame-Engine mit 65 Modulen
+- ✅ **Akt 1** (Salzkueste) komplett spielbar — Korven, Otreth, Tameris, Mara, Eldon, Mahnmal-Verwahrer, Helst-Vorpost, Brassweir-Hub
+- ✅ **Akt 2** in Arbeit — Echo-Markt-Outpost layoutet, 6 Akt-2-Quests im Registry, „Glasgoldener Palast"-Naming (Phase 1)
+- ✅ **Boss-Encounters:** 8/15 Configs verdrahtet — Salzhueter-Brut, Vehren, Senator-Geist, Shulavh, Velharn-Trio, Ertrunkene Koenigin, Echo-Drache, Nicht-Gott
+- ✅ **POE2-Skill-Atlas** (`sf/skill_atlas.py`) — verbundener Node-Graph (~140 Nodes), alle 8 Klassen haben echte Arme, Moench mit gameplay-aendernden Keystones (Phase 1)
+- ✅ **Quest-Engine** mit 12 Stage-Types + **Auto-Fail-Pfad** (DEFEND-Grace, ESCORT-Timeout, Main-Quest-Revert statt Fail, `on_quest_failed`-Hook)
 - ✅ **Audio-Pipeline vollstaendig im Repo** — 227 Voice + 433 SFX
-- ✅ Quest-Engine mit 12 Stage-Types
 - ✅ Crafting + Affix-System + Otreth-Gemcutter
-- ✅ Mahnmal-Schrein mit 7-Aspekt-Pakt-Wahl
-- ✅ NPC-Voice-Greeting beim Reden mit Haupt-NPCs
+- ✅ Mahnmal-Schrein mit 7-Aspekt-Pakt-Wahl, 22 Outpost-NPCs
 - ✅ Footsteps pro Biome (11 Material-Surfaces)
-- ✅ Engine-Wiring der Phase-2/3-SFX (Doors, Chests, Cursed-Altar, Rune-Anchor, etc.)
+- ✅ Volumetrische Wolken + Fog-Parallax, Atem-Ambient pro Biome×Intensitaet
+- ✅ HUD-Pass: Hotkey-Bar mit Panel, Cartouche-Portrait, Quest-Tracker, Codex, Mini-Map mit Fog-of-War + POI-Icons
 
 ### Naechste Schritte
-- ⏳ Akt 1 vollstaendig (4 weitere Quests, Tameris-Schwester-Chain, Tribunal-Geruecht, Bounty-Salzgekreuzte, Versunkenes Grab)
+- ⏳ Akt 1 vollstaendig (4 weitere Quests: Tameris-Schwester-Chain, Tribunal-Geruecht, Bounty-Salzgekreuzte, Versunkenes Grab)
 - ⏳ Faction-Rep-System UI im Codex
-- ⏳ Akt 2 Implementierung (Echo-Markt-Hub, Helst-NPC, Senator-Geist-Boss-Mechanik)
+- ⏳ Akt 2 ausbauen (Helst-NPC, Senator-Geist-Boss-Mechanik, Glass-Ruins-Biome-Tiles)
+- ⏳ Skill-Atlas: Keystones/tiefere Trees fuer die 7 Nicht-Monk-Klassen
 - ⏳ Music-Tracks (42 geplant — Akt-Themes, Boss-Themes, Town-Themes)
 - ⏳ Ambience-Loops (14 velgrad-spezifische Loops)
 - ⏳ Cutscene-Framework + 9 Pflicht-Cutscenes
+- ⏳ 47 von 53 Quests aus der QUEST_BIBEL noch in [sf/quest_data.py](sf/quest_data.py) verdrahten
 - ⏳ Endgame-Atlas (Welkende Welten)
 - ⏳ Sprite-Pass: Procedural-Renderer ausbauen, optionale Re-Introduction externer Sprite-Sheets (Pipeline-Tools im Repo erhalten)
 
@@ -276,12 +285,15 @@ Detail-Roadmap in [docs/project-mgmt/ROADMAP.md](docs/project-mgmt/ROADMAP.md) (
 
 ## Letzte Updates
 
-- **Update #150** — Akt-Progression-Blocker fixed (Quest-Objectives wurden nirgendwo abgeschlossen → alle Akt-2+ Outposts waren permanent gelockt)
-- **Update #149** — ESCORT-Stage-Robustheit + Phantom-NPC-Fix
-- **Update #148** — Phase-3-SFX (128 zusaetzliche SFX: Decor, Trap, Weather, Pakt, Atmos)
-- **Update #147** — Phase-2-SFX-Generation (78 SFX: Footsteps, Player-Combat, Status, Doors)
-- **Update #146** — Phase-1-SFX-Generation (227 SFX: Mob/Boss/Skill/UI/Cinematic)
-- **Update #145** — Voice-Lines-Generation (227 Lines, alle 8 Haupt-NPCs)
+- **Update #204** — Doku-Pass + Push-Sync der offenen Updates #181–#203 (README/CHANGELOG-Glaettung)
+- **Update #203** — Player/Mob-Render-Scale kleiner (`PROC_SPRITE_SCALE=0.82`, Mob 1.7→1.4) — kompaktere Szene, Fuesse korrekt am Boden
+- **Update #202** — NPC-Talk-Batch-Accept: ein Gespraech nimmt alle verfuegbaren Quests an, kein `!`/`?`-Flackern mehr
+- **Update #201** — HUD-Entzerrung: Cartouche-Glow raus, Hotbar-Panel, Toast-Stack hoeher, Portal-Label-Clamping
+- **Update #196–#200** — Akt-2-Balance, Save-Fix fuer verwaiste Node-IDs, Quest-Marker fuer `abandoned`/`failed`, HUD-Cartouche-Aufwertung
+- **Update #195** — Skill-Atlas: 7 Klassen-Arme + Label-Kollisions-Vermeidung
+- **Update #194** — Quest-Auto-Fail-Pipeline: DEFEND-Grace (6s), ESCORT-Timeout (240s, im Dungeon pausiert), `on_quest_failed`-Hook
+- **Update #184** — POE2-Skill-Atlas: ~140 Nodes, Pan/Allocate/Refund, kollisionsfreie Labels
+- **Update #181–#193** — Surface-FX-Wall-Clipping-Fix, Camera-Delta-Parallax, Atem-Ambient pro Biome×Intensitaet, volumetrische Wolken + Fog-Parallax, procedural Detail-Sprite-Pass
 
 Vollstaendige Update-Historie in [docs/meta/CHANGELOG.md](docs/meta/CHANGELOG.md).
 
